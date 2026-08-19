@@ -142,6 +142,23 @@ async def test_job_exceeding_its_deadline_fails_without_hanging(tmp_path: Path) 
     assert finished.result is not None
 
 
+async def test_finished_jobs_are_evicted_once_the_registry_is_full(tmp_path: Path) -> None:
+    rag = RagPipeline(MockEmbeddingClient(), InMemoryVectorStore())
+    manager = _manager(tmp_path, rag, retain_index=False)
+    manager._max_retained_jobs = 2
+
+    ids = []
+    for _ in range(3):
+        job = await manager.submit_upload("peticao.pdf", _pdf_upload(), max_upload_bytes=2**20)
+        await _wait_finished(manager, job.job_id)
+        ids.append(job.job_id)
+
+    assert manager.get(ids[0]) is None, "the oldest finished job should be evicted"
+    assert manager.get(ids[-1]) is not None
+    # Durable history outlives the in-memory registry.
+    assert manager._run_store.get(ids[0]) is not None
+
+
 def test_security_block_exposes_downstream_stages_as_skipped() -> None:
     job = Job(job_id="job", filename="x.pdf", state=JobState.SUCCEEDED)
     job.done_stages.update({"security_scan", "compose"})

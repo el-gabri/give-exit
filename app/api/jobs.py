@@ -131,6 +131,7 @@ class AnalysisJobManager:
         rag: RagPipeline | None = None,
         retain_index: bool = False,
         job_timeout_seconds: float = 0.0,
+        max_retained_jobs: int = 200,
     ) -> None:
         self._ingestion = ingestion
         self._graph = graph
@@ -143,9 +144,27 @@ class AnalysisJobManager:
         self._rag = rag
         self._retain_index = retain_index
         self._job_timeout_seconds = job_timeout_seconds
+        self._max_retained_jobs = max(1, max_retained_jobs)
 
     def get(self, job_id: str) -> Job | None:
         return self._jobs.get(job_id)
+
+    def _evict_finished_jobs(self) -> None:
+        """Drop the oldest finished jobs once the registry exceeds its cap.
+
+        Each job holds a whole AnalysisState, including every chunk of the
+        document, so an unbounded registry is a slow memory leak. Durable run
+        history lives in the run store, and its retrieval traces stay
+        reachable at /runs/{run_id}/retrievals after eviction.
+        """
+        finished = sorted(
+            (job for job in self._jobs.values() if job.finished_at is not None),
+            key=lambda job: job.finished_at or job.created_at,
+        )
+        excess = len(self._jobs) - self._max_retained_jobs
+        for job in finished[: max(0, excess)]:
+            del self._jobs[job.job_id]
+            logger.info("job_evicted", job_id=job.job_id)
 
     async def submit_upload(self, filename: str, file: UploadFile, max_upload_bytes: int) -> Job:
         """Persist an upload in bounded chunks, then queue its analysis.
@@ -167,6 +186,7 @@ class AnalysisJobManager:
             raise
 
         self._jobs[job.job_id] = job
+        self._evict_finished_jobs()
         task = asyncio.create_task(self._execute(job, pdf_path))
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
