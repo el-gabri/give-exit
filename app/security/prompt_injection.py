@@ -98,6 +98,26 @@ _PROMPT_MARKERS = re.compile(
     r"\b(?:system|developer)\s*(?:message|prompt)?\s*:|"
     r"begin\s+system\s+prompt|inicio\s+do\s+prompt\s+do\s+sistema"
 )
+# Phrases that talk about the assistant's own instructions, persona, output or
+# session. A paraphrased attack can avoid every control verb above, but it
+# cannot avoid referring to what it wants changed. These only widen the pool
+# sent to the semantic reviewer - they never produce a finding on their own -
+# so the cost of a false positive here is tokens, not a wrong decision.
+# Phrases, not bare nouns: "o sistema do banco" and "as instrucoes de cobranca"
+# are ordinary petition language.
+_SELF_REFERENCE_CUES = re.compile(
+    r"instruc(?:ao|oes)\s+(?:anterior|anteriores|previa|previas|inicial|iniciais|ocultas?)|"
+    r"previous\s+instructions?|initial\s+instructions?|hidden\s+instructions?|"
+    r"prompt\s+(?:do|de)\s+sistema|system\s+prompt|developer\s+message|"
+    r"sua\s+resposta|suas\s+respostas|your\s+response|your\s+answer|your\s+reply|"
+    r"you\s+(?:were|are)\s+(?:given|told|instructed)|"
+    r"\bpersona\b|assuma\s+o\s+papel|assumir\s+a\s+persona|incorpore\s+a\s+persona|"
+    r"esta\s+conversa|this\s+conversation|start\s+of\s+this|"
+    r"palavra\s+por\s+palavra|word\s+for\s+word|verbatim|"
+    r"rotina\s+interna|internal\s+routine|"
+    r"texto\s+de\s+configuracao|configuration\s+text|"
+    r"suas\s+(?:regras|restricoes|politicas)|your\s+(?:rules|restrictions|policies)"
+)
 _BASE64_BLOCK = re.compile(
     r"(?<![A-Za-z0-9+/_-])[A-Za-z0-9+/_-]{48,}={0,2}(?![A-Za-z0-9+/_-])"
 )
@@ -789,12 +809,18 @@ def _semantic_candidates(
             control_match = _CONTROL_TERMS.search(canonical)
             target_match = _AI_TARGET_TERMS.search(canonical)
             marker_match = _PROMPT_MARKERS.search(canonical)
+            self_reference_match = _SELF_REFERENCE_CUES.search(canonical)
             focus_matches = [
                 match
-                for match in (control_match, target_match, marker_match)
+                for match in (
+                    control_match,
+                    target_match,
+                    marker_match,
+                    self_reference_match,
+                )
                 if match is not None
             ]
-            if (control_match and target_match) or marker_match:
+            if (control_match and target_match) or marker_match or self_reference_match:
                 focus_start = min(match.start() for match in focus_matches)
                 focus_end = max(match.end() for match in focus_matches)
                 source_start = positions[focus_start]

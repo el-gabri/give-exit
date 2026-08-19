@@ -135,10 +135,21 @@ python -m app.evaluation.security_benchmark
 | Paraphrased attacks | **0.000** (0/6) |
 
 The paraphrase row is the point: lexical rules catch every attack that names
-its intent and none that does not. That gap is why `balanced` is the default
-rather than `rules`, and why the gate is described as risk reduction rather
-than proof a document is safe. `tests/test_security_benchmark.py` asserts
-these thresholds, so a weakened rule fails the build.
+its intent and none that does not. That is a property of pattern matching, not
+a bug to be patched away with more patterns.
+
+Balanced mode only reviews excerpts the candidate selector forwards, so a
+rules-missed attack is invisible to the reviewer too unless it is escalated.
+The benchmark measures that hand-off directly: **5 of the 6** rules-missed
+attacks are escalated to the semantic reviewer, while only **1 of 14** benign
+passages is (escalation costs tokens, not correctness — the reviewer still has
+to confirm a finding, and it can never clear a rule finding). That hand-off is
+what makes `balanced` stronger than `rules`; only `strict` reviews text no
+heuristic pointed at.
+
+`tests/test_security_benchmark.py` asserts every threshold above, so a
+weakened rule or a narrowed candidate selector fails the build. The gate is
+risk reduction with a known ceiling, not proof that a document is safe.
 
 ### Evaluation
 

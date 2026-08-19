@@ -69,11 +69,34 @@ def test_obfuscation_and_direct_attacks_stay_fully_detected(
 def test_paraphrase_evasion_is_tracked_as_a_known_gap(
     report: BenchmarkReport,
 ) -> None:
-    """Documents why `balanced` is the default rather than `rules`.
+    """Lexical rules catch no paraphrased attack.
 
-    Lexical rules catch none of the paraphrased attacks. If this ever starts
-    passing, the rules improved and the recorded gap should be updated.
+    If this ever starts passing, the rules improved and the recorded gap in
+    the README should be updated.
     """
     paraphrase = report.by_technique["paraphrase_evasion"]
     assert paraphrase.total >= 5
     assert paraphrase.rate < MIN_ATTACK_RECALL
+
+
+def test_rules_missed_attacks_still_reach_the_semantic_reviewer(
+    report: BenchmarkReport,
+) -> None:
+    """This is what actually makes `balanced` stronger than `rules`.
+
+    Balanced mode reviews only forwarded candidates, so an attack the rules
+    miss is invisible to the reviewer unless the candidate selector escalates
+    it. Without that, choosing `balanced` would buy nothing on paraphrases.
+    """
+    assert report.escalated_misses.rate >= 0.8, (
+        f"attacks invisible to both stages: {report.escalated_misses.missed}"
+    )
+
+
+def test_escalation_does_not_flood_the_reviewer_with_ordinary_text(
+    report: BenchmarkReport,
+) -> None:
+    """Escalation costs tokens, so it must stay rare on benign documents."""
+    assert report.benign_escalated.rate <= 0.15, (
+        f"too much benign text escalated: {report.benign_escalated.missed}"
+    )

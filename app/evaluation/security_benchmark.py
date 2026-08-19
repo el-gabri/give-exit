@@ -23,7 +23,7 @@ from pathlib import Path
 
 from app.schemas.document import DocumentPage, ExtractionMethod, ParsedDocument
 from app.schemas.security import SecurityRiskLevel
-from app.security.prompt_injection import scan_prompt_injection_rules
+from app.security.prompt_injection import _semantic_candidates, scan_prompt_injection_rules
 
 DEFAULT_DATASET = Path("eval_data/security/injection_benchmark.json")
 
@@ -60,6 +60,10 @@ class BenchmarkReport:
     benign: GroupResult
     by_category: dict[str, GroupResult]
     by_technique: dict[str, GroupResult]
+    # Balanced mode only reviews what the candidate selector forwards, so an
+    # attack the rules miss is invisible to the reviewer unless it lands here.
+    escalated_misses: GroupResult = field(default_factory=GroupResult)
+    benign_escalated: GroupResult = field(default_factory=GroupResult)
 
     @property
     def recall(self) -> float:
@@ -78,6 +82,12 @@ class BenchmarkReport:
             f"({self.attacks.detected}/{self.attacks.total} detected)",
             f"  false-positive rate  : {self.false_positive_rate:.3f} "
             f"({self.benign.detected}/{self.benign.total} benign passages flagged)",
+            "",
+            "  Balanced mode - what the semantic reviewer gets to see",
+            f"    rules-missed attacks escalated : {self.escalated_misses.rate:.3f} "
+            f"({self.escalated_misses.detected}/{self.escalated_misses.total})",
+            f"    benign text escalated (cost)   : {self.benign_escalated.rate:.3f} "
+            f"({self.benign_escalated.detected}/{self.benign_escalated.total})",
             "",
             "  Recall by category",
         ]
@@ -144,6 +154,13 @@ def case_is_flagged(case: BenchmarkCase) -> bool:
     return bool(scan_prompt_injection_rules(_document(case)))
 
 
+def case_reaches_semantic_review(case: BenchmarkCase) -> bool:
+    """Whether balanced mode would forward this case to the LLM reviewer."""
+    document = _document(case)
+    findings = scan_prompt_injection_rules(document)
+    return bool(_semantic_candidates(document, findings))
+
+
 def highest_severity(case: BenchmarkCase) -> SecurityRiskLevel:
     findings = scan_prompt_injection_rules(_document(case))
     if not findings:
@@ -155,11 +172,24 @@ def highest_severity(case: BenchmarkCase) -> SecurityRiskLevel:
 def run_benchmark(cases: list[BenchmarkCase]) -> BenchmarkReport:
     attacks = GroupResult()
     benign = GroupResult()
+    escalated_misses = GroupResult()
+    benign_escalated = GroupResult()
     by_category: dict[str, GroupResult] = defaultdict(GroupResult)
     by_technique: dict[str, GroupResult] = defaultdict(GroupResult)
 
     for case in cases:
         flagged = case_is_flagged(case)
+        if case.is_attack and not flagged:
+            escalated_misses.total += 1
+            if case_reaches_semantic_review(case):
+                escalated_misses.detected += 1
+            else:
+                escalated_misses.missed.append(case.case_id)
+        if not case.is_attack:
+            benign_escalated.total += 1
+            if case_reaches_semantic_review(case):
+                benign_escalated.detected += 1
+                benign_escalated.missed.append(case.case_id)
         # For attacks "detected" is a hit; for benign passages it is a miss,
         # so benign.detected counts false positives.
         group = attacks if case.is_attack else benign
@@ -190,6 +220,8 @@ def run_benchmark(cases: list[BenchmarkCase]) -> BenchmarkReport:
         benign=benign,
         by_category=dict(by_category),
         by_technique=dict(by_technique),
+        escalated_misses=escalated_misses,
+        benign_escalated=benign_escalated,
     )
 
 
