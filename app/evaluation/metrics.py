@@ -18,12 +18,16 @@ from app.schemas.evaluation import MetricResult
 from app.schemas.lawsuit import LawsuitExtraction, PartyRole
 from app.schemas.rag import Chunk, RetrievedChunk
 from app.schemas.report import LitigationReport
-from app.services.citations import normalize_text, quote_matches
+from app.services.citations import normalize_text, quote_verifies
 
 
 def citation_supported(quote: str, document_text: str) -> bool:
-    """True if the quoted passage really occurs in the document."""
-    return quote_matches(quote, document_text)
+    """True if the quote is substantive and really occurs in the document.
+
+    Deliberately the same rule the composer applies at runtime, so a citation
+    the product would strip never counts as grounded here.
+    """
+    return quote_verifies(quote, document_text)
 
 
 def relevant_chunk_ids(
