@@ -24,6 +24,7 @@ from app.observability.store import RunRecord, RunStore
 from app.orchestration.state import AnalysisState
 from app.rag.pipeline import RagPipeline
 from app.schemas.report import RunMetrics
+from app.schemas.review import HumanReviewDecision
 from app.schemas.security import SecurityAction
 
 logger = get_logger(__name__)
@@ -38,6 +39,10 @@ class UploadTooLargeError(ValueError):
 
 class InvalidPdfUploadError(ValueError):
     """Raised when an upload does not contain a PDF header."""
+
+
+class ReviewNotAllowedError(ValueError):
+    """Raised when a review decision targets a job not awaiting review."""
 
 
 # Ordered pipeline stages and the state predicate that marks each as done.
@@ -80,6 +85,7 @@ class Job:
     filename: str
     state: JobState = JobState.QUEUED
     doc_id: str | None = None
+    review: HumanReviewDecision | None = None
     done_stages: set[str] = field(default_factory=set)
     failed_stages: set[str] = field(default_factory=set)
     skipped_stages: set[str] = field(default_factory=set)
@@ -160,48 +166,91 @@ class AnalysisJobManager:
         logger.info("job_submitted", job_id=job.job_id, filename=filename)
         return job
 
+    def review(
+        self,
+        job_id: str,
+        *,
+        approved: bool,
+        reviewer: str,
+        comment: str | None = None,
+    ) -> Job | None:
+        """Apply a reviewer's decision to a job halted as review_required.
+
+        Approval re-runs the pipeline with the decision in the graph state so
+        the security router lets analysis proceed with findings still masked.
+        Each decision appends a new record to the run ledger under the same
+        run id; readers see the latest outcome.
+        """
+        job = self._jobs.get(job_id)
+        if job is None:
+            return None
+        if job.state is not JobState.REVIEW_REQUIRED or job.result is None:
+            raise ReviewNotAllowedError("job is not awaiting human review")
+        decision = HumanReviewDecision(approved=approved, reviewer=reviewer, comment=comment)
+        job.review = decision
+        if not approved:
+            job.state = JobState.REJECTED
+            self._finalize(job)
+            logger.info("job_review_rejected", job_id=job.job_id, reviewer=reviewer)
+            return job
+
+        document = job.result.document
+        job.state = JobState.RUNNING
+        job.finished_at = None
+        job.done_stages.clear()
+        job.failed_stages.clear()
+        job.skipped_stages.clear()
+        job.errors = []
+        job.result = None
+        task = asyncio.create_task(
+            self._resume(job, AnalysisState(document=document, human_review=decision))
+        )
+        self._tasks.add(task)
+        task.add_done_callback(self._tasks.discard)
+        logger.info("job_review_approved", job_id=job.job_id, reviewer=reviewer)
+        return job
+
     async def _execute(self, job: Job, pdf_path: Path) -> None:
         job.state = JobState.RUNNING
-        doc_id: str | None = None
         try:
             document = await self._ingestion.ingest(pdf_path)
-            doc_id = job.doc_id = document.doc_id
-            last_state: AnalysisState | None = None
-            async for chunk in self._graph.astream(  # type: ignore[attr-defined]
-                AnalysisState(document=document), stream_mode="values"
-            ):
-                last_state = AnalysisState(**chunk) if isinstance(chunk, dict) else chunk
-                self._update_stages(job, last_state)
-            job.result = last_state
-            job.errors = list(last_state.errors) if last_state else ["no result"]
-            if last_state and last_state.report:
-                assessment = last_state.security_assessment
-                if (
-                    assessment is not None
-                    and assessment.scan_complete
-                    and assessment.recommended_action is SecurityAction.HUMAN_REVIEW
-                ):
-                    job.state = JobState.REVIEW_REQUIRED
-                elif (
-                    assessment is not None
-                    and assessment.scan_complete
-                    and assessment.recommended_action is SecurityAction.BLOCK
-                ):
-                    job.state = JobState.BLOCKED
-                else:
-                    job.state = JobState.PARTIAL if job.errors else JobState.SUCCEEDED
-            else:
-                job.state = JobState.FAILED
+            job.doc_id = document.doc_id
+            await self._run_graph(job, AnalysisState(document=document))
         except Exception as exc:
             logger.exception("job_crashed", job_id=job.job_id)
             job.errors.append(f"{type(exc).__name__}: {exc}")
             job.state = JobState.FAILED
         finally:
-            job.finished_at = datetime.now(timezone.utc)
-            self._persist_run(job)
+            self._finalize(job)
             if not self._retain_uploads:
                 await asyncio.to_thread(pdf_path.unlink, missing_ok=True)
-            await self._delete_index(job, doc_id)
+            await self._delete_index(job, job.doc_id)
+
+    async def _resume(self, job: Job, initial_state: AnalysisState) -> None:
+        try:
+            await self._run_graph(job, initial_state)
+        except Exception as exc:
+            logger.exception("job_crashed", job_id=job.job_id)
+            job.errors.append(f"{type(exc).__name__}: {exc}")
+            job.state = JobState.FAILED
+        finally:
+            self._finalize(job)
+            await self._delete_index(job, job.doc_id)
+
+    async def _run_graph(self, job: Job, initial_state: AnalysisState) -> None:
+        last_state: AnalysisState | None = None
+        async for chunk in self._graph.astream(  # type: ignore[attr-defined]
+            initial_state, stream_mode="values"
+        ):
+            last_state = AnalysisState(**chunk) if isinstance(chunk, dict) else chunk
+            self._update_stages(job, last_state)
+        job.result = last_state
+        job.errors = list(last_state.errors) if last_state else ["no result"]
+        job.state = _final_state(job, last_state)
+
+    def _finalize(self, job: Job) -> None:
+        job.finished_at = datetime.now(timezone.utc)
+        self._persist_run(job)
 
     async def _delete_index(self, job: Job, doc_id: str | None) -> None:
         """Remove the document's chunks once the run no longer queries them.
@@ -230,10 +279,12 @@ class AnalysisJobManager:
             if value:
                 job.done_stages.add(stage_name)
         assessment = state.security_assessment
+        review_approved = state.human_review is not None and state.human_review.approved
         if (
             state.report
             and assessment is not None
             and not assessment.recommended_action.allows_automated_analysis
+            and not review_approved
         ):
             job.skipped_stages.update(SECURITY_SKIPPED_STAGES)
         for error in state.errors:
@@ -260,6 +311,27 @@ class AnalysisJobManager:
             )
         except Exception:
             logger.exception("run_persist_failed", job_id=job.job_id)
+
+
+def _final_state(job: Job, last_state: AnalysisState | None) -> JobState:
+    """Map the terminal graph state onto the job outcome.
+
+    Only complete scans drive review/block outcomes, and an approved human
+    review bypasses HUMAN_REVIEW alone - a BLOCK verdict always stands.
+    """
+    if not (last_state and last_state.report):
+        return JobState.FAILED
+    assessment = last_state.security_assessment
+    if assessment is not None and assessment.scan_complete:
+        action = assessment.recommended_action
+        if action is SecurityAction.BLOCK:
+            return JobState.BLOCKED
+        review_approved = (
+            last_state.human_review is not None and last_state.human_review.approved
+        )
+        if action is SecurityAction.HUMAN_REVIEW and not review_approved:
+            return JobState.REVIEW_REQUIRED
+    return JobState.PARTIAL if job.errors else JobState.SUCCEEDED
 
 
 async def _write_upload_in_chunks(file: UploadFile, path: Path, max_upload_bytes: int) -> bytes:

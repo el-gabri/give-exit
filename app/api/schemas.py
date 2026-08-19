@@ -5,6 +5,8 @@ from enum import Enum
 
 from pydantic import BaseModel, Field
 
+from app.schemas.review import HumanReviewDecision
+
 
 class JobState(str, Enum):
     QUEUED = "queued"
@@ -12,6 +14,7 @@ class JobState(str, Enum):
     SUCCEEDED = "succeeded"
     PARTIAL = "partial"
     REVIEW_REQUIRED = "review_required"
+    REJECTED = "rejected"
     BLOCKED = "blocked"
     FAILED = "failed"
 
@@ -39,8 +42,17 @@ class JobStatus(BaseModel):
     errors: list[str] = Field(default_factory=list)
     created_at: datetime
     finished_at: datetime | None = None
+    review: HumanReviewDecision | None = None
 
 
 class JobCreated(BaseModel):
     job_id: str
     status_url: str
+
+
+class ReviewRequest(BaseModel):
+    """Reviewer decision for a job halted as review_required."""
+
+    approved: bool
+    reviewer: str = Field(min_length=1, max_length=200)
+    comment: str | None = Field(default=None, max_length=2_000)

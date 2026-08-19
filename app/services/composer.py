@@ -50,6 +50,7 @@ def compose_report(state: object) -> LitigationReport:
         warnings=[
             *document.warnings,
             *_security_warnings(security_assessment),
+            *_review_warnings(state),
             *_error_warnings(state),
         ],
         metrics=_build_metrics(traces),
@@ -212,6 +213,16 @@ def _build_metrics(traces: list[AgentTrace]) -> RunMetrics:
         context_chunks=len(context_chunk_ids),
         retrieval_duration_ms=round(sum(batch_durations.values()), 1),
     )
+
+
+def _review_warnings(state: object) -> list[str]:
+    review = getattr(state, "human_review", None)
+    if review is None or not review.approved:
+        return []
+    return [
+        "Analise automatizada retomada apos aprovacao em revisao humana por "
+        f"'{review.reviewer}'. Os trechos sinalizados permanecem mascarados."
+    ]
 
 
 def _error_warnings(state: object) -> list[str]:
