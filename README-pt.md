@@ -74,6 +74,7 @@ injection: [docs/architecture.md](docs/architecture.md).
 | [0011](docs/adr/0011-retrieval-traceability-and-evaluation.md) | Proveniência consulta→contexto persistida; rankings avaliados |
 | [0012](docs/adr/0012-bounded-consumer-extrajudicial-notice.md) | Fluxo do consumidor limitado a rascunhos auditáveis com revisão humana |
 | [0013](docs/adr/0013-versioned-consumer-law-retrieval.md) | Legislação oficial versionada + recuperação híbrida avaliada |
+| [0014](docs/adr/0014-human-review-resume-path.md) | Revisão humana como estado do grafo, nunca sobreposição de rota |
 
 ### Explicabilidade
 
@@ -110,6 +111,11 @@ indexação; o texto do documento é sempre tratado como dado não confiável. O
 roteamento é determinístico: `none`/`low` prossegue, `medium` prossegue com
 aviso e mascara os trechos sinalizados, `high` pausa como `review_required`,
 `critical` termina como `blocked`.
+Uma pausa `review_required` é resolvida por uma pessoa identificada em
+`POST /analyses/{job_id}/review`: a aprovação reexecuta o pipeline com os
+trechos sinalizados ainda mascarados e registra quem revisou no relatório; a
+recusa encerra a execução como `rejected`. Um veredito `blocked` e uma
+varredura incompleta nunca podem ser liberados por essa via.
 `LITIGATION_PROMPT_INJECTION_SCAN_MODE` seleciona `rules` (apenas
 determinístico), `balanced` (padrão — revisão semântica dos trechos suspeitos)
 ou `strict` (revisão semântica de todo o texto com orçamento limitado; exceder
@@ -201,9 +207,21 @@ Uploads são transmitidos com limite de 20 MB. A jornada empresarial aceita
 apenas PDF (até `LITIGATION_MAX_DOCUMENT_PAGES`, 250 por padrão); evidências do
 consumidor aceitam PDF/PNG/JPEG com teto de 40 megapixels. Evidência bruta do
 consumidor é apagada logo após a ingestão; PDFs empresariais são apagados após
-a análise, salvo `LITIGATION_RETAIN_UPLOADS=true`. ChromaDB e histórico de
-execuções persistem — proteja-os com autenticação, isolamento por tenant e
-política de retenção antes de usar dados reais de processos.
+a análise, salvo `LITIGATION_RETAIN_UPLOADS=true`.
+
+Os chunks indexados contêm o texto integral do documento e seguem o mesmo
+ciclo de vida: os vetores de um documento são apagados quando o job termina,
+salvo `LITIGATION_RETAIN_INDEX=true`, e a inicialização remove vetores
+deixados por um processo anterior (registros de casos e jobs são em memória).
+O histórico de execuções — hashes e métricas, nunca o texto dos chunks a menos
+que os previews estejam habilitados — permanece.
+
+Defina `LITIGATION_API_AUTH_KEY` para exigir `X-API-Key` em todas as rotas
+exceto `/health`; uploads também têm limite de taxa por cliente
+(`LITIGATION_UPLOAD_RATE_LIMIT_PER_MINUTE`, 20 por padrão). Ambos são
+obrigatórios em qualquer implantação acessível fora do localhost, junto com
+isolamento por tenant e política de retenção documentada antes de usar dados
+reais de processos.
 
 ## Estrutura do projeto
 
@@ -227,7 +245,7 @@ app/
 └── api/            app FastAPI · gerenciador de jobs assíncronos · rotas
 frontend/           UI Streamlit (cliente puro da API)
 eval_data/          golden datasets
-docs/               arquitetura + 13 ADRs + roteiro de demo
+docs/               arquitetura + 14 ADRs + roteiro de demo
 tests/              testes offline de unidade, integração e segurança
 ```
 

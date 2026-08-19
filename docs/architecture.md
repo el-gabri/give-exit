@@ -112,8 +112,16 @@ no-ground abstention, retrieval failure coverage, and category/slice summaries.
 |---|---|
 | `none` / `low` | Continue to indexing and analysis. |
 | `medium` | Continue with a report warning; mask flagged excerpts in downstream prompts while preserving the source document. |
-| `high` | Halt analysis with job state `review_required`. |
+| `high` | Halt analysis with job state `review_required`, pending a human decision. |
 | `critical` | End with job state `blocked`. |
+
+A `review_required` halt is the only state a human can lift, through
+`POST /analyses/{job_id}/review`. The decision enters the graph as
+`AnalysisState.human_review`, so the router itself stays deterministic:
+approval re-runs the pipeline with findings still masked and the reviewer
+recorded in the report warnings; rejection ends the run as `rejected`. The
+router requires `scan_complete` and a `human_review` action, so neither a
+`blocked` verdict nor a failed scan can be approved through this path.
 
 Every finding records the category, severity, source page, verbatim excerpt,
 reasoning and confidence. Findings are part of the structured report and are
