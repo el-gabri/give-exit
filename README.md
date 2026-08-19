@@ -117,11 +117,35 @@ scan are never overridable.
 `balanced` (default — semantic review of suspicious excerpts) or `strict`
 (bounded semantic review of all text; exceeding its budget fails closed).
 
+**Measured effectiveness.** A labeled adversarial set
+([eval_data/security](eval_data/security/injection_benchmark.json), 26 attacks
+across 6 categories plus 14 benign Brazilian legal passages) scores the
+deterministic rules offline:
+
+```bash
+python -m app.evaluation.security_benchmark
+```
+
+| Metric | Rules only |
+|---|---|
+| Attack recall | **0.769** (20/26) |
+| False positives on benign legal text | **0.000** (0/14) |
+| Direct attacks (PT + EN) | 1.000 |
+| Obfuscation (base64, zero-width, homoglyph, HTML comment, page-split) | 1.000 |
+| Paraphrased attacks | **0.000** (0/6) |
+
+The paraphrase row is the point: lexical rules catch every attack that names
+its intent and none that does not. That gap is why `balanced` is the default
+rather than `rules`, and why the gate is described as risk reduction rather
+than proof a document is safe. `tests/test_security_benchmark.py` asserts
+these thresholds, so a weakened rule fails the build.
+
 ### Evaluation
 
 ```bash
 python -m app.evaluation                    # business golden dataset (offline in CI)
 python -m app.evaluation.consumer_runner    # consumer legal retrieval, mock+BM25 baseline
+python -m app.evaluation.security_benchmark # prompt-injection recall / false positives
 ```
 
 Metrics include groundedness, hallucination rate, citation coverage,
@@ -236,7 +260,7 @@ app/
 ├── reporting/      Markdown (canonical) -> PDF / DOCX converters
 └── api/            FastAPI app · async job manager · routes
 frontend/           Streamlit UI (pure API client)
-eval_data/          golden datasets
+eval_data/          golden datasets + adversarial security benchmark
 docs/               architecture + 14 ADRs + demo script
 tests/              offline unit, integration and security tests
 ```

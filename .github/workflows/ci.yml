@@ -30,3 +30,7 @@ jobs:
           LITIGATION_LLM_PROVIDER: mock
           LITIGATION_VECTOR_STORE: memory
         run: python -m app.evaluation eval_data
+      - name: Security gate benchmark
+        # Thresholds are asserted in tests/test_security_benchmark.py; this
+        # step publishes the per-category numbers in the build log.
+        run: python -m app.evaluation.security_benchmark
