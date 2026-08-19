@@ -117,4 +117,5 @@ class RunStore:
             ),
             "blocked": outcomes.count("blocked"),
             "review_required": outcomes.count("review_required"),
+            "rejected": outcomes.count("rejected"),
         }

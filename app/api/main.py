@@ -11,12 +11,13 @@ Run locally:
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.consumer_routes import router as consumer_router
 from app.api.jobs import AnalysisJobManager
 from app.api.routes import router
+from app.api.security import ApiKeyGuard, SlidingWindowRateLimiter
 from app.consumer.legal_corpus import get_default_legal_corpus
 from app.consumer.service import ConsumerCaseService
 from app.core.config import Settings, get_settings
@@ -73,6 +74,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             run_store=run_store,
             uploads_dir=settings.uploads_dir,
             retain_uploads=settings.retain_uploads,
+            rag=rag,
+            retain_index=settings.retain_index,
         )
         app.state.consumer_service = ConsumerCaseService(
             ingestion=ingestion,
@@ -81,12 +84,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             legal_corpus=legal_corpus,
         )
         app.state.consumer_uploads_dir = settings.uploads_dir / "consumer"
+        app.state.upload_rate_limiter = SlidingWindowRateLimiter(
+            settings.upload_rate_limit_per_minute
+        )
+        # Job and case records are in-process, so at startup every document in
+        # either index is an orphan from a previous run.
+        await app.state.consumer_service.purge_orphaned_documents()
+        if not settings.retain_index:
+            for doc_id in sorted(await rag.list_document_ids()):
+                await rag.delete_document(doc_id)
         yield
 
     app = FastAPI(
         title="AI Litigation Copilot API",
         version="0.1.0",
         lifespan=lifespan,
+        dependencies=[Depends(ApiKeyGuard(settings.api_auth_key))],
     )
     app.add_middleware(
         CORSMiddleware,

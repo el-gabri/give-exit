@@ -47,6 +47,7 @@ from app.consumer.schemas import (
 )
 from app.consumer.settlement import SettlementCalculator
 from app.consumer.store import ConsumerCaseRecord, ConsumerCaseStore, StoredEvidence
+from app.core.logging import get_logger
 from app.ingestion.service import DocumentIngestionService
 from app.rag.pipeline import RagPipeline
 from app.schemas.document import DocumentPage, ExtractionMethod, ParsedDocument
@@ -55,6 +56,8 @@ from app.schemas.security import SecurityAction
 from app.schemas.trace import AgentStatus, RetrievalTrace
 from app.security.prompt_injection import PromptInjectionDetector
 from app.security.sanitization import sanitized_document
+
+logger = get_logger(__name__)
 
 CONSUMER_NOTICE_WARNING = (
     "Rascunho informativo para revisão humana. Não é petição judicial nem substitui "
@@ -388,6 +391,25 @@ class ConsumerCaseService:
         record = self._store.delete_authorized(case_id, token)
         for doc_id in record.indexed_document_ids:
             await self._rag.delete_document(doc_id)
+
+    async def purge_orphaned_documents(self) -> int:
+        """Delete evidence vectors whose owning case no longer exists.
+
+        Case records live in process memory while the vector store persists,
+        so a restart strands previously indexed evidence. Run at startup.
+        """
+        try:
+            indexed = await self._rag.list_document_ids()
+        except TypeError:
+            return 0
+        keep = {self._legal_corpus.as_parsed_document().doc_id}
+        keep |= self._store.indexed_document_ids()
+        orphans = sorted(indexed - keep)
+        for doc_id in orphans:
+            await self._rag.delete_document(doc_id)
+        if orphans:
+            logger.info("consumer_orphan_documents_purged", documents=len(orphans))
+        return len(orphans)
 
     async def _ensure_legal_corpus_indexed(self) -> None:
         if self._legal_indexed:

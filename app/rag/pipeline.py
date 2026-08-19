@@ -23,6 +23,7 @@ from app.rag.embeddings import (
 )
 from app.rag.reranking import Reranker
 from app.rag.vector_store import (
+    DocumentListingVectorStore,
     DocumentReplacingVectorStore,
     LexicalVectorStore,
     VectorStore,
@@ -245,6 +246,12 @@ class RagPipeline:
             ),
         )
         return chunks
+
+    async def list_document_ids(self) -> set[str]:
+        """Enumerate indexed documents so retention jobs can find orphans."""
+        if not isinstance(self._store, DocumentListingVectorStore):
+            raise TypeError("vector store does not support document listing")
+        return await self._store.list_document_ids()
 
     async def delete_document(self, doc_id: str) -> None:
         """Remove every indexed chunk for ``doc_id``.

@@ -15,6 +15,7 @@ from app.schemas.enrichment import DataJudEnrichment
 from app.schemas.lawsuit import LawsuitExtraction
 from app.schemas.rag import Chunk
 from app.schemas.report import LitigationReport
+from app.schemas.review import HumanReviewDecision
 from app.schemas.risk import RiskAssessment
 from app.schemas.security import PromptInjectionAssessment
 from app.schemas.strategy import StrategyPlan
@@ -25,6 +26,8 @@ class AnalysisState(BaseModel):
     """Everything the pipeline knows about one lawsuit analysis run."""
 
     document: ParsedDocument
+    # Present only when a reviewer resumed a run halted as review_required.
+    human_review: HumanReviewDecision | None = None
 
     # Filled by the graph as it advances
     security_assessment: PromptInjectionAssessment | None = None

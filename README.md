@@ -73,6 +73,7 @@ Full diagram, layer map and the prompt-injection routing policy:
 | [0011](docs/adr/0011-retrieval-traceability-and-evaluation.md) | Persist query-to-context provenance; evaluate rankings |
 | [0012](docs/adr/0012-bounded-consumer-extrajudicial-notice.md) | Bound the consumer flow to auditable, human-reviewed drafts |
 | [0013](docs/adr/0013-versioned-consumer-law-retrieval.md) | Versioned official statutes + evaluated hybrid retrieval |
+| [0014](docs/adr/0014-human-review-resume-path.md) | Human review as graph state, never a route override |
 
 ### Explainability
 
@@ -107,6 +108,11 @@ Deterministic Portuguese/English rules check every page before indexing;
 document text is always treated as untrusted data. Routing is deterministic:
 `none`/`low` proceeds, `medium` proceeds with a warning and masks flagged
 excerpts, `high` halts as `review_required`, `critical` ends as `blocked`.
+A `review_required` halt is resolved by a named human via
+`POST /analyses/{job_id}/review`: approval re-runs the pipeline with the
+flagged excerpts still masked and records the reviewer in the report;
+rejection ends the run as `rejected`. A `blocked` verdict and an incomplete
+scan are never overridable.
 `LITIGATION_PROMPT_INJECTION_SCAN_MODE` selects `rules` (deterministic only),
 `balanced` (default — semantic review of suspicious excerpts) or `strict`
 (bounded semantic review of all text; exceeding its budget fails closed).
@@ -195,9 +201,19 @@ Uploads stream with a 20 MB limit. Business accepts PDF only (up to
 `LITIGATION_MAX_DOCUMENT_PAGES`, 250 by default); consumer evidence accepts
 PDF/PNG/JPEG with a 40-megapixel cap. Raw consumer evidence is deleted right
 after ingestion; business PDFs are deleted after analysis unless
-`LITIGATION_RETAIN_UPLOADS=true`. ChromaDB and run history persist — protect
-them with authentication, tenant isolation and a retention policy before using
-real case data.
+`LITIGATION_RETAIN_UPLOADS=true`.
+
+Indexed chunks contain the full document text, so they follow the same
+lifecycle: a document's vectors are deleted when its job finishes unless
+`LITIGATION_RETAIN_INDEX=true`, and startup purges any vectors left behind by
+a previous process (case and job records are in-memory). Run history — hashes
+and metrics, never chunk text unless previews are enabled — persists.
+
+Set `LITIGATION_API_AUTH_KEY` to require `X-API-Key` on every route except
+`/health`; uploads are additionally rate-limited per client
+(`LITIGATION_UPLOAD_RATE_LIMIT_PER_MINUTE`, 20 by default). Both are required
+for any deployment reachable beyond localhost, alongside tenant isolation and
+a documented retention policy before using real case data.
 
 ## Project structure
 
@@ -221,7 +237,7 @@ app/
 └── api/            FastAPI app · async job manager · routes
 frontend/           Streamlit UI (pure API client)
 eval_data/          golden datasets
-docs/               architecture + 13 ADRs + demo script
+docs/               architecture + 14 ADRs + demo script
 tests/              offline unit, integration and security tests
 ```
 
@@ -231,7 +247,8 @@ tests/              offline unit, integration and security tests
   CDC snapshot pattern
 - Brazilian jurisprudence (case-law RAG) as a second corpus
 - Redis-backed job queue + horizontal workers (ADR 0009 documents the path)
-- AuthN/AuthZ and per-tenant data isolation at the API layer
+- Per-user AuthN/AuthZ and tenant data isolation (today's shared API key
+  authenticates the deployment, not individual users)
 - Managed vector store adapter (e.g. pgvector/Pinecone) for multi-tenant scale
 - Human feedback loop: lawyer corrections feeding the golden dataset
 - Calibrated outcome models from reviewed settlement and judgment data;

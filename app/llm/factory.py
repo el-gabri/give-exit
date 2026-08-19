@@ -10,6 +10,7 @@ from app.llm.base import LLMClient
 from app.llm.gemini_client import GeminiClient
 from app.llm.mock_client import MockLLMClient
 from app.llm.openai_client import OpenAIClient
+from app.llm.retry import RetryingLLMClient
 
 _DEFAULT_MODELS: dict[LLMProvider, str] = {
     LLMProvider.OPENAI: "gpt-4o-mini",
@@ -26,7 +27,13 @@ def create_llm_client(settings: Settings) -> LLMClient:
     """
     if settings.llm_provider is LLMProvider.MOCK:
         return MockLLMClient()
+    return RetryingLLMClient(
+        _create_provider_client(settings),
+        max_attempts=settings.llm_retry_max_attempts,
+    )
 
+
+def _create_provider_client(settings: Settings) -> LLMClient:
     model = _model_for(settings)
     if settings.llm_provider is LLMProvider.OPENAI:
         api_key = _required_key(settings.openai_api_key, provider="openai", variable="OPENAI")

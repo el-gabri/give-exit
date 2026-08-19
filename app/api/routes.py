@@ -9,9 +9,11 @@ from app.api.jobs import (
     AnalysisJobManager,
     InvalidPdfUploadError,
     Job,
+    ReviewNotAllowedError,
     UploadTooLargeError,
 )
-from app.api.schemas import JobCreated, JobState, JobStatus
+from app.api.schemas import JobCreated, JobState, JobStatus, ReviewRequest
+from app.api.security import enforce_upload_rate_limit
 from app.observability.store import RunStore
 from app.reporting.markdown import render_markdown
 from app.schemas.report import LitigationReport
@@ -39,7 +41,12 @@ async def health() -> dict:
     return {"status": "ok"}
 
 
-@router.post("/analyses", response_model=JobCreated, status_code=202)
+@router.post(
+    "/analyses",
+    response_model=JobCreated,
+    status_code=202,
+    dependencies=[Depends(enforce_upload_rate_limit)],
+)
 async def create_analysis(file: UploadFile, manager: JobManagerDep) -> JobCreated:
     if not (file.filename or "").lower().endswith(".pdf"):
         raise HTTPException(status_code=422, detail="Only PDF files are accepted")
@@ -75,9 +82,7 @@ def _retrievals(traces: list[AgentTrace]) -> list[RetrievalTrace]:
     )
 
 
-@router.get("/analyses/{job_id}", response_model=JobStatus)
-async def get_analysis(job_id: str, manager: JobManagerDep) -> JobStatus:
-    job = _get_job_or_404(manager, job_id)
+def _job_status(job: Job) -> JobStatus:
     return JobStatus(
         job_id=job.job_id,
         filename=job.filename,
@@ -86,7 +91,34 @@ async def get_analysis(job_id: str, manager: JobManagerDep) -> JobStatus:
         errors=job.errors,
         created_at=job.created_at,
         finished_at=job.finished_at,
+        review=job.review,
     )
+
+
+@router.get("/analyses/{job_id}", response_model=JobStatus)
+async def get_analysis(job_id: str, manager: JobManagerDep) -> JobStatus:
+    return _job_status(_get_job_or_404(manager, job_id))
+
+
+@router.post("/analyses/{job_id}/review", response_model=JobStatus)
+async def review_analysis(
+    job_id: str, payload: ReviewRequest, manager: JobManagerDep
+) -> JobStatus:
+    """Apply a human decision to a job halted as review_required."""
+    try:
+        job = manager.review(
+            job_id,
+            approved=payload.approved,
+            reviewer=payload.reviewer,
+            comment=payload.comment,
+        )
+    except ReviewNotAllowedError as exc:
+        raise HTTPException(
+            status_code=409, detail="Analysis is not awaiting human review"
+        ) from exc
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return _job_status(job)
 
 
 @router.get("/analyses/{job_id}/report", response_model=LitigationReport)

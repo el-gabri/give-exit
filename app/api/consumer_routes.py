@@ -14,6 +14,7 @@ from fastapi.responses import PlainTextResponse, Response
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.api.jobs import UploadTooLargeError, _write_upload_in_chunks
+from app.api.security import enforce_upload_rate_limit
 from app.consumer.schemas import (
     ConsumerCaseSnapshot,
     ConsumerEvidence,
@@ -168,6 +169,7 @@ async def update_consumer_facts(
     "/cases/{case_id}/documents",
     response_model=ConsumerDocumentAdded,
     status_code=201,
+    dependencies=[Depends(enforce_upload_rate_limit)],
 )
 async def add_consumer_document(
     case_id: str,

@@ -83,6 +83,9 @@ class Settings(BaseSettings):
     # a valid default for OpenAI, Anthropic or Gemini.
     llm_model: str | None = None
     llm_max_output_tokens: int = Field(default=8192, ge=1)
+    # Total attempts per LLM call for transient provider errors (429/5xx,
+    # timeouts, dropped connections). 1 disables retrying.
+    llm_retry_max_attempts: int = Field(default=3, ge=1)
     embedding_provider: EmbeddingProvider = EmbeddingProvider.AUTO
     # Optional override. AUTO resolves a provider-specific default instead of
     # accidentally sending another vendor's model name.
@@ -98,6 +101,9 @@ class Settings(BaseSettings):
     vector_store: VectorStoreBackend = VectorStoreBackend.CHROMA
     max_document_pages: int = Field(default=250, ge=1)
     retain_uploads: bool = False
+    # Indexed chunks contain the full document text. They are only queried
+    # while the analysis runs, so they are deleted with the job by default.
+    retain_index: bool = False
 
     # --- RAG ---
     chunk_target_chars: int = 1200
@@ -136,6 +142,12 @@ class Settings(BaseSettings):
     # Comma-separated list of browser origins allowed by CORS. The default
     # covers the local Streamlit frontend; production deployments override it.
     cors_allow_origins: str = "http://localhost:8501"
+    # When set, every route except /health requires the X-API-Key header.
+    # The local demo stays open; any network-reachable deployment must set it.
+    api_auth_key: str | None = Field(default=None, repr=False)
+    # Per-client ceiling for the expensive upload endpoints (OCR + scan + LLM).
+    # 0 disables the limiter.
+    upload_rate_limit_per_minute: int = Field(default=20, ge=0)
 
     # --- Output ---
     report_language: str = "pt-BR"

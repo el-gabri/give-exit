@@ -35,6 +35,7 @@ from app.enrichment.node import make_enrich_node
 from app.llm.base import LLMClient
 from app.orchestration.state import AnalysisState
 from app.rag.pipeline import RagPipeline
+from app.schemas.security import SecurityAction
 from app.schemas.trace import AgentStatus, AgentTrace
 from app.security.prompt_injection import (
     PromptInjectionDetector,
@@ -81,11 +82,19 @@ def _after_security_scan(state: AnalysisState) -> str:
     assessment = state.security_assessment
     if assessment is None:
         return "security_compose"
-    return (
-        "index"
-        if assessment.recommended_action.allows_automated_analysis
-        else "security_compose"
-    )
+    if assessment.recommended_action.allows_automated_analysis:
+        return "index"
+    # An approved human review resumes a review_required halt. Findings stay
+    # masked downstream. Blocked outcomes and incomplete scans are never
+    # overridden.
+    if (
+        assessment.scan_complete
+        and assessment.recommended_action is SecurityAction.HUMAN_REVIEW
+        and state.human_review is not None
+        and state.human_review.approved
+    ):
+        return "index"
+    return "security_compose"
 
 
 def build_analysis_graph(

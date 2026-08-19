@@ -44,6 +44,13 @@ class DocumentReplacingVectorStore(Protocol):
     async def replace_document(self, chunks: list[Chunk], vectors: list[list[float]]) -> None: ...
 
 
+@runtime_checkable
+class DocumentListingVectorStore(Protocol):
+    """Store that can enumerate the documents it holds, enabling orphan cleanup."""
+
+    async def list_document_ids(self) -> set[str]: ...
+
+
 class InMemoryVectorStore:
     """Reference implementation with exact cosine similarity."""
 
@@ -86,6 +93,9 @@ class InMemoryVectorStore:
     async def lexical_query(self, query: str, doc_id: str, k: int) -> list[RetrievedChunk]:
         chunks = [chunk for chunk, _ in self._rows.values() if chunk.doc_id == doc_id]
         return _bm25_rank(query, chunks, k)
+
+    async def list_document_ids(self) -> set[str]:
+        return {chunk.doc_id for chunk, _ in self._rows.values()}
 
     async def delete_document(self, doc_id: str) -> None:
         self._rows = {cid: row for cid, row in self._rows.items() if row[0].doc_id != doc_id}
@@ -196,6 +206,17 @@ class ChromaVectorStore:
             return _bm25_rank(query, chunks, k)
 
         return await asyncio.to_thread(_query)
+
+    async def list_document_ids(self) -> set[str]:
+        def _list() -> set[str]:
+            result = self._collection.get(include=["metadatas"])
+            return {
+                str(metadata["doc_id"])
+                for metadata in result["metadatas"] or []
+                if metadata and metadata.get("doc_id")
+            }
+
+        return await asyncio.to_thread(_list)
 
     async def delete_document(self, doc_id: str) -> None:
         await asyncio.to_thread(self._collection.delete, where={"doc_id": doc_id})
