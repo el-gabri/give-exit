@@ -137,9 +137,17 @@ class RunStore:
         outcomes = [
             run.outcome or ("succeeded" if run.success else "failed") for run in runs
         ]
+        unpriced_calls = sum(r.metrics.unpriced_calls for r in runs)
         return {
             "runs": len(runs),
             "total_cost_usd": round(sum(r.metrics.total_cost_usd for r in runs), 6),
+            # Spend for models absent from the price table is not observable,
+            # so the total above is a lower bound whenever this is non-zero.
+            "cost_is_complete": unpriced_calls == 0,
+            "unpriced_calls": unpriced_calls,
+            "unpriced_models": sorted(
+                {model for r in runs for model in r.metrics.unpriced_models}
+            ),
             "total_tokens": sum(r.metrics.total_tokens for r in runs),
             "retrieval_queries": sum(r.metrics.retrieval_queries for r in runs),
             "retrieval_results": sum(r.metrics.retrieval_results for r in runs),
