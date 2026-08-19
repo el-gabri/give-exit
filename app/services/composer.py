@@ -86,6 +86,12 @@ def compose_report(state: object) -> LitigationReport:
                 f"{len(chunk_citations) - retrieved_citations} citacao(oes) apontam "
                 "para trechos sem registro de inclusao no contexto dos agentes."
             )
+    if report.metrics.unpriced_calls:
+        report.warnings.append(
+            f"Custo parcial: {report.metrics.unpriced_calls} chamada(s) usaram modelos "
+            f"sem preco cadastrado ({', '.join(report.metrics.unpriced_models)}); "
+            "o custo total e um piso, nao o valor real."
+        )
     if citation_result.rejected_citations:
         report.warnings.append(
             f"{citation_result.rejected_citations} citacao(oes) com localizacao de "
@@ -198,10 +204,13 @@ def _build_metrics(traces: list[AgentTrace]) -> RunMetrics:
     batch_durations = {
         retrieval.batch_id: retrieval.batch_duration_ms for retrieval in retrievals
     }
+    unpriced = [m for m in metered if m.cost_usd is None]
     return RunMetrics(
         total_duration_ms=round(sum(t.duration_ms for t in traces), 1),
         total_tokens=sum(m.usage.total_tokens for m in metered),
         total_cost_usd=round(sum(m.cost_usd or 0.0 for m in metered), 6),
+        unpriced_calls=len(unpriced),
+        unpriced_models=sorted({m.model for m in unpriced}),
         models_used=sorted({m.model for m in metered}),
         prompt_versions=sorted(
             {m.prompt_version for m in metered if m.prompt_version}

@@ -8,6 +8,7 @@ bullets, quotes, rules, paragraphs). One layout logic, three formats.
 import io
 import re
 from dataclasses import dataclass
+from typing import Any
 
 BOLD_RE = re.compile(r"\*\*(.+?)\*\*")
 
@@ -98,7 +99,7 @@ def render_pdf(markdown: str) -> bytes:
         text = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
         return BOLD_RE.sub(r"<b>\1</b>", text)
 
-    story: list = []
+    story: list[Any] = []
     pending_bullets: list[ListItem] = []
 
     def flush_bullets() -> None:

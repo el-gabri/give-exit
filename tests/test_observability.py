@@ -40,6 +40,26 @@ def test_run_store_roundtrip_and_totals(tmp_path: Path) -> None:
     assert totals["total_tokens"] == 200
 
 
+def test_rewritten_run_is_counted_once_at_its_latest_state(tmp_path: Path) -> None:
+    store = RunStore(tmp_path / "runs.jsonl")
+    store.append(_record("a", 0.01, success=False))
+    # A human review decision appends a second record under the same run id.
+    reviewed = _record("a", 0.02)
+    reviewed.outcome = "succeeded"
+    store.append(reviewed)
+
+    runs = store.list_runs()
+    totals = store.totals()
+
+    assert len(runs) == 1
+    assert runs[0].outcome == "succeeded"
+    assert totals["runs"] == 1
+    assert totals["total_cost_usd"] == 0.02
+    assert totals["failures"] == 0
+    assert store.get("a") is not None
+    assert store.get("a").outcome == "succeeded"
+
+
 def test_empty_store(tmp_path: Path) -> None:
     store = RunStore(tmp_path / "runs.jsonl")
     assert store.list_runs() == []

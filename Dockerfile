@@ -18,6 +18,12 @@ RUN apt-get update \
 COPY app ./app
 ARG API_EXTRAS=ocr
 RUN pip install ".[${API_EXTRAS}]"
+# The API parses hostile PDFs and images, so it must not run as root. /app/data
+# is a mount point for ChromaDB, uploads and run history.
+RUN useradd --create-home --uid 10001 appuser \
+    && mkdir -p /app/data \
+    && chown -R appuser:appuser /app
+USER appuser
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s \
     CMD python -c "import urllib.request as u; u.urlopen('http://localhost:8000/health')"
@@ -28,6 +34,8 @@ FROM base AS frontend
 COPY app ./app
 RUN pip install ".[frontend]"
 COPY frontend ./frontend
+RUN useradd --create-home --uid 10001 appuser && chown -R appuser:appuser /app
+USER appuser
 EXPOSE 8501
 CMD ["streamlit", "run", "frontend/streamlit_app.py", \
      "--server.port=8501", "--server.address=0.0.0.0", "--server.headless=true"]

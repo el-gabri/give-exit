@@ -8,6 +8,7 @@ cheap to author - the ingestion layer has its own tests.
 import json
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from app.schemas.document import DocumentPage, ExtractionMethod, ParsedDocument
 from app.services.citations import quote_matches
@@ -26,12 +27,12 @@ class RetrievalJudgment:
 class GoldenCase:
     name: str
     document: ParsedDocument
-    expected: dict
+    expected: dict[str, Any]
     retrieval_k: int = 5
     retrieval_judgments: tuple[RetrievalJudgment, ...] = ()
 
 
-def _load_retrieval(payload: dict) -> tuple[int, tuple[RetrievalJudgment, ...]]:
+def _load_retrieval(payload: dict[str, Any]) -> tuple[int, tuple[RetrievalJudgment, ...]]:
     retrieval = payload.get("retrieval")
     if retrieval is None:
         return 5, ()

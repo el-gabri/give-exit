@@ -64,6 +64,15 @@ CONSUMER_NOTICE_WARNING = (
     "orientação jurídica individualizada. Confira fatos, documentos, destinatário e prazos."
 )
 
+# A notice cites law; a weakly ranked article is worse than a shorter notice.
+# Only the strongest merged hits are eligible, and a hit must stay within
+# reach of the best one. Ranking is RRF over hybrid retrieval, whose scores sit
+# in a narrow band and carry no absolute meaning, so the floor is relative.
+# The top hit always passes, so this cannot empty an otherwise valid notice.
+MAX_GROUND_CANDIDATES = 8
+MIN_GROUND_SCORE_RATIO = 0.5
+MAX_LEGAL_GROUNDS = 8
+
 _CATEGORY_LABEL = {
     "unauthorized_charge": "cobrança não reconhecida ou indevida",
     "fraud": "fraude, golpe ou compra não reconhecida",
@@ -511,10 +520,18 @@ class ConsumerCaseService:
         ):
             return []
         merged = _merge_results(result_sets)
+        if not merged:
+            return []
+        score_floor = merged[0].score * MIN_GROUND_SCORE_RATIO
+        candidates = [
+            item
+            for item in merged[:MAX_GROUND_CANDIDATES]
+            if item.score >= score_floor
+        ]
         grounds: list[LegalGround] = []
         seen: set[str] = set()
         issue = _CATEGORY_LABEL[facts.issue_category.value if facts.issue_category else "other"]
-        for rank, result in enumerate(merged, start=1):
+        for rank, result in enumerate(candidates, start=1):
             for provision in self._legal_corpus.provisions_for_chunk(result):
                 if provision.status is not ProvisionStatus.ACTIVE:
                     continue
@@ -538,7 +555,7 @@ class ConsumerCaseService:
                         ),
                     )
                 )
-                if len(grounds) >= 8:
+                if len(grounds) >= MAX_LEGAL_GROUNDS:
                     return grounds
         return grounds
 

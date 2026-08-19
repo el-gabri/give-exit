@@ -76,6 +76,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             retain_uploads=settings.retain_uploads,
             rag=rag,
             retain_index=settings.retain_index,
+            job_timeout_seconds=settings.job_timeout_seconds,
         )
         app.state.consumer_service = ConsumerCaseService(
             ingestion=ingestion,

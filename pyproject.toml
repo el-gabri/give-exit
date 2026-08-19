@@ -68,5 +68,28 @@ asyncio_mode = "auto"
 testpaths = ["tests"]
 
 [tool.mypy]
-python_version = "3.10"
+# Matches the CI interpreter. numpy's bundled stubs (reached through chromadb)
+# use 3.12-only syntax, and a stub parse error aborts the entire run, so 3.10
+# is not a workable analysis target. Ruff still enforces py310 for our own
+# code, which is what keeps requires-python honest.
+python_version = "3.12"
 strict = true
+
+# Third-party packages that ship no type information. Ignoring their imports
+# keeps strict mode meaningful for our own code instead of drowning it in
+# vendor noise; every use of them stays behind an adapter in app/.
+[[tool.mypy.overrides]]
+module = [
+    "fitz.*",
+    "langdetect.*",
+    "pytesseract.*",
+    "reportlab.*",
+    "sentence_transformers.*",
+]
+ignore_missing_imports = true
+
+# We never call numpy directly; it arrives through chromadb.
+[[tool.mypy.overrides]]
+module = ["numpy", "numpy.*"]
+follow_imports = "skip"
+ignore_missing_imports = true

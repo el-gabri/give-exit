@@ -6,7 +6,7 @@ from app.schemas.document import DocumentPage, ExtractionMethod, ParsedDocument
 from app.schemas.lawsuit import LawsuitType
 from app.schemas.rag import Chunk
 from app.schemas.report import LitigationReport
-from app.services.citations import validate_report_citations
+from app.services.citations import is_substantive_quote, validate_report_citations
 
 
 def _document() -> ParsedDocument:
@@ -37,7 +37,8 @@ def _report(document: ParsedDocument) -> LitigationReport:
                     Citation(
                         quote="cobrancas indevidas", page=1, chunk_id=f"{document.doc_id}:0000"
                     ),
-                    Citation(quote="indenizacao", page=1),
+                    # Real quote, but it lives on page 2.
+                    Citation(quote="indenizacao por danos morais", page=1),
                 ],
             ),
         ),
@@ -72,13 +73,37 @@ def test_rejects_a_quote_on_the_wrong_page_even_if_it_exists_elsewhere() -> None
     document = _document()
     report = _report(document)
     assert report.classification is not None
-    report.classification.conclusion.citations = [Citation(quote="indenizacao", page=1)]
+    report.classification.conclusion.citations = [
+        Citation(quote="indenizacao por danos morais", page=1)
+    ]
 
     result = validate_report_citations(report, document, [])
 
     assert result.rejected_citations == 1
     assert result.conclusions_without_verified_citation == 1
     assert report.classification.conclusion.citations == []
+
+
+def test_rejects_a_quote_too_short_to_be_evidence() -> None:
+    document = _document()
+    report = _report(document)
+    assert report.classification is not None
+    # Occurs verbatim on page 1, but matching it proves nothing.
+    report.classification.conclusion.citations = [Citation(quote="a autora", page=1)]
+
+    result = validate_report_citations(report, document, [])
+
+    assert result.rejected_citations == 1
+    assert report.classification.conclusion.citations == []
+
+
+def test_substantive_quote_rule_covers_length_and_word_count() -> None:
+    # Two-word legal terms are real evidence and must survive the floor.
+    assert is_substantive_quote("cobrancas indevidas")
+    assert is_substantive_quote("danos morais")
+    assert not is_substantive_quote("indenizacao")  # single word
+    assert not is_substantive_quote("a autora")  # two words, too few characters
+    assert not is_substantive_quote("   ")
 
 
 def test_rejects_an_invalid_timeline_citation() -> None:
@@ -90,7 +115,7 @@ def test_rejects_an_invalid_timeline_citation() -> None:
         TimelineEvent(
             date="2025-01-10",
             description="Pedido de indenizacao",
-            citation=Citation(quote="indenizacao", page=1),
+            citation=Citation(quote="indenizacao por danos morais", page=1),
         )
     ]
 

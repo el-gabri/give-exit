@@ -9,6 +9,7 @@ import json
 from collections.abc import Iterator
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 from pydantic import BaseModel, Field, ValidationError
 
@@ -45,32 +46,57 @@ class RunStore:
             fh.write(record.model_dump_json() + "\n")
 
     def list_runs(self, limit: int = 50) -> list[RunRecord]:
-        records = list(self._records())
-        return sorted(records, key=lambda r: r.finished_at, reverse=True)[:limit]
+        """Return the most recent runs, one entry per run id.
+
+        A run id can be written more than once (a review decision appends a
+        new record), so only its latest state is reported.
+        """
+        latest: dict[str, RunRecord] = {}
+        for record in self._records():
+            current = latest.get(record.run_id)
+            if current is None or record.finished_at >= current.finished_at:
+                latest[record.run_id] = record
+        return sorted(latest.values(), key=lambda r: r.finished_at, reverse=True)[:limit]
 
     def get(self, run_id: str) -> RunRecord | None:
-        """Return one durable run record by id."""
+        """Return the newest durable record for a run id.
+
+        A run can be written more than once - a human review decision appends
+        a new record under the same id - so the last match wins.
+        """
         for record in self._records(reverse=True):
             if record.run_id == run_id:
                 return record
         return None
 
     def _records(self, *, reverse: bool = False) -> Iterator[RunRecord]:
-        """Yield valid records while isolating damage to individual JSONL lines."""
+        """Yield valid records while isolating damage to individual JSONL lines.
+
+        Forward iteration streams the file so a long history is never held in
+        memory at once. Reverse iteration has to buffer, and is only used for
+        single-record lookups.
+        """
         if not self._path.exists():
             return
 
-        lines = self._path.read_text(encoding="utf-8").splitlines()
-        indexed_lines = list(enumerate(lines, start=1))
         if reverse:
+            with self._path.open("r", encoding="utf-8") as handle:
+                indexed_lines = list(enumerate(handle.read().splitlines(), start=1))
             indexed_lines.reverse()
+            for line_number, line in indexed_lines:
+                if line.strip():
+                    record = self._parse_line(line, line_number=line_number)
+                    if record is not None:
+                        yield record
+            return
 
-        for line_number, line in indexed_lines:
-            if not line.strip():
-                continue
-            record = self._parse_line(line, line_number=line_number)
-            if record is not None:
-                yield record
+        with self._path.open("r", encoding="utf-8") as handle:
+            for line_number, line in enumerate(handle, start=1):
+                if not line.strip():
+                    continue
+                record = self._parse_line(line, line_number=line_number)
+                if record is not None:
+                    yield record
 
     def _parse_line(self, line: str, *, line_number: int) -> RunRecord | None:
         """Parse one record, preserving compatibility through Pydantic defaults."""
@@ -97,15 +123,32 @@ class RunStore:
             error=str(error),
         )
 
-    def totals(self) -> dict:
-        """Aggregate cost/token totals across all runs."""
-        runs = self.list_runs(limit=10_000)
+    def totals(self) -> dict[str, Any]:
+        """Aggregate cost/token totals across the whole history.
+
+        Streams the ledger and keeps only the latest record per run id, so
+        neither history length nor repeated writes distort the totals.
+        """
+        latest: dict[str, RunRecord] = {}
+        for record in self._records():
+            current = latest.get(record.run_id)
+            if current is None or record.finished_at >= current.finished_at:
+                latest[record.run_id] = record
+        runs = list(latest.values())
         outcomes = [
             run.outcome or ("succeeded" if run.success else "failed") for run in runs
         ]
+        unpriced_calls = sum(r.metrics.unpriced_calls for r in runs)
         return {
             "runs": len(runs),
             "total_cost_usd": round(sum(r.metrics.total_cost_usd for r in runs), 6),
+            # Spend for models absent from the price table is not observable,
+            # so the total above is a lower bound whenever this is non-zero.
+            "cost_is_complete": unpriced_calls == 0,
+            "unpriced_calls": unpriced_calls,
+            "unpriced_models": sorted(
+                {model for r in runs for model in r.metrics.unpriced_models}
+            ),
             "total_tokens": sum(r.metrics.total_tokens for r in runs),
             "retrieval_queries": sum(r.metrics.retrieval_queries for r in runs),
             "retrieval_results": sum(r.metrics.retrieval_results for r in runs),

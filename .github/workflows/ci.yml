@@ -20,13 +20,29 @@ jobs:
         run: pip install -e ".[dev,frontend]"
       - name: Lint
         run: ruff check app tests frontend
-      - name: Type check (informative until the 50 strict errors are cleared)
+      - name: Dependency vulnerability audit
+        run: |
+          pip install pip-audit
+          pip-audit --strict --progress-spinner off
+      - name: Type check (strict)
         run: mypy app
-        continue-on-error: true
       - name: Tests (offline - mock LLM provider)
         run: pytest -q
-      - name: Evaluation harness smoke test
+      - name: Evaluation harness with regression gates
         env:
           LITIGATION_LLM_PROVIDER: mock
           LITIGATION_VECTOR_STORE: memory
-        run: python -m app.evaluation eval_data
+        # Offline, retrieval ranking and pipeline health are the meaningful
+        # signals. Groundedness and extraction accuracy are structurally zero
+        # under the mock provider, so gating them here would be theatre.
+        run: |
+          python -m app.evaluation eval_data \
+            --require-no-errors \
+            --min retrieval_hit_rate@3=1.0 \
+            --min retrieval_recall@3=1.0 \
+            --min retrieval_ndcg@3=0.90 \
+            --min retrieval_mrr@3=0.90
+      - name: Security gate benchmark
+        # Thresholds are asserted in tests/test_security_benchmark.py; this
+        # step publishes the per-category numbers in the build log.
+        run: python -m app.evaluation.security_benchmark

@@ -15,6 +15,15 @@ from app.schemas.document import ParsedDocument
 from app.schemas.rag import Chunk
 from app.schemas.report import LitigationReport
 
+# A quote is evidence only if locating it in the source is non-trivial. Common
+# short words occur on nearly every page of a petition, so matching one proves
+# nothing about the conclusion it supposedly supports. The floor is deliberately
+# low: real legal citations are often two words ("danos morais", "cobrancas
+# indevidas"), and stripping those would cost more than the trivial matches it
+# prevents.
+MIN_QUOTE_CHARS = 12
+MIN_QUOTE_WORDS = 2
+
 
 def normalize_text(text: str) -> str:
     """Normalize text for resilient verbatim matching."""
@@ -24,10 +33,24 @@ def normalize_text(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
+def is_substantive_quote(quote: str) -> bool:
+    """Whether a quote is long enough for a match to carry evidentiary weight."""
+    normalized = normalize_text(quote)
+    return (
+        len(normalized) >= MIN_QUOTE_CHARS
+        and len(normalized.split()) >= MIN_QUOTE_WORDS
+    )
+
+
 def quote_matches(quote: str, source_text: str) -> bool:
     """Whether a quoted passage occurs in a source text after normalization."""
     normalized_quote = normalize_text(quote)
     return bool(normalized_quote) and normalized_quote in normalize_text(source_text)
+
+
+def quote_verifies(quote: str, source_text: str) -> bool:
+    """Whether a quote is both substantive and present in the source."""
+    return is_substantive_quote(quote) and quote_matches(quote, source_text)
 
 
 @dataclass(frozen=True)
@@ -44,10 +67,11 @@ def validate_report_citations(
 ) -> CitationValidationResult:
     """Remove citations that do not match their declared source location.
 
-    A citation must identify a valid page and quote that page. When it also
-    names a chunk, the chunk must belong to this document, contain the quote,
-    and cover the cited page. This avoids treating a true quote from a
-    different page as valid evidence for a claimed location.
+    A citation must carry a substantive quote, identify a valid page and quote
+    that page. When it also names a chunk, the chunk must belong to this
+    document, contain the quote, and cover the cited page. This avoids treating
+    a true quote from a different page as valid evidence for a claimed
+    location.
     """
     chunks_by_id = {chunk.chunk_id: chunk for chunk in chunks}
     conclusions = list(_report_conclusions(report))
@@ -91,6 +115,8 @@ def validate_report_citations(
 def _citation_is_valid(
     citation: Citation, document: ParsedDocument, chunks_by_id: dict[str, Chunk]
 ) -> bool:
+    if not is_substantive_quote(citation.quote):
+        return False
     if citation.page is None or citation.page > document.page_count:
         return False
     if not quote_matches(citation.quote, document.pages[citation.page - 1].text):

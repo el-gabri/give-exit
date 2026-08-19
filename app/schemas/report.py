@@ -24,6 +24,14 @@ class RunMetrics(BaseModel):
     total_duration_ms: float = 0.0
     total_tokens: int = 0
     total_cost_usd: float = 0.0
+    unpriced_calls: int = Field(
+        default=0,
+        description=(
+            "LLM calls whose model has no price entry. Their spend is missing "
+            "from total_cost_usd, which is therefore a lower bound."
+        ),
+    )
+    unpriced_models: list[str] = Field(default_factory=list)
     models_used: list[str] = Field(default_factory=list)
     prompt_versions: list[str] = Field(default_factory=list)
     agents_run: int = 0
