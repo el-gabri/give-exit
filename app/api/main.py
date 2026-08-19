@@ -73,6 +73,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             run_store=run_store,
             uploads_dir=settings.uploads_dir,
             retain_uploads=settings.retain_uploads,
+            rag=rag,
+            retain_index=settings.retain_index,
         )
         app.state.consumer_service = ConsumerCaseService(
             ingestion=ingestion,

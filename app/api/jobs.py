@@ -22,6 +22,7 @@ from app.core.logging import get_logger
 from app.ingestion.service import DocumentIngestionService
 from app.observability.store import RunRecord, RunStore
 from app.orchestration.state import AnalysisState
+from app.rag.pipeline import RagPipeline
 from app.schemas.report import RunMetrics
 from app.schemas.security import SecurityAction
 
@@ -78,6 +79,7 @@ class Job:
     job_id: str
     filename: str
     state: JobState = JobState.QUEUED
+    doc_id: str | None = None
     done_stages: set[str] = field(default_factory=set)
     failed_stages: set[str] = field(default_factory=set)
     skipped_stages: set[str] = field(default_factory=set)
@@ -115,6 +117,8 @@ class AnalysisJobManager:
         run_store: RunStore,
         uploads_dir: Path,
         retain_uploads: bool = False,
+        rag: RagPipeline | None = None,
+        retain_index: bool = False,
     ) -> None:
         self._ingestion = ingestion
         self._graph = graph
@@ -124,6 +128,8 @@ class AnalysisJobManager:
         self._jobs: dict[str, Job] = {}
         self._tasks: set[asyncio.Task[None]] = set()
         self._retain_uploads = retain_uploads
+        self._rag = rag
+        self._retain_index = retain_index
 
     def get(self, job_id: str) -> Job | None:
         return self._jobs.get(job_id)
@@ -156,8 +162,10 @@ class AnalysisJobManager:
 
     async def _execute(self, job: Job, pdf_path: Path) -> None:
         job.state = JobState.RUNNING
+        doc_id: str | None = None
         try:
             document = await self._ingestion.ingest(pdf_path)
+            doc_id = job.doc_id = document.doc_id
             last_state: AnalysisState | None = None
             async for chunk in self._graph.astream(  # type: ignore[attr-defined]
                 AnalysisState(document=document), stream_mode="values"
@@ -193,6 +201,28 @@ class AnalysisJobManager:
             self._persist_run(job)
             if not self._retain_uploads:
                 await asyncio.to_thread(pdf_path.unlink, missing_ok=True)
+            await self._delete_index(job, doc_id)
+
+    async def _delete_index(self, job: Job, doc_id: str | None) -> None:
+        """Remove the document's chunks once the run no longer queries them.
+
+        The index is content-addressed, so a concurrent job analyzing the very
+        same file shares the doc_id; deletion is skipped while such a sibling
+        is still running.
+        """
+        if self._retain_index or self._rag is None or doc_id is None:
+            return
+        for other in self._jobs.values():
+            if (
+                other.job_id != job.job_id
+                and other.state in (JobState.QUEUED, JobState.RUNNING)
+                and other.doc_id == doc_id
+            ):
+                return
+        try:
+            await self._rag.delete_document(doc_id)
+        except Exception:
+            logger.exception("index_cleanup_failed", job_id=job.job_id, doc_id=doc_id)
 
     def _update_stages(self, job: Job, state: AnalysisState) -> None:
         for stage_name, state_field in STAGE_PREDICATES:

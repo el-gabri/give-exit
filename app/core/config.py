@@ -98,6 +98,9 @@ class Settings(BaseSettings):
     vector_store: VectorStoreBackend = VectorStoreBackend.CHROMA
     max_document_pages: int = Field(default=250, ge=1)
     retain_uploads: bool = False
+    # Indexed chunks contain the full document text. They are only queried
+    # while the analysis runs, so they are deleted with the job by default.
+    retain_index: bool = False
 
     # --- RAG ---
     chunk_target_chars: int = 1200
