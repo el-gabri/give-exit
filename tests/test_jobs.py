@@ -65,14 +65,22 @@ def _pdf_upload() -> UploadFile:
     return UploadFile(filename="peticao.pdf", file=BytesIO(data))
 
 
-def _manager(tmp_path: Path, rag: RagPipeline, retain_index: bool) -> AnalysisJobManager:
+def _manager(
+    tmp_path: Path,
+    rag: RagPipeline,
+    retain_index: bool,
+    *,
+    graph: object | None = None,
+    job_timeout_seconds: float = 0.0,
+) -> AnalysisJobManager:
     return AnalysisJobManager(
         ingestion=DocumentIngestionService(),
-        graph=build_analysis_graph(MockLLMClient(), rag),
+        graph=graph or build_analysis_graph(MockLLMClient(), rag),
         run_store=RunStore(tmp_path / "runs.jsonl"),
         uploads_dir=tmp_path / "uploads",
         rag=rag,
         retain_index=retain_index,
+        job_timeout_seconds=job_timeout_seconds,
     )
 
 
@@ -108,6 +116,30 @@ async def test_document_index_is_kept_when_retention_enabled(tmp_path: Path) -> 
     assert finished.state is JobState.SUCCEEDED
     assert finished.doc_id is not None
     assert await rag.retrieve("cobrancas indevidas", doc_id=finished.doc_id, k=3)
+
+
+class _HangingGraph:
+    """Graph whose stream never advances past the first stage."""
+
+    async def astream(self, state, stream_mode: str = "values"):
+        yield {"document": state.document.model_dump()}
+        await asyncio.sleep(60)
+        yield {"document": state.document.model_dump()}  # pragma: no cover
+
+
+async def test_job_exceeding_its_deadline_fails_without_hanging(tmp_path: Path) -> None:
+    rag = RagPipeline(MockEmbeddingClient(), InMemoryVectorStore())
+    manager = _manager(
+        tmp_path, rag, retain_index=False, graph=_HangingGraph(), job_timeout_seconds=0.2
+    )
+
+    job = await manager.submit_upload("peticao.pdf", _pdf_upload(), max_upload_bytes=2**20)
+    finished = await _wait_finished(manager, job.job_id)
+
+    assert finished.state is JobState.FAILED
+    assert any("JobDeadlineExceededError" in error for error in finished.errors)
+    # Progress made before the cutoff stays visible for diagnosis.
+    assert finished.result is not None
 
 
 def test_security_block_exposes_downstream_stages_as_skipped() -> None:

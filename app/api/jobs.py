@@ -11,6 +11,7 @@ pipeline stage as done - the UI polls this to animate agent execution.
 
 import asyncio
 import uuid
+from collections.abc import Awaitable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -43,6 +44,10 @@ class InvalidPdfUploadError(ValueError):
 
 class ReviewNotAllowedError(ValueError):
     """Raised when a review decision targets a job not awaiting review."""
+
+
+class JobDeadlineExceededError(TimeoutError):
+    """Raised when a run exceeds its wall-clock budget."""
 
 
 # Ordered pipeline stages and the state predicate that marks each as done.
@@ -125,6 +130,7 @@ class AnalysisJobManager:
         retain_uploads: bool = False,
         rag: RagPipeline | None = None,
         retain_index: bool = False,
+        job_timeout_seconds: float = 0.0,
     ) -> None:
         self._ingestion = ingestion
         self._graph = graph
@@ -136,6 +142,7 @@ class AnalysisJobManager:
         self._retain_uploads = retain_uploads
         self._rag = rag
         self._retain_index = retain_index
+        self._job_timeout_seconds = job_timeout_seconds
 
     def get(self, job_id: str) -> Job | None:
         return self._jobs.get(job_id)
@@ -211,15 +218,13 @@ class AnalysisJobManager:
         return job
 
     async def _execute(self, job: Job, pdf_path: Path) -> None:
-        job.state = JobState.RUNNING
-        try:
+        async def run() -> None:
             document = await self._ingestion.ingest(pdf_path)
             job.doc_id = document.doc_id
             await self._run_graph(job, AnalysisState(document=document))
-        except Exception as exc:
-            logger.exception("job_crashed", job_id=job.job_id)
-            job.errors.append(f"{type(exc).__name__}: {exc}")
-            job.state = JobState.FAILED
+
+        try:
+            await self._run_guarded(job, run())
         finally:
             self._finalize(job)
             if not self._retain_uploads:
@@ -228,25 +233,46 @@ class AnalysisJobManager:
 
     async def _resume(self, job: Job, initial_state: AnalysisState) -> None:
         try:
-            await self._run_graph(job, initial_state)
-        except Exception as exc:
-            logger.exception("job_crashed", job_id=job.job_id)
-            job.errors.append(f"{type(exc).__name__}: {exc}")
-            job.state = JobState.FAILED
+            await self._run_guarded(job, self._run_graph(job, initial_state))
         finally:
             self._finalize(job)
             await self._delete_index(job, job.doc_id)
 
+    async def _run_guarded(self, job: Job, work: Awaitable[None]) -> None:
+        """Run one attempt under the deadline, recording failure on the job."""
+        job.state = JobState.RUNNING
+        try:
+            if self._job_timeout_seconds > 0:
+                await asyncio.wait_for(work, timeout=self._job_timeout_seconds)
+            else:
+                await work
+        except TimeoutError:
+            # Whatever the stream already produced stays on the job, so the
+            # status still shows which stages completed before the cutoff.
+            logger.warning(
+                "job_deadline_exceeded",
+                job_id=job.job_id,
+                timeout_s=self._job_timeout_seconds,
+            )
+            error = JobDeadlineExceededError(
+                f"analysis exceeded the {self._job_timeout_seconds:g}s budget"
+            )
+            job.errors.append(f"{type(error).__name__}: {error}")
+            job.state = JobState.FAILED
+        except Exception as exc:
+            logger.exception("job_crashed", job_id=job.job_id)
+            job.errors.append(f"{type(exc).__name__}: {exc}")
+            job.state = JobState.FAILED
+
     async def _run_graph(self, job: Job, initial_state: AnalysisState) -> None:
-        last_state: AnalysisState | None = None
         async for chunk in self._graph.astream(  # type: ignore[attr-defined]
             initial_state, stream_mode="values"
         ):
-            last_state = AnalysisState(**chunk) if isinstance(chunk, dict) else chunk
-            self._update_stages(job, last_state)
-        job.result = last_state
-        job.errors = list(last_state.errors) if last_state else ["no result"]
-        job.state = _final_state(job, last_state)
+            state = AnalysisState(**chunk) if isinstance(chunk, dict) else chunk
+            job.result = state
+            self._update_stages(job, state)
+        job.errors = list(job.result.errors) if job.result else ["no result"]
+        job.state = _final_state(job, job.result)
 
     def _finalize(self, job: Job) -> None:
         job.finished_at = datetime.now(timezone.utc)

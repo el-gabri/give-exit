@@ -148,6 +148,9 @@ class Settings(BaseSettings):
     # Per-client ceiling for the expensive upload endpoints (OCR + scan + LLM).
     # 0 disables the limiter.
     upload_rate_limit_per_minute: int = Field(default=20, ge=0)
+    # Wall-clock budget for one analysis run, so an unresponsive provider
+    # cannot leave a job running forever. 0 disables the deadline.
+    job_timeout_seconds: float = Field(default=900.0, ge=0)
 
     # --- Output ---
     report_language: str = "pt-BR"
