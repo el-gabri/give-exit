@@ -83,6 +83,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             legal_corpus=legal_corpus,
         )
         app.state.consumer_uploads_dir = settings.uploads_dir / "consumer"
+        # Job and case records are in-process, so at startup every document in
+        # either index is an orphan from a previous run.
+        await app.state.consumer_service.purge_orphaned_documents()
+        if not settings.retain_index:
+            for doc_id in sorted(await rag.list_document_ids()):
+                await rag.delete_document(doc_id)
         yield
 
     app = FastAPI(

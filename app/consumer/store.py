@@ -67,6 +67,13 @@ class ConsumerCaseStore:
         self._cases[case_id] = record
         return record, token
 
+    def indexed_document_ids(self) -> set[str]:
+        """Every doc_id still owned by a live case (whatever the token)."""
+        ids: set[str] = set()
+        for record in self._cases.values():
+            ids |= record.indexed_document_ids
+        return ids
+
     def get_authorized(self, case_id: str, token: str) -> ConsumerCaseRecord:
         record = self._cases.get(case_id)
         supplied = _token_digest(case_id, token)
