@@ -12,6 +12,7 @@ from app.llm.factory import create_llm_client
 from app.llm.gemini_client import GeminiClient
 from app.llm.mock_client import MockLLMClient, synthesize_instance
 from app.llm.pricing import estimate_cost_usd
+from app.llm.retry import RetryingLLMClient
 
 
 class RiskLevel(str, Enum):
@@ -112,10 +113,12 @@ def test_factory_uses_provider_specific_default_models() -> None:
         )
     )
 
-    assert isinstance(anthropic, AnthropicClient)
-    assert anthropic._model == "claude-sonnet-5"
-    assert isinstance(gemini, GeminiClient)
-    assert gemini._model == "gemini-3.6-flash"
+    assert isinstance(anthropic, RetryingLLMClient)
+    assert isinstance(anthropic._inner, AnthropicClient)
+    assert anthropic._inner._model == "claude-sonnet-5"
+    assert isinstance(gemini, RetryingLLMClient)
+    assert isinstance(gemini._inner, GeminiClient)
+    assert gemini._inner._model == "gemini-3.6-flash"
 
 
 def test_factory_honours_model_override_for_new_providers() -> None:
@@ -128,8 +131,9 @@ def test_factory_honours_model_override_for_new_providers() -> None:
         )
     )
 
-    assert isinstance(client, AnthropicClient)
-    assert client._model == "claude-haiku-4-5"
+    assert isinstance(client, RetryingLLMClient)
+    assert isinstance(client._inner, AnthropicClient)
+    assert client._inner._model == "claude-haiku-4-5"
 
 
 def test_pricing_known_and_unknown_models() -> None:

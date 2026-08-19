@@ -83,6 +83,9 @@ class Settings(BaseSettings):
     # a valid default for OpenAI, Anthropic or Gemini.
     llm_model: str | None = None
     llm_max_output_tokens: int = Field(default=8192, ge=1)
+    # Total attempts per LLM call for transient provider errors (429/5xx,
+    # timeouts, dropped connections). 1 disables retrying.
+    llm_retry_max_attempts: int = Field(default=3, ge=1)
     embedding_provider: EmbeddingProvider = EmbeddingProvider.AUTO
     # Optional override. AUTO resolves a provider-specific default instead of
     # accidentally sending another vendor's model name.
