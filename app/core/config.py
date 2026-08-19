@@ -139,6 +139,12 @@ class Settings(BaseSettings):
     # Comma-separated list of browser origins allowed by CORS. The default
     # covers the local Streamlit frontend; production deployments override it.
     cors_allow_origins: str = "http://localhost:8501"
+    # When set, every route except /health requires the X-API-Key header.
+    # The local demo stays open; any network-reachable deployment must set it.
+    api_auth_key: str | None = Field(default=None, repr=False)
+    # Per-client ceiling for the expensive upload endpoints (OCR + scan + LLM).
+    # 0 disables the limiter.
+    upload_rate_limit_per_minute: int = Field(default=20, ge=0)
 
     # --- Output ---
     report_language: str = "pt-BR"

@@ -12,6 +12,7 @@ from app.api.jobs import (
     UploadTooLargeError,
 )
 from app.api.schemas import JobCreated, JobState, JobStatus
+from app.api.security import enforce_upload_rate_limit
 from app.observability.store import RunStore
 from app.reporting.markdown import render_markdown
 from app.schemas.report import LitigationReport
@@ -39,7 +40,12 @@ async def health() -> dict:
     return {"status": "ok"}
 
 
-@router.post("/analyses", response_model=JobCreated, status_code=202)
+@router.post(
+    "/analyses",
+    response_model=JobCreated,
+    status_code=202,
+    dependencies=[Depends(enforce_upload_rate_limit)],
+)
 async def create_analysis(file: UploadFile, manager: JobManagerDep) -> JobCreated:
     if not (file.filename or "").lower().endswith(".pdf"):
         raise HTTPException(status_code=422, detail="Only PDF files are accepted")
