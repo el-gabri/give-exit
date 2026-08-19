@@ -187,6 +187,10 @@ docker compose up --build
 # API: http://localhost:8000/docs
 ```
 
+CI runs ruff, `mypy --strict` (clean, enforced), the offline test suite, a
+dependency vulnerability audit, the evaluation harness with retrieval
+regression gates, and the security benchmark.
+
 ### Local development
 
 ```bash

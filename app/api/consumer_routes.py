@@ -93,11 +93,13 @@ class ConsumerDocumentAdded(BaseModel):
 
 
 def get_consumer_service(request: Request) -> ConsumerCaseService:
-    return request.app.state.consumer_service
+    service: ConsumerCaseService = request.app.state.consumer_service
+    return service
 
 
 def get_uploads_dir(request: Request) -> Path:
-    return request.app.state.consumer_uploads_dir
+    uploads_dir: Path = request.app.state.consumer_uploads_dir
+    return uploads_dir
 
 
 ConsumerServiceDep = Annotated[ConsumerCaseService, Depends(get_consumer_service)]

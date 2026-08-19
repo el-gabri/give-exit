@@ -1,6 +1,7 @@
 """Tests for CNJ parsing, the DataJud client, and the enrichment node."""
 
 import json
+import typing
 
 import httpx
 
@@ -13,6 +14,18 @@ from app.schemas.lawsuit import LawsuitExtraction
 
 CASE_SP = "0001234-56.2024.8.26.0100"  # TJSP
 CASE_DIGITS = "00012345620248260100"
+
+
+def test_enrich_node_is_annotated_with_the_concrete_state_class() -> None:
+    """LangGraph picks the argument form from the node's own annotation.
+
+    Annotating the node with anything other than the concrete state class
+    (an abstract base, a Protocol) silently hands it a plain dict, and every
+    attribute read then fails at runtime instead of at type-check time.
+    """
+    node = make_enrich_node(None)
+
+    assert typing.get_type_hints(node)["state"] is AnalysisState
 
 
 def test_normalize_case_number() -> None:

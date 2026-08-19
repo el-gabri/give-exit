@@ -20,6 +20,7 @@ Every agent node is wrapped so that failures are recorded in state
 
 import time
 from collections.abc import Awaitable, Callable
+from typing import Any, cast
 
 from langgraph.graph import END, START, StateGraph
 
@@ -45,13 +46,14 @@ from app.services.composer import compose_report
 
 logger = get_logger(__name__)
 
-NodeFn = Callable[[AnalysisState], Awaitable[dict]]
+NodeResult = dict[str, Any]
+NodeFn = Callable[[AnalysisState], Awaitable[NodeResult]]
 
 
-def _agent_node(agent: BaseAgent, state_field: str) -> NodeFn:
+def _agent_node(agent: BaseAgent[Any], state_field: str) -> NodeFn:
     """Wrap an agent as a graph node with uniform error handling."""
 
-    async def node(state: AnalysisState) -> dict:
+    async def node(state: AnalysisState) -> NodeResult:
         start = time.perf_counter()
         try:
             output, trace = await agent.run(state)
@@ -102,16 +104,16 @@ def build_analysis_graph(
     rag: RagPipeline,
     datajud: DataJudClient | None = None,
     prompt_injection_detector: PromptInjectionDetector | None = None,
-):
+) -> Any:
     """Compose the analysis pipeline. Dependencies injected at the root."""
 
     detector = prompt_injection_detector or PromptInjectionDetector(llm)
 
-    async def security_scan_node(state: AnalysisState) -> dict:
+    async def security_scan_node(state: AnalysisState) -> NodeResult:
         start = time.perf_counter()
         try:
             assessment, trace = await detector.scan(state.document)
-            result: dict = {
+            result: NodeResult = {
                 "security_assessment": assessment,
                 "traces": [trace],
             }
@@ -141,7 +143,7 @@ def build_analysis_graph(
                 ],
             }
 
-    async def index_node(state: AnalysisState) -> dict:
+    async def index_node(state: AnalysisState) -> NodeResult:
         try:
             chunks = await rag.index_document(
                 state.document, state.security_assessment
@@ -151,7 +153,7 @@ def build_analysis_graph(
             logger.exception("indexing_failed", doc_id=state.document.doc_id)
             return {"errors": [f"index: {type(exc).__name__}: {exc}"]}
 
-    async def compose_node(state: AnalysisState) -> dict:
+    async def compose_node(state: AnalysisState) -> NodeResult:
         # Deterministic assembly - no LLM call, cannot hallucinate.
         return {"report": compose_report(state)}
 
@@ -162,16 +164,22 @@ def build_analysis_graph(
     strategist = StrategyAgent(llm, rag)
 
     builder = StateGraph(AnalysisState)
-    builder.add_node("security_scan", security_scan_node)
-    builder.add_node("index", index_node)
-    builder.add_node("classify", _agent_node(classifier, "classification"))
-    builder.add_node("extract", _agent_node(extractor, "extraction"))
-    builder.add_node("analyze", _agent_node(analyst, "legal_analysis"))
-    builder.add_node("risk", _agent_node(risk_assessor, "risk"))
-    builder.add_node("strategy", _agent_node(strategist, "strategy"))
-    builder.add_node("enrich", make_enrich_node(datajud))
-    builder.add_node("compose", compose_node)
-    builder.add_node("security_compose", compose_node)
+    # LangGraph types node callables against an invariant `Never` state, so a
+    # node annotated with the concrete state it actually receives never
+    # matches. The cast keeps our own signatures honest at the call sites.
+    def add_node(name: str, node: NodeFn) -> None:
+        builder.add_node(name, cast(Any, node))
+
+    add_node("security_scan", security_scan_node)
+    add_node("index", index_node)
+    add_node("classify", _agent_node(classifier, "classification"))
+    add_node("extract", _agent_node(extractor, "extraction"))
+    add_node("analyze", _agent_node(analyst, "legal_analysis"))
+    add_node("risk", _agent_node(risk_assessor, "risk"))
+    add_node("strategy", _agent_node(strategist, "strategy"))
+    add_node("enrich", make_enrich_node(datajud))
+    add_node("compose", compose_node)
+    add_node("security_compose", compose_node)
 
     builder.add_edge(START, "security_scan")
     builder.add_conditional_edges(

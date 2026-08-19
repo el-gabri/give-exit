@@ -1,5 +1,7 @@
 """Risk assessment agent."""
 
+from pydantic import BaseModel
+
 from app.agents.base import BaseAgent, BuiltAgentPrompt
 from app.agents.context import format_retrieval_bundle, retrieve_for_queries_with_trace
 from app.llm.base import LLMClient
@@ -54,7 +56,7 @@ class RiskAssessmentAgent(BaseAgent[RiskAssessment]):
         )
 
 
-def _dump(model: object) -> str:
+def _dump(model: BaseModel | None) -> str:
     if model is None:
         return "(indisponivel)"
-    return model.model_dump_json()[:MAX_JSON_CHARS]  # type: ignore[attr-defined]
+    return model.model_dump_json()[:MAX_JSON_CHARS]

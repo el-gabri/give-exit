@@ -9,6 +9,7 @@ import json
 from collections.abc import Iterator
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 from pydantic import BaseModel, Field, ValidationError
 
@@ -122,7 +123,7 @@ class RunStore:
             error=str(error),
         )
 
-    def totals(self) -> dict:
+    def totals(self) -> dict[str, Any]:
         """Aggregate cost/token totals across the whole history.
 
         Streams the ledger and keeps only the latest record per run id, so

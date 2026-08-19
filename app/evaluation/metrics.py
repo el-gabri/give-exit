@@ -12,6 +12,7 @@ This keeps the golden data stable when chunk sizes or chunk ids change.
 
 import math
 from collections.abc import Sequence
+from typing import Any
 
 from app.schemas.common import ConfidentConclusion
 from app.schemas.evaluation import MetricResult
@@ -247,7 +248,7 @@ def citation_coverage(report: LitigationReport) -> MetricResult:
 
 
 def extraction_accuracy(
-    extraction: LawsuitExtraction | None, expected: dict
+    extraction: LawsuitExtraction | None, expected: dict[str, Any]
 ) -> MetricResult:
     """Field-level agreement with golden labels."""
     if extraction is None:
@@ -295,7 +296,9 @@ def extraction_accuracy(
     )
 
 
-def completeness(extraction: LawsuitExtraction | None, expected: dict) -> MetricResult:
+def completeness(
+    extraction: LawsuitExtraction | None, expected: dict[str, Any]
+) -> MetricResult:
     """Fraction of expected-present fields the pipeline actually filled."""
     if extraction is None:
         return MetricResult(name="completeness", score=0.0, details="no extraction")
@@ -329,7 +332,7 @@ def completeness(extraction: LawsuitExtraction | None, expected: dict) -> Metric
 
 
 def classification_accuracy(
-    report: LitigationReport, expected: dict
+    report: LitigationReport, expected: dict[str, Any]
 ) -> MetricResult | None:
     if "lawsuit_type" not in expected:
         return None

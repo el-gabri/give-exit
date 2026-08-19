@@ -128,7 +128,7 @@ class ChromaVectorStore:
         def _upsert() -> None:
             self._collection.upsert(
                 ids=[c.chunk_id for c in chunks],
-                embeddings=vectors,  # type: ignore[arg-type]
+                embeddings=vectors,
                 documents=[c.text for c in chunks],
                 metadatas=[_chunk_metadata(c) for c in chunks],
             )
@@ -150,7 +150,7 @@ class ChromaVectorStore:
             existing_ids = set(existing["ids"])
             self._collection.upsert(
                 ids=[chunk.chunk_id for chunk in chunks],
-                embeddings=vectors,  # type: ignore[arg-type]
+                embeddings=vectors,
                 documents=[chunk.text for chunk in chunks],
                 metadatas=[_chunk_metadata(chunk) for chunk in chunks],
             )
@@ -163,7 +163,7 @@ class ChromaVectorStore:
     async def query(self, vector: list[float], doc_id: str, k: int) -> list[RetrievedChunk]:
         def _query() -> list[RetrievedChunk]:
             result = self._collection.query(
-                query_embeddings=[vector],  # type: ignore[arg-type]
+                query_embeddings=[vector],
                 n_results=k,
                 where={"doc_id": doc_id},  # per-document isolation
                 include=["documents", "metadatas", "distances"],

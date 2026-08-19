@@ -24,9 +24,8 @@ jobs:
         run: |
           pip install pip-audit
           pip-audit --strict --progress-spinner off
-      - name: Type check (informative until the 50 strict errors are cleared)
+      - name: Type check (strict)
         run: mypy app
-        continue-on-error: true
       - name: Tests (offline - mock LLM provider)
         run: pytest -q
       - name: Evaluation harness with regression gates

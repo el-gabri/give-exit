@@ -267,9 +267,9 @@ def render_markdown(report: LitigationReport) -> str:  # noqa: PLR0912, PLR0915
                 ]
                 continue
             selected = [
-                item
-                for item in retrieval.results
-                if item.selected_for_merge and item.included_in_context
+                hit
+                for hit in retrieval.results
+                if hit.selected_for_merge and hit.included_in_context
             ]
             if not selected:
                 continue
@@ -280,16 +280,16 @@ def render_markdown(report: LitigationReport) -> str:  # noqa: PLR0912, PLR0915
                     f"- Status do agente: {retrieval.agent_status.value}",
                     f"- Prompt: {retrieval.prompt_version or '-'}",
                 ]
-            for item in sorted(selected, key=lambda result: result.merged_rank or 0):
-                section = item.section or "sem secao"
+            for hit in sorted(selected, key=lambda result: result.merged_rank or 0):
+                section = hit.section or "sem secao"
                 md += [
-                    f"- Rank original {item.rank} · score {item.score:.4f} · "
-                    f"chunk `{item.chunk_id}` · {section} · "
-                    f"paginas {item.page_start}-{item.page_end}",
-                    f"  - SHA-256: `{item.content_sha256}`",
+                    f"- Rank original {hit.rank} · score {hit.score:.4f} · "
+                    f"chunk `{hit.chunk_id}` · {section} · "
+                    f"paginas {hit.page_start}-{hit.page_end}",
+                    f"  - SHA-256: `{hit.content_sha256}`",
                 ]
-                if item.text_preview:
-                    md.append(f'  - Previa: "{item.text_preview}"')
+                if hit.text_preview:
+                    md.append(f'  - Previa: "{hit.text_preview}"')
             md += [""]
 
     md += [

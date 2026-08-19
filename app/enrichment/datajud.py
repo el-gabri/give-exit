@@ -8,6 +8,8 @@ The client is deliberately forgiving: DataJud responses vary per tribunal,
 so every field access is defensive - a partial record is still useful.
 """
 
+from typing import Any
+
 import httpx
 
 from app.core.logging import get_logger
@@ -58,7 +60,7 @@ class DataJudClient:
         return alias, info
 
 
-def _parse_source(case_number: str, source: dict) -> DataJudCaseInfo:
+def _parse_source(case_number: str, source: dict[str, Any]) -> DataJudCaseInfo:
     movements = source.get("movimentos") or []
     latest = None
     if movements:

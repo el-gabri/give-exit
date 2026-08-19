@@ -1,6 +1,6 @@
 """REST routes."""
 
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile
 from fastapi.responses import PlainTextResponse, Response
@@ -25,11 +25,13 @@ MAX_UPLOAD_BYTES = 20 * 1024 * 1024  # 20 MB
 
 
 def get_job_manager(request: Request) -> AnalysisJobManager:
-    return request.app.state.job_manager
+    manager: AnalysisJobManager = request.app.state.job_manager
+    return manager
 
 
 def get_run_store(request: Request) -> RunStore:
-    return request.app.state.run_store
+    store: RunStore = request.app.state.run_store
+    return store
 
 
 JobManagerDep = Annotated[AnalysisJobManager, Depends(get_job_manager)]
@@ -37,7 +39,7 @@ RunStoreDep = Annotated[RunStore, Depends(get_run_store)]
 
 
 @router.get("/health")
-async def health() -> dict:
+async def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
@@ -183,7 +185,7 @@ async def get_report_pdf(job_id: str, manager: JobManagerDep) -> Response:
 
 
 @router.get("/runs")
-async def list_runs(store: RunStoreDep, limit: int = 20) -> list[dict]:
+async def list_runs(store: RunStoreDep, limit: int = 20) -> list[dict[str, Any]]:
     return [
         record.model_dump(mode="json", exclude={"traces"})
         for record in store.list_runs(limit=limit)
@@ -191,7 +193,7 @@ async def list_runs(store: RunStoreDep, limit: int = 20) -> list[dict]:
 
 
 @router.get("/runs/totals")
-async def run_totals(store: RunStoreDep) -> dict:
+async def run_totals(store: RunStoreDep) -> dict[str, Any]:
     return store.totals()
 
 
