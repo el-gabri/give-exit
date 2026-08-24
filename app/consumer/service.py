@@ -22,10 +22,17 @@ from app.consumer.intake import (
     recommended_documents,
 )
 from app.consumer.legal_corpus import LegalCorpus, get_default_legal_corpus
+from app.consumer.legal_policy import (
+    LEGAL_GROUND_POLICY_REVIEW_STATUS,
+    LEGAL_GROUND_POLICY_VERSION,
+    provision_is_eligible,
+    strongly_supported_chunk_ids,
+)
 from app.consumer.monetary import extract_brl_mentions
 from app.consumer.retrieval import (
     build_evidence_queries,
     build_legal_queries,
+    infer_retrieval_category,
     is_consumer_scope,
 )
 from app.consumer.schemas import (
@@ -65,10 +72,11 @@ CONSUMER_NOTICE_WARNING = (
 )
 
 # A notice cites law; a weakly ranked article is worse than a shorter notice.
-# Only the strongest merged hits are eligible, and a hit must stay within
-# reach of the best one. Ranking is RRF over hybrid retrieval, whose scores sit
-# in a narrow band and carry no absolute meaning, so the floor is relative.
-# The top hit always passes, so this cannot empty an otherwise valid notice.
+# Only the strongest merged hits are eligible, each hit must stay within reach
+# of the best one, and the score-type-aware gate in legal_policy must show
+# dense/lexical agreement (or cross-query corroboration for non-RRF scores).
+# Unlike the former relative-only floor, an arbitrary low-scoring top hit can
+# no longer become authority merely because every other hit is even weaker.
 MAX_GROUND_CANDIDATES = 8
 MIN_GROUND_SCORE_RATIO = 0.5
 MAX_LEGAL_GROUNDS = 8
@@ -303,7 +311,11 @@ class ConsumerCaseService:
                 "required retrieval failed; no unsupported notice was generated"
             ) from exc
 
-        legal_grounds = self._legal_grounds(legal_results, record.facts)
+        legal_grounds = self._legal_grounds(
+            legal_results,
+            record.facts,
+            legal_traces,
+        )
         evidence_references = self._evidence_references(evidence_results, page_sources)
         if not legal_grounds or not evidence_references:
             raise ConsumerRetrievalError(
@@ -355,8 +367,6 @@ class ConsumerCaseService:
                     record.facts.article_42_double_repayment_requested
                     and (record.facts.improper_payment_amount or Decimal("0")) > 0
                 ),
-                evidence_strength=Decimal("0.65"),
-                factual_completeness=Decimal("1"),
                 direct_loss_sources=direct_loss_sources,
                 improper_payment_sources=improper_payment_sources,
                 downside_cost_sources=downside_cost_sources,
@@ -383,6 +393,8 @@ class ConsumerCaseService:
             full_text=full_text,
             corpus_release_id=self._legal_corpus.release_id,
             corpus_sha256=self._legal_corpus.corpus_sha256,
+            legal_ground_policy_version=LEGAL_GROUND_POLICY_VERSION,
+            legal_ground_policy_review_status=LEGAL_GROUND_POLICY_REVIEW_STATUS,
             retrievals=[*legal_traces, *evidence_traces],
             warnings=[CONSUMER_NOTICE_WARNING],
         )
@@ -512,12 +524,20 @@ class ConsumerCaseService:
         self,
         result_sets: list[list[RetrievedChunk]],
         facts: ConsumerCaseFacts,
+        traces: list[RetrievalTrace] | None = None,
     ) -> list[LegalGround]:
         category = facts.issue_category.value if facts.issue_category else "other"
         if not is_consumer_scope(
             category=category,
             complaint=facts.complaint_summary or "",
         ):
+            return []
+        inferred_category = infer_retrieval_category(
+            category,
+            facts.complaint_summary or "",
+        )
+        strongly_supported = strongly_supported_chunk_ids(traces or [])
+        if not strongly_supported:
             return []
         merged = _merge_results(result_sets)
         if not merged:
@@ -535,6 +555,10 @@ class ConsumerCaseService:
             for provision in self._legal_corpus.provisions_for_chunk(result):
                 if provision.status is not ProvisionStatus.ACTIVE:
                     continue
+                if result.chunk.chunk_id not in strongly_supported:
+                    continue
+                if not provision_is_eligible(inferred_category, provision.provision_id):
+                    continue
                 unit = self._legal_corpus.unit_for_chunk(result)
                 if unit is not None and unit.status is not ProvisionStatus.ACTIVE:
                     continue
@@ -549,9 +573,10 @@ class ConsumerCaseService:
                     LegalGround(
                         authority=authority,
                         application_to_facts=(
-                            f"O texto oficial em {provision.citation_label} é pertinente "
-                            f"à alegação de {issue} "
-                            "e deve ser confrontada com os documentos citados."
+                            f"O texto oficial em {provision.citation_label} foi localizado "
+                            f"pela política de recuperação para {issue}. Sua aplicabilidade "
+                            "ao caso não foi decidida pelo sistema e deve ser validada por "
+                            "profissional habilitado contra os fatos e documentos citados."
                         ),
                     )
                 )

@@ -122,7 +122,7 @@ class RetryingLLMClient:
                     attempt=attempt,
                     max_attempts=self._max_attempts,
                     delay_s=round(delay, 2),
-                    error=f"{type(exc).__name__}: {exc}",
+                    error_type=type(exc).__name__,
                 )
                 await self._sleep(delay)
         raise AssertionError("unreachable")  # pragma: no cover

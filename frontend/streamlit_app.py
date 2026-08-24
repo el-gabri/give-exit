@@ -22,6 +22,7 @@ if _PROJECT_ROOT not in sys.path:
 from frontend.consumer_view import render_consumer_app  # noqa: E402
 
 API_URL = os.getenv("LITIGATION_API_URL", "http://localhost:8000")
+API_AUTH_KEY = os.getenv("LITIGATION_API_AUTH_KEY", "").strip() or None
 POLL_SECONDS = 1.0
 
 STAGE_LABELS = {
@@ -32,7 +33,7 @@ STAGE_LABELS = {
     "analyze": "Analise juridica",
     "enrich": "Validando no DataJud",
     "risk": "Avaliando riscos",
-    "strategy": "Elaborando estrategia",
+    "strategy": "Organizando opcoes preliminares",
     "compose": "Montando relatorio",
 }
 RISK_LABELS = {"low": "Baixo", "medium": "Medio", "high": "Alto", "critical": "Critico"}
@@ -63,19 +64,29 @@ audience = st.segmented_control(
 )
 
 if audience == "Sou consumidor":
-    render_consumer_app(API_URL)
+    render_consumer_app(API_URL, api_key=API_AUTH_KEY)
     st.stop()
 
 
 # ---------------------------------------------------------------- helpers
 def api_get(path: str, **kwargs):
-    return requests.get(f"{API_URL}{path}", timeout=30, **kwargs)
+    headers = dict(kwargs.pop("headers", {}))
+    if API_AUTH_KEY:
+        headers["X-API-Key"] = API_AUTH_KEY
+    return requests.get(f"{API_URL}{path}", timeout=30, headers=headers, **kwargs)
+
+
+def api_post(path: str, **kwargs):
+    headers = dict(kwargs.pop("headers", {}))
+    if API_AUTH_KEY:
+        headers["X-API-Key"] = API_AUTH_KEY
+    return requests.post(f"{API_URL}{path}", headers=headers, **kwargs)
 
 
 def confidence_badge(conclusion: dict) -> str:
     pct = round(conclusion.get("confidence", 0) * 100)
     color = "green" if pct >= 75 else "orange" if pct >= 50 else "red"
-    return f":{color}[{pct}% de confianca]"
+    return f":{color}[{pct}% de suporte autoavaliado]"
 
 
 def render_conclusion(conclusion: dict, key_prefix: str) -> None:
@@ -273,6 +284,7 @@ def poll_analysis(job_id: str) -> None:
     """Refresh only job progress instead of blocking the whole Streamlit app."""
     try:
         status = api_get(f"/analyses/{job_id}").json()
+        st.session_state["job_status"] = status
     except requests.RequestException as exc:
         st.error(f"Falha ao acompanhar a analise: {exc}")
         return
@@ -287,6 +299,7 @@ def poll_analysis(job_id: str) -> None:
         "succeeded",
         "partial",
         "review_required",
+        "rejected",
         "blocked",
     ):
         try:
@@ -322,7 +335,7 @@ with st.sidebar:
                         "review_required": "⚠️",
                     }.get(outcome, "❌")
                     st.caption(
-                        f"{status} {run['filename']} · "
+                        f"{status} arquivo ref. {run['filename']} · "
                         f"{run['metrics']['total_tokens']} tokens · "
                         f"US$ {run['metrics']['total_cost_usd']:.4f}"
                     )
@@ -339,6 +352,11 @@ with st.sidebar:
 
 # ---------------------------------------------------------------- main
 st.title("Analise de peticao inicial")
+st.info(
+    "Informacao juridica para apoio a revisao humana, nao aconselhamento juridico. "
+    "A analise usa a peticao enviada como evidencia e nao valida, por si so, "
+    "legislacao, jurisprudencia, prazos ou probabilidade de resultado."
+)
 with st.form("analysis_upload", border=False):
     uploaded = st.file_uploader("Envie o PDF da peticao inicial", type=["pdf"])
     submitted = st.form_submit_button(
@@ -347,8 +365,8 @@ with st.form("analysis_upload", border=False):
 
 if uploaded and submitted:
     try:
-        response = requests.post(
-            f"{API_URL}/analyses",
+        response = api_post(
+            "/analyses",
             files={"file": (uploaded.name, uploaded.getvalue(), "application/pdf")},
             timeout=60,
         )
@@ -370,12 +388,64 @@ if job_id := st.session_state.get("job_id"):
         st.stop()
 
     report = st.session_state["report"]
+    job_status = st.session_state.get("job_status", {})
 
     # ------------------------------------------------ header metrics
     st.divider()
     render_security_assessment(report)
+
+    if job_status.get("state") == "review_required":
+        st.warning(
+            "A verificacao de seguranca interrompeu a automacao. Um revisor humano "
+            "deve decidir se o processamento pode continuar. O nome informado abaixo "
+            "e apenas uma declaracao para auditoria; este demo nao autentica papeis."
+        )
+        with st.form("security_review"):
+            reviewer = st.text_input("Identificacao do revisor")
+            comment = st.text_area("Justificativa da decisao (opcional)")
+            approve = st.form_submit_button("Aprovar e continuar", type="primary")
+            reject = st.form_submit_button("Rejeitar processamento")
+        if approve or reject:
+            if not reviewer.strip():
+                st.error("Informe a identificacao do revisor.")
+            else:
+                try:
+                    response = api_post(
+                        f"/analyses/{job_id}/review",
+                        json={
+                            "approved": approve,
+                            "reviewer": reviewer.strip(),
+                            "comment": comment.strip() or None,
+                        },
+                        timeout=30,
+                    )
+                    response.raise_for_status()
+                    st.session_state["job_status"] = response.json()
+                    if approve:
+                        st.session_state.pop("report", None)
+                    st.rerun()
+                except requests.RequestException as exc:
+                    st.error(f"Falha ao registrar a revisao: {exc}")
+    elif job_status.get("state") == "rejected":
+        st.error("O revisor rejeitou a continuacao do processamento automatizado.")
+
+    quality = report.get("evidence_quality") or {}
+    if quality.get("status") == "human_review_required":
+        st.warning(
+            "A verificacao deterministica de fontes encontrou conclusoes sem citacao "
+            "rastreavel. Este relatorio esta parcial e requer revisao juridica humana."
+        )
+    elif quality.get("status") == "passed":
+        st.info(
+            "As citacoes exibidas foram reconstruidas dos trechos de origem. Isso nao "
+            "verifica inferencia, correcao juridica ou probabilidade de resultado."
+        )
+
     col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Confianca agregada", f"{round(report['confidence_level'] * 100)}%")
+    col1.metric(
+        "Suporte autoavaliado (nao calibrado)",
+        f"{round(report['confidence_level'] * 100)}%",
+    )
     lawsuit_type = (report.get("classification") or {}).get("lawsuit_type", "-")
     col2.metric("Tipo de acao", lawsuit_type)
     col3.metric("Custo", f"US$ {report['metrics']['total_cost_usd']:.4f}")
@@ -387,7 +457,7 @@ if job_id := st.session_state.get("job_id"):
 
     # ------------------------------------------------ tabs
     tab_summary, tab_risk, tab_strategy, tab_details, tab_ai = st.tabs(
-        ["Resumo", "Riscos", "Estrategia", "Detalhes", "Explicabilidade"]
+        ["Resumo", "Riscos", "Opcoes preliminares", "Detalhes", "Explicabilidade"]
     )
 
     with tab_summary:
@@ -435,7 +505,7 @@ if job_id := st.session_state.get("job_id"):
 
     with tab_strategy:
         if strategy := report.get("suggested_strategy"):
-            st.subheader("Abordagem recomendada")
+            st.subheader("Opcoes preliminares para revisao")
             render_conclusion(strategy["overall_approach"], "strat")
             if defenses := strategy.get("defenses"):
                 st.subheader("Linhas de defesa")
@@ -458,7 +528,11 @@ if job_id := st.session_state.get("job_id"):
         if claims := report.get("main_claims"):
             st.subheader("Pedidos analisados")
             for i, claim in enumerate(claims):
-                basis = f" (base legal: {claim['legal_basis']})" if claim.get("legal_basis") else ""
+                basis = (
+                    f" (base legal alegada: {claim['legal_basis']})"
+                    if claim.get("legal_basis")
+                    else ""
+                )
                 st.markdown(f"**{claim['claim']}**{basis}")
                 render_conclusion(claim["assessment"], f"claim-{i}")
         if evidence := report.get("evidence_found"):

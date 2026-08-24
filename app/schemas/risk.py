@@ -30,10 +30,13 @@ class RiskItem(BaseModel):
 
 
 class RiskAssessment(BaseModel):
-    """Overall risk picture for the defendant."""
+    """Preliminary triage of risks alleged or observable in the filing."""
 
     overall_level: RiskLevel
     overall: ConfidentConclusion = Field(
-        description="Overall assessment with explicit reasoning"
+        description=(
+            "Overall document-based triage with explicit reasoning; level and "
+            "confidence are not probabilities of a legal outcome"
+        )
     )
     risks: list[RiskItem] = Field(default_factory=list)

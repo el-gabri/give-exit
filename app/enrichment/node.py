@@ -14,6 +14,7 @@ from app.enrichment.datajud import DataJudClient
 from app.orchestration.state import AnalysisState
 from app.schemas.enrichment import DataJudEnrichment
 from app.schemas.trace import AgentStatus, AgentTrace
+from app.security.telemetry import redact_sensitive_text
 
 logger = get_logger(__name__)
 
@@ -26,6 +27,8 @@ def make_enrich_node(
     # type - an abstract stand-in silently downgrades it to a dict.
     async def enrich_node(state: AnalysisState) -> dict[str, Any]:
         start = time.perf_counter()
+        trace_status = AgentStatus.SUCCESS
+        trace_error: str | None = None
         extraction = state.extraction
         case_number = extraction.case_number if extraction else None
 
@@ -62,7 +65,11 @@ def make_enrich_node(
                         notes=["Dados validados contra a base oficial DataJud/CNJ."],
                     )
             except Exception as exc:
-                logger.warning("datajud_lookup_failed", error=str(exc))
+                logger.warning(
+                    "datajud_lookup_failed", error=redact_sensitive_text(exc)
+                )
+                trace_status = AgentStatus.FAILED
+                trace_error = f"{type(exc).__name__}: DataJud lookup failed"
                 enrichment = DataJudEnrichment(
                     attempted=True,
                     notes=[f"Falha na consulta ao DataJud: {type(exc).__name__}"],
@@ -70,8 +77,9 @@ def make_enrich_node(
 
         trace = AgentTrace(
             agent="datajud_enrichment",
-            status=AgentStatus.SUCCESS,
+            status=trace_status,
             duration_ms=(time.perf_counter() - start) * 1000,
+            error=trace_error,
         )
         return {"enrichment": enrichment, "traces": [trace]}
 

@@ -2,14 +2,18 @@
 
 [Read in English](README.md)
 
-Assistente de IA para litígios brasileiros, construído como demonstração de
-nível de produção de engenharia de IA moderna: orquestração multiagente
-(LangGraph), RAG auditável, saídas estruturadas, observabilidade, avaliação e
-explicabilidade.
+Assistente de IA para litígios brasileiros, construído como demonstração
+**orientada à produção e limitada a um único nó**: workflow LangGraph fixo em
+múltiplas etapas, RAG auditável, saídas estruturadas, observabilidade, avaliação
+e explicabilidade. Não é apresentado como serviço jurídico de produção:
+workers duráveis, identidade/isolamento por tenant e validação jurídica
+independente ainda são lacunas explícitas.
 
-> **Não substitui advogados.** Toda conclusão carrega um grau de confiança,
-> raciocínio explícito e citações literais do documento de origem, para que
-> um humano possa auditar cada afirmação.
+> **Informação jurídica e apoio à decisão, não aconselhamento jurídico.** As
+> conclusões automatizadas trazem confiança autodeclarada pelo modelo (não
+> calibrada) e raciocínio. Quando o modelo seleciona um ID de evidência válido,
+> o backend reconstrói trecho e página da fonte. Integridade da fonte não prova
+> nexo semântico nem correção jurídica.
 
 ## Duas jornadas de produto
 
@@ -17,8 +21,17 @@ explicabilidade.
 um relatório estruturado: resumo executivo, classificação, entidades extraídas
 (partes, juízo, valor da causa, prazos), linha do tempo, avaliação pedido a
 pedido, análise de risco com exposição financeira, estratégia de defesa,
-postura de acordo e validação do número do processo no DataJud (API oficial de
-registros processuais do CNJ). Exportação em Markdown, PDF, DOCX ou JSON.
+postura de acordo e consulta/enriquecimento do número do processo no DataJud
+(API pública oficial do CNJ). Exportação em Markdown, PDF, DOCX ou JSON.
+
+A análise jurídica, de risco e de estratégia da jornada Empresarial se baseia
+na petição enviada e nos chunks derivados dela. Hoje ela **não** consulta um
+corpus versionado de legislação ou jurisprudência; proposições jurídicas
+citadas na peça continuam sendo alegações da parte, não direito validado de
+forma independente. O DataJud enriquece o registro público, mas não valida o
+mérito. Considere qualquer workflow fundamentado apenas na peça salvo quando o
+trace identificar explicitamente outro corpus oficial — atualmente isso ocorre
+somente na jornada Consumidor.
 
 **Consumidor** — um chat guiado estrutura a reclamação contra um fornecedor e
 aceita evidências em PDF/PNG/JPEG (rejeitadas quando o OCR não produz texto
@@ -32,12 +45,19 @@ transparente: valores encontrados nas evidências viram candidatos e só entram
 no total após confirmação do consumidor; valores mencionados no chat nunca são
 promovidos automaticamente. Cada componente expõe fonte, trecho e hashes para
 auditoria. O sistema nunca envia nem protocola a notificação — um advogado
-brasileiro habilitado deve revisá-la antes.
+brasileiro habilitado deve revisá-la antes. No demo, isso é política e aviso
+visível, não um workflow autenticado de aprovação por advogado.
+Dispositivos candidatos também passam por uma política determinística e
+versionada de elegibilidade por categoria, exposta como
+`requires_legal_review`; ranking de recuperação sozinho nunca autoriza um
+fundamento jurídico.
 
 Nas duas jornadas, cada página de conteúdo não confiável passa por um portão de
-segurança contra prompt injection antes de chegar às camadas de RAG ou LLM, e
-cada consulta de RAG deixa uma trilha de auditoria durável (IDs dos chunks
-ranqueados, scores, hashes e quais chunks de fato entraram em cada prompt).
+segurança contra prompt injection antes da indexação ou análise jurídica
+subsequente (os modos `balanced`/`strict` podem chamar o LLM configurado).
+Execuções Empresariais concluídas persistem traces de RAG em JSONL local; os
+traces do Consumidor ficam no caso em memória. Ambos registram IDs ranqueados,
+scores, hashes e quais chunks de fato entraram no prompt.
 
 ## Arquitetura
 
@@ -56,6 +76,8 @@ Browser -> Streamlit -> FastAPI (202 + job assíncrono)
 
 Diagrama completo, mapa de camadas e a política de roteamento de prompt
 injection: [docs/architecture.md](docs/architecture.md).
+O limite de segurança suportado para armazenamento e a exceção temporária das
+advisories do Chroma estão documentados em [SECURITY.md](SECURITY.md).
 
 ### Decisões de projeto (ADRs)
 
@@ -68,7 +90,7 @@ injection: [docs/architecture.md](docs/architecture.md).
 | [0005](docs/adr/0005-pymupdf-ocr-fallback.md) | PyMuPDF + fallback heurístico de OCR |
 | [0006](docs/adr/0006-section-aware-chunking.md) | Chunking ciente de seções de petições brasileiras |
 | [0007](docs/adr/0007-deterministic-report-composer.md) | Sem LLM na última milha — o relatório é montado por código |
-| [0008](docs/adr/0008-citation-based-groundedness.md) | Detecção de alucinação por verificação mecânica de citações |
+| [0008](docs/adr/0008-citation-based-groundedness.md) | Prevenção de trecho fabricado por reconstrução determinística da fonte |
 | [0009](docs/adr/0009-in-process-async-jobs.md) | Jobs assíncronos in-process com interface pronta para broker |
 | [0010](docs/adr/0010-prompt-injection-security-gate.md) | Varredura de conteúdo não confiável antes de indexar ou analisar |
 | [0011](docs/adr/0011-retrieval-traceability-and-evaluation.md) | Proveniência consulta→contexto persistida; rankings avaliados |
@@ -78,31 +100,48 @@ injection: [docs/architecture.md](docs/architecture.md).
 
 ### Explicabilidade
 
-Toda conclusão importante é uma `ConfidentConclusion`:
+Conclusões importantes do modelo usam `ConfidentConclusion`. O modelo seleciona
+apenas o ID de evidência; trecho e página são reconstruídos pelo backend:
 
 ```json
 {
-  "statement": "Recomendado buscar acordo ate R$ 8.000,00",
+  "statement": "Opcao preliminar: avaliar acordo dentro dos valores documentados",
   "confidence": 0.87,
-  "reasoning": "O documento comprova a cobranca indevida e o CDC preve...",
-  "citations": [{"quote": "cobrancas mensais indevidas", "page": 3}]
+  "reasoning": "A peticao alega cobrancas mensais e informa o valor discutido...",
+  "citations": [{
+    "chunk_id": "abc123:0007",
+    "quote": "cobrancas mensais indevidas",
+    "page": 3
+  }]
 }
 ```
 
-O harness de avaliação verifica se cada citação ocorre de fato no documento de
-origem — uma citação fabricada é capturada mecanicamente, não pela opinião de
-outro LLM.
+IDs desconhecidos, estrangeiros, duplicados ou incompatíveis com a fonte são
+rejeitados. O relatório expõe um portão determinístico de integridade de fontes:
+ele prova proveniência/localização, não que o trecho sustente logicamente a
+conclusão. Percentuais de confiança são autodeclarados pelo LLM e não são
+probabilidades de desfecho.
 
 ### Observabilidade
 
-Toda chamada de LLM retorna metadados tipados (provedor, modelo, latência,
-tokens, custo, versão do prompt) — agentes fisicamente não conseguem fazer
-chamadas não rastreadas. Agregados por execução persistem em um run store JSONL
-exposto em `/runs` e `/runs/totals` e no painel de custos da UI. A auditoria
+Todas as chamadas atualmente implementadas de agentes e revisão de segurança
+usam a porta tipada `LLMClient`, com provedor, modelo, latência, tokens, custo e
+versão do prompt. Agregados de execuções Empresariais concluídas persistem em
+um run store JSONL exposto em `/runs` e `/runs/totals`. A auditoria
 completa de recuperação de um job fica em `/analyses/{job_id}/retrievals`
 (prévias de texto dos chunks são opt-in via
 `LITIGATION_RETRIEVAL_TRACE_INCLUDE_PREVIEWS`); a aba de explicabilidade do
 Streamlit mostra os mesmos dados em tabela filtrável.
+
+Antes da gravação durável, consultas em linguagem natural viram
+`[QUERY_REDACTED:<prefixo-do-hash>]`; nomes de arquivo e labels de revisor viram
+referências HMAC. Comentários de revisão, seções/prévias de resultados e
+metadados arbitrários de fonte são omitidos; erros duráveis preservam apenas o
+tipo da exceção. Isso é minimização, não anonimização: endpoints de jobs em
+memória ainda expõem traces brutos, casos e traces do Consumidor ficam em
+memória, e hashes ou metadados pseudonimizados ainda podem ser dados pessoais.
+Sem `LITIGATION_TELEMETRY_PSEUDONYM_KEY`, pseudônimos
+mudam intencionalmente após reiniciar o processo.
 
 ### Defesa contra prompt injection
 
@@ -114,8 +153,11 @@ aviso e mascara os trechos sinalizados, `high` pausa como `review_required`,
 Uma pausa `review_required` é resolvida por uma pessoa identificada em
 `POST /analyses/{job_id}/review`: a aprovação reexecuta o pipeline com os
 trechos sinalizados ainda mascarados e registra quem revisou no relatório; a
-recusa encerra a execução como `rejected`. Um veredito `blocked` e uma
-varredura incompleta nunca podem ser liberados por essa via.
+recusa encerra a execução como `rejected`. A decisão imutável é vinculada ao
+job, documento e hash da avaliação de segurança, e persistida antes do resume.
+A identidade do revisor ainda é autodeclarada atrás da chave compartilhada da
+implantação; não existe RBAC de produção. Um veredito `blocked` e uma varredura
+incompleta nunca podem ser liberados por essa via.
 `LITIGATION_PROMPT_INJECTION_SCAN_MODE` seleciona `rules` (apenas
 determinístico), `balanced` (padrão — revisão semântica dos trechos suspeitos)
 ou `strict` (revisão semântica de todo o texto com orçamento limitado; exceder
@@ -156,6 +198,11 @@ docker compose up --build
 # UI:  http://localhost:8501
 # API: http://localhost:8000/docs
 ```
+
+O Compose publica as duas portas em `127.0.0.1` por padrão. Para sobrescrever
+`LITIGATION_BIND_HOST` e expor outra interface, defina também
+`LITIGATION_DEPLOYMENT_MODE=production` e `LITIGATION_API_AUTH_KEY`; o modo de
+produção recusa inicializar sem essa chave.
 
 ### Desenvolvimento local
 
@@ -209,19 +256,52 @@ consumidor aceitam PDF/PNG/JPEG com teto de 40 megapixels. Evidência bruta do
 consumidor é apagada logo após a ingestão; PDFs empresariais são apagados após
 a análise, salvo `LITIGATION_RETAIN_UPLOADS=true`.
 
-Os chunks indexados contêm o texto integral do documento e seguem o mesmo
-ciclo de vida: os vetores de um documento são apagados quando o job termina,
-salvo `LITIGATION_RETAIN_INDEX=true`, e a inicialização remove vetores
-deixados por um processo anterior (registros de casos e jobs são em memória).
-O histórico de execuções — hashes e métricas, nunca o texto dos chunks a menos
-que os previews estejam habilitados — permanece.
+Os chunks indexados contêm o texto integral do documento. Vetores Empresariais
+são apagados quando o job termina, salvo `LITIGATION_RETAIN_INDEX=true`; com a
+retenção desativada, a inicialização também remove vetores Empresariais deixados
+por um processo anterior. Vetores de evidências do Consumidor permanecem apenas
+enquanto o caso em memória existe: excluir o caso os remove, e a inicialização
+elimina evidências órfãs de um reinício preservando o corpus jurídico canônico.
+Estado de job/relatório Empresarial e todo o estado de caso Consumidor ficam em
+memória. Metadados e traces minimizados de execuções Empresariais concluídas são
+a exceção durável; eles não recriam um job ou caso após reinício. Prévias de
+chunks ficam apenas no estado vivo e nunca são gravadas no JSONL.
 
-Defina `LITIGATION_API_AUTH_KEY` para exigir `X-API-Key` em todas as rotas
-exceto `/health`; uploads também têm limite de taxa por cliente
-(`LITIGATION_UPLOAD_RATE_LIMIT_PER_MINUTE`, 20 por padrão). Ambos são
-obrigatórios em qualquer implantação acessível fora do localhost, junto com
-isolamento por tenant e política de retenção documentada antes de usar dados
-reais de processos.
+A execução Empresarial é limitada no processo por
+`LITIGATION_MAX_CONCURRENT_JOBS` (4 por padrão) mais
+`LITIGATION_MAX_QUEUED_JOBS` (16). Acima da capacidade combinada, a API retorna
+`503` com `Retry-After`. Trata-se de semáforo e backlog limitados em um único
+processo, não de broker durável: jobs na fila/em execução/aguardando revisão são
+perdidos no reinício, réplicas não compartilham capacidade nem estado, e o JSONL
+não retoma trabalho. Escala horizontal exige broker, estado compartilhado e
+workers apropriados.
+
+Jobs interrompidos pelo portão de segurança mantêm o documento parseado apenas
+numa janela limitada: `LITIGATION_MAX_REVIEW_REQUIRED_JOBS` (20) e
+`LITIGATION_REVIEW_REQUIRED_TTL_SECONDS` (24 horas) limitam quantidade e idade.
+Jobs antigos ou expirados são removidos depois que o registro de auditoria se
+torna durável. Se essa gravação falhar, a pausa falha fechada e descarta o estado
+completo necessário ao resume.
+
+No modo local, definir `LITIGATION_API_AUTH_KEY` exige `X-API-Key` em todas as
+rotas exceto `/health`; no modo de produção, a chave é obrigatória no startup.
+Uploads também têm limite por cliente
+(`LITIGATION_UPLOAD_RATE_LIMIT_PER_MINUTE`, 20 por padrão). Essa é uma chave
+compartilhada da implantação, não identidade de usuário, RBAC ou isolamento por
+tenant. Esses controles e uma política de retenção documentada continuam sendo
+pré-requisitos para dados reais.
+
+### Governança dos dados de demo
+
+[`demo/manifest.json`](demo/manifest.json) inventaria cada PDF versionado com
+SHA-256, classificação sintético/dados pessoais, proveniência e revisão. Um
+registro judicial não sintético retido contém dados pessoais; URL de origem e
+base de redistribuição não estão estabelecidas. Acesso público reportado e
+presença no repositório **não** concedem por si só direito de redistribuição,
+afastam deveres da LGPD ou provam conformidade com termos judiciais. Não o
+publique nem redistribua sem revisão independente de direitos e privacidade.
+Fixtures sintéticas também têm identificadores com formato de PII e devem ser
+tratadas como sensíveis em telemetria. Veja [`demo/README.md`](demo/README.md).
 
 ## Estrutura do projeto
 
@@ -255,7 +335,8 @@ tests/              testes offline de unidade, integração e segurança
   trabalhista, no mesmo padrão do snapshot do CDC
 - Jurisprudência brasileira (RAG de decisões) como segundo corpus
 - Fila de jobs com Redis + workers horizontais (o ADR 0009 documenta o caminho)
-- AuthN/AuthZ e isolamento de dados por tenant na camada de API
+- AuthN/AuthZ por usuário e isolamento de dados por tenant (a chave atual é da
+  implantação, não do usuário)
 - Adaptador de vector store gerenciado (ex.: pgvector/Pinecone) para escala multi-tenant
 - Loop de feedback humano: correções de advogados alimentando o golden dataset
 - Modelos calibrados de desfecho a partir de dados revisados de acordos e

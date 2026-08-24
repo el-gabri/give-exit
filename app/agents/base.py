@@ -9,6 +9,7 @@ context to build - they cannot forget observability or validation.
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Generic, TypeVar
 
 from pydantic import BaseModel
@@ -66,6 +67,7 @@ class BaseAgent(ABC, Generic[OutputT]):
         return f"{self.prompt.system}\n\n{DOCUMENT_SAFETY_INSTRUCTION}"
 
     async def run(self, state: "object") -> tuple[OutputT, AgentTrace]:
+        started_at = datetime.now(timezone.utc)
         start = time.perf_counter()
         prompt_version = f"{self.prompt.name}:{self.prompt.version}"
         built_prompt: BuiltAgentPrompt | None = None
@@ -89,6 +91,7 @@ class BaseAgent(ABC, Generic[OutputT]):
             trace = self.failure_trace(
                 exc,
                 (time.perf_counter() - start) * 1000,
+                started_at=started_at,
                 retrievals=_annotate_retrievals(
                     retrievals,
                     status=AgentStatus.FAILED,
@@ -106,6 +109,7 @@ class BaseAgent(ABC, Generic[OutputT]):
         trace = AgentTrace(
             agent=self.name,
             status=AgentStatus.SUCCESS,
+            started_at=started_at,
             duration_ms=(time.perf_counter() - start) * 1000,
             llm_meta=result.meta,
             retrievals=retrievals,
@@ -122,11 +126,13 @@ class BaseAgent(ABC, Generic[OutputT]):
         self,
         error: Exception,
         duration_ms: float,
+        started_at: datetime | None = None,
         retrievals: list[RetrievalTrace] | None = None,
     ) -> AgentTrace:
         return AgentTrace(
             agent=self.name,
             status=AgentStatus.FAILED,
+            started_at=started_at or datetime.now(timezone.utc),
             duration_ms=duration_ms,
             error=f"{type(error).__name__}: {error}",
             retrievals=retrievals or [],

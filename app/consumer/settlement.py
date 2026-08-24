@@ -12,13 +12,9 @@ from app.consumer.schemas import (
 
 
 class SettlementCalculator:
-    """Build an auditable negotiation range without pretending to predict a court.
+    """Build auditable negotiation amounts without predicting a court outcome."""
 
-    The exploratory weights are deterministic completeness/evidence heuristics.
-    They are not trained, calibrated or legally validated probabilities.
-    """
-
-    METHODOLOGY_VERSION = "consumer-settlement-scenario-v2"
+    METHODOLOGY_VERSION = "consumer-settlement-scenario-v3"
     _CENT = Decimal("0.01")
 
     def calculate(self, inputs: SettlementInputs) -> SettlementScenario:
@@ -31,20 +27,6 @@ class SettlementCalculator:
         )
         low_outcome = direct_loss
         high_outcome = direct_loss + article_42_increment
-
-        center = (
-            Decimal("0.25")
-            + Decimal("0.35") * inputs.evidence_strength
-            + Decimal("0.20") * inputs.factual_completeness
-        )
-        low_weight = max(Decimal("0.05"), center - Decimal("0.10"))
-        high_weight = min(Decimal("0.90"), center + Decimal("0.10"))
-        expected_low = self._money(
-            low_outcome * low_weight - downside_cost * (Decimal("1") - low_weight)
-        )
-        expected_high = self._money(
-            high_outcome * high_weight - downside_cost * (Decimal("1") - high_weight)
-        )
 
         has_monetary_input = high_outcome > 0
         if has_monetary_input:
@@ -104,7 +86,6 @@ class SettlementCalculator:
             "private_reservation": (
                 str(private_reservation) if private_reservation is not None else None
             ),
-            "weights": [str(low_weight), str(high_weight)],
         }
         calculation_sha256 = hashlib.sha256(
             json.dumps(
@@ -126,10 +107,6 @@ class SettlementCalculator:
             conditional_article_42_increment_amount=article_42_increment,
             low_outcome_value=self._money(low_outcome),
             high_outcome_value=self._money(high_outcome),
-            exploratory_weight_low=low_weight,
-            exploratory_weight_high=high_weight,
-            illustrative_expected_value_low=expected_low,
-            illustrative_expected_value_high=expected_high,
             public_proposal_amount=public_proposal,
             private_reservation_amount=private_reservation,
             article_42_assumption=article_42_assumption,
@@ -140,14 +117,13 @@ class SettlementCalculator:
                 "e acréscimos legais condicionados; não inclui indenização inventada.",
                 "Valores encontrados em documentos são candidatos e só entram no cálculo "
                 "depois da confirmação do consumidor.",
-                "Os valores esperados multiplicam os cenários por pesos exploratórios "
-                "derivados da força da prova e da completude dos fatos e descontam "
-                "o custo explícito atribuído ao cenário sem acordo.",
+                "O intervalo mostra o prejuízo direto confirmado e, quando solicitado "
+                "e suportado por pagamento indevido, um incremento legal condicionado.",
                 "A reserva privada corresponde ao prejuízo confirmado e não deve "
                 "constar da notificação enviada ao fornecedor.",
             ],
             caveats=[
-                "Os pesos não foram treinados nem calibrados com resultados judiciais.",
+                "Nenhum peso, probabilidade de êxito ou valor esperado é calculado.",
                 "Na etapa extrajudicial, o custo do cenário sem acordo é zero por padrão; "
                 "custas, honorários, demora e riscos de eventual processo não são inferidos.",
                 "O cálculo não estima chance de vitória, indenização judicial ou valor devido.",

@@ -5,6 +5,7 @@ is either a typed agent output or computed from one. See ADR 0007.
 """
 
 from datetime import datetime, timezone
+from enum import Enum
 
 from pydantic import BaseModel, Field
 
@@ -46,6 +47,32 @@ class RunMetrics(BaseModel):
     )
 
 
+class EvidenceQualityStatus(str, Enum):
+    """Machine-checkable source-traceability outcome, not legal correctness."""
+
+    NOT_APPLICABLE = "not_applicable"
+    PASSED = "passed"
+    HUMAN_REVIEW_REQUIRED = "human_review_required"
+
+
+class EvidenceQualityGate(BaseModel):
+    """Deterministic citation/source checks applied before report delivery.
+
+    Passing proves only that displayed excerpts were reconstructed from source
+    chunks supplied to the relevant agent.  It does not establish entailment,
+    legal correctness, calibrated confidence, or fitness for filing.
+    """
+
+    status: EvidenceQualityStatus = EvidenceQualityStatus.NOT_APPLICABLE
+    total_conclusions: int = Field(default=0, ge=0)
+    conclusions_with_traceable_citations: int = Field(default=0, ge=0)
+    verified_source_citations: int = Field(default=0, ge=0)
+    rejected_source_citations: int = Field(default=0, ge=0)
+    semantic_entailment_checked: bool = False
+    legal_correctness_checked: bool = False
+    reasons: list[str] = Field(default_factory=list)
+
+
 class LitigationReport(BaseModel):
     """Complete analysis report for one lawsuit."""
 
@@ -79,7 +106,10 @@ class LitigationReport(BaseModel):
     # Explainability & observability
     confidence_level: float = Field(
         default=0.0,
-        description="Aggregate confidence over all conclusions (mean, 0-1)",
+        description=(
+            "Mean of model self-reported support scores (0-1); uncalibrated and "
+            "not a probability of legal outcome"
+        ),
     )
     ai_reasoning: str = Field(
         default="",
@@ -87,5 +117,13 @@ class LitigationReport(BaseModel):
         "models, prompt versions, retrieval statistics",
     )
     warnings: list[str] = Field(default_factory=list)
+    human_legal_review_required: bool = Field(
+        default=True,
+        description="Always true: automated output is informational and must be reviewed",
+    )
+    evidence_quality: EvidenceQualityGate = Field(
+        default_factory=EvidenceQualityGate,
+        description="Deterministic source-traceability gate; not a merits assessment",
+    )
     metrics: RunMetrics = Field(default_factory=RunMetrics)
     traces: list[AgentTrace] = Field(default_factory=list)

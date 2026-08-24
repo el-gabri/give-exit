@@ -1,0 +1,73 @@
+{
+  "schema_version": 1,
+  "reviewed_on": "2026-08-24",
+  "policy": {
+    "scope": "Every PDF committed under demo/ must have one manifest entry.",
+    "public_access_establishes_unrestricted_redistribution_rights": false
+  },
+  "files": [
+    {
+      "path": "demo/Ação - danos morais.pdf",
+      "sha256": "0c1d30e9dec1cef1c100ece972502978c6d44a4f09ad5c646feabe991dfdaa04",
+      "record_kind": "public_judicial_record",
+      "synthetic": false,
+      "contains_personal_data": true,
+      "contains_personal_data_like_content": true,
+      "provenance": {
+        "source_url": null,
+        "access_status": "reported_publicly_accessible",
+        "basis": "repository_owner_confirmation",
+        "notes": "The exact public source URL is not recorded in this repository."
+      },
+      "review": {
+        "status": "reviewed_with_restrictions",
+        "reviewed_on": "2026-08-24",
+        "review_basis": "repository_owner_confirmation_and_content_review",
+        "redistribution_status": "not_established",
+        "notes": "Retained as requested. Public accessibility does not by itself establish unrestricted redistribution."
+      }
+    },
+    {
+      "path": "demo/peticao_consumer_billing.pdf",
+      "sha256": "a947e11d65cc9d299116ed6881c69fe0b0843f8f2a0041ebf5b8ad5fc76dc67a",
+      "record_kind": "synthetic_fixture",
+      "synthetic": true,
+      "contains_personal_data": false,
+      "contains_personal_data_like_content": true,
+      "provenance": {
+        "source_url": null,
+        "access_status": "not_applicable_synthetic",
+        "basis": "repository_fixture",
+        "notes": "Synthetic petition with fictitious names and placeholder identifier patterns; no external source URL applies."
+      },
+      "review": {
+        "status": "reviewed_synthetic",
+        "reviewed_on": "2026-08-24",
+        "review_basis": "fixture_content_review",
+        "redistribution_status": "no_external_source_identified",
+        "notes": "No known real personal data; PII-shaped values remain test-sensitive content."
+      }
+    },
+    {
+      "path": "demo/peticao_labor_overtime.pdf",
+      "sha256": "16c5a23b36210d61adba88451fde0e53e0c48c4e488c4b7beb6576bed9838f9a",
+      "record_kind": "synthetic_fixture",
+      "synthetic": true,
+      "contains_personal_data": false,
+      "contains_personal_data_like_content": true,
+      "provenance": {
+        "source_url": null,
+        "access_status": "not_applicable_synthetic",
+        "basis": "repository_fixture",
+        "notes": "Synthetic petition with fictitious names and placeholder identifier patterns; no external source URL applies."
+      },
+      "review": {
+        "status": "reviewed_synthetic",
+        "reviewed_on": "2026-08-24",
+        "review_basis": "fixture_content_review",
+        "redistribution_status": "no_external_source_identified",
+        "notes": "No known real personal data; PII-shaped values remain test-sensitive content."
+      }
+    }
+  ]
+}

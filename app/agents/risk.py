@@ -20,7 +20,7 @@ MAX_JSON_CHARS = 6_000
 
 
 class RiskAssessmentAgent(BaseAgent[RiskAssessment]):
-    """Estimates legal and financial exposure for the defendant."""
+    """Triages document-grounded risk allegations for professional review."""
 
     name = "risk_assessment"
     prompt = RISK_PROMPT

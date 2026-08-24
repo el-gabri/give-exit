@@ -1,5 +1,7 @@
 """Tests for runtime citation validation before report delivery."""
 
+import pytest
+
 from app.schemas.analysis import LawsuitClassification, TimelineEvent
 from app.schemas.common import Citation, ConfidentConclusion
 from app.schemas.document import DocumentPage, ExtractionMethod, ParsedDocument
@@ -35,17 +37,18 @@ def _report(document: ParsedDocument) -> LitigationReport:
                 reasoning="Cobrancas bancarias.",
                 citations=[
                     Citation(
-                        quote="cobrancas indevidas", page=1, chunk_id=f"{document.doc_id}:0000"
+                        chunk_id=f"{document.doc_id}:0000",
+                        quote="texto inventado pelo modelo",
+                        page=2,
                     ),
-                    # Real quote, but it lives on page 2.
-                    Citation(quote="indenizacao por danos morais", page=1),
+                    Citation(chunk_id=f"{document.doc_id}:nao-existe"),
                 ],
             ),
         ),
     )
 
 
-def test_keeps_only_citations_with_a_valid_source_location() -> None:
+def test_reconstructs_quote_and_page_from_a_valid_chunk_id() -> None:
     document = _document()
     chunk = Chunk(
         chunk_id=f"{document.doc_id}:0000",
@@ -64,17 +67,33 @@ def test_keeps_only_citations_with_a_valid_source_location() -> None:
     assert report.classification is not None
     assert report.classification.conclusion.citations == [
         Citation(
-            quote="cobrancas indevidas", page=1, chunk_id=f"{document.doc_id}:0000"
+            chunk_id=f"{document.doc_id}:0000",
+            quote="A autora relata cobrancas indevidas",
+            page=1,
         )
     ]
 
 
-def test_rejects_a_quote_on_the_wrong_page_even_if_it_exists_elsewhere() -> None:
+def test_citation_schema_requires_only_the_chunk_id_from_the_model() -> None:
+    schema = Citation.model_json_schema()
+
+    assert schema["required"] == ["chunk_id"]
+    assert Citation(chunk_id="doc:0001").quote == ""
+    assert Citation(chunk_id="doc:0001").page is None
+    with pytest.raises(ValueError):
+        Citation()  # type: ignore[call-arg]
+
+
+def test_rejects_an_unknown_chunk_id_even_with_a_real_quote() -> None:
     document = _document()
     report = _report(document)
     assert report.classification is not None
     report.classification.conclusion.citations = [
-        Citation(quote="indenizacao por danos morais", page=1)
+        Citation(
+            chunk_id=f"{document.doc_id}:nao-existe",
+            quote="indenizacao por danos morais",
+            page=2,
+        )
     ]
 
     result = validate_report_citations(report, document, [])
@@ -88,10 +107,16 @@ def test_rejects_a_quote_too_short_to_be_evidence() -> None:
     document = _document()
     report = _report(document)
     assert report.classification is not None
-    # Occurs verbatim on page 1, but matching it proves nothing.
-    report.classification.conclusion.citations = [Citation(quote="a autora", page=1)]
+    chunk = Chunk(
+        chunk_id=f"{document.doc_id}:curto",
+        doc_id=document.doc_id,
+        text="a autora",
+        page_start=1,
+        page_end=1,
+    )
+    report.classification.conclusion.citations = [Citation(chunk_id=chunk.chunk_id)]
 
-    result = validate_report_citations(report, document, [])
+    result = validate_report_citations(report, document, [chunk])
 
     assert result.rejected_citations == 1
     assert report.classification.conclusion.citations == []
@@ -115,7 +140,7 @@ def test_rejects_an_invalid_timeline_citation() -> None:
         TimelineEvent(
             date="2025-01-10",
             description="Pedido de indenizacao",
-            citation=Citation(quote="indenizacao por danos morais", page=1),
+            citation=Citation(chunk_id=f"{document.doc_id}:nao-existe"),
         )
     ]
 
@@ -124,3 +149,64 @@ def test_rejects_an_invalid_timeline_citation() -> None:
     assert result.total_citations == 1
     assert result.rejected_citations == 1
     assert report.timeline[0].citation is None
+
+
+def test_reconstructs_a_timeline_citation_from_the_source_page() -> None:
+    document = _document()
+    report = _report(document)
+    assert report.classification is not None
+    report.classification.conclusion.citations = []
+    chunk = Chunk(
+        chunk_id=f"{document.doc_id}:0001",
+        doc_id=document.doc_id,
+        text="Requer indenizacao por danos morais.",
+        page_start=2,
+        page_end=2,
+    )
+    report.timeline = [
+        TimelineEvent(
+            description="Pedido de indenizacao",
+            citation=Citation(
+                chunk_id=chunk.chunk_id,
+                quote="conteudo nao confiavel",
+                page=1,
+            ),
+        )
+    ]
+
+    result = validate_report_citations(report, document, [chunk])
+
+    assert result.verified_citations == 1
+    assert report.timeline[0].citation == Citation(
+        chunk_id=chunk.chunk_id,
+        quote="Requer indenizacao por danos morais",
+        page=2,
+    )
+
+
+@pytest.mark.parametrize("failure", ["foreign_document", "no_source_overlap", "duplicate_id"])
+def test_rejects_unverifiable_chunk_provenance(failure: str) -> None:
+    document = _document()
+    report = _report(document)
+    assert report.classification is not None
+    chunk_id = f"{document.doc_id}:0000"
+    base = Chunk(
+        chunk_id=chunk_id,
+        doc_id=document.doc_id,
+        text=document.pages[0].text,
+        page_start=1,
+        page_end=1,
+    )
+    chunks = [base]
+    if failure == "foreign_document":
+        chunks = [base.model_copy(update={"doc_id": "foreign"})]
+    elif failure == "no_source_overlap":
+        chunks = [base.model_copy(update={"text": "conteudo totalmente diferente"})]
+    else:
+        chunks.append(base.model_copy(update={"text": "segunda versao ambigua"}))
+    report.classification.conclusion.citations = [Citation(chunk_id=chunk_id)]
+
+    result = validate_report_citations(report, document, chunks)
+
+    assert result.rejected_citations == 1
+    assert report.classification.conclusion.citations == []

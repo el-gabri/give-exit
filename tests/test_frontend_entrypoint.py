@@ -2,8 +2,10 @@
 
 from pathlib import Path
 
+import requests
 from streamlit.testing.v1 import AppTest
 
+from frontend.api_client import ConsumerApiClient
 from frontend.consumer_view import _financial_source_rows
 
 
@@ -72,3 +74,20 @@ def test_financial_source_rows_expose_document_provenance() -> None:
     assert rows[0]["Arquivo/página"] == "nota.png, p. 1"
     assert rows[0]["SHA-256 do arquivo"] == "a" * 64
     assert rows[0]["Extração"] == "ocr + OCR"
+
+
+def test_consumer_client_forwards_configured_api_key(monkeypatch) -> None:
+    captured: dict = {}
+
+    def request(method, url, **kwargs):
+        captured.update(method=method, url=url, **kwargs)
+        response = requests.Response()
+        response.status_code = 200
+        response._content = b"{}"
+        return response
+
+    monkeypatch.setattr("frontend.api_client.requests.request", request)
+
+    ConsumerApiClient("https://api.example", api_key="shared-secret").health()
+
+    assert captured["headers"]["X-API-Key"] == "shared-secret"

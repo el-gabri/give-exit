@@ -133,7 +133,10 @@ def test_renders_all_present_sections_with_confidence_and_citations() -> None:
     md = render_markdown(_report())
 
     assert "# Relatorio de Analise - peticao.pdf" in md
-    assert "**Nivel de confianca agregado: 84%**" in md
+    assert "Confianca autorrelatada pelos modelos, nao calibrada: 84%" in md
+    assert "Uso informativo" in md
+    assert "análise jurídica individualizada" in md
+    assert "Integridade de fontes" in md
     assert "## Resumo Executivo" in md
     assert "Confianca: **92%**" in md
     assert '"cobrancas indevidas", p. 1' in md
@@ -155,7 +158,7 @@ def test_renders_all_present_sections_with_confidence_and_citations() -> None:
 def test_absent_sections_are_omitted() -> None:
     md = render_markdown(_report())
     assert "## Linha do Tempo" not in md  # no timeline provided
-    assert "## Estrategia Sugerida" not in md  # no strategy provided
+    assert "## Opcoes Preliminares para Revisao" not in md  # no strategy provided
 
 
 def test_timeline_renders_page_and_chunk_provenance() -> None:

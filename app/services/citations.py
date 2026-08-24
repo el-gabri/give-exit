@@ -1,9 +1,10 @@
-"""Runtime validation for citations shown in legal reports.
+"""Runtime reconstruction and validation for citations shown in legal reports.
 
 Evaluation metrics are useful after the fact, but a legal report must not
 display a citation that cannot be traced to the uploaded document. This
-module validates the claim at report-composition time and removes invalid
-citations before they reach an API client or export.
+module resolves model-selected chunk ids at report-composition time, derives
+the page and verbatim quote from trusted ingestion artifacts, and removes
+unresolvable citations before they reach an API client or export.
 """
 
 import re
@@ -23,6 +24,7 @@ from app.schemas.report import LitigationReport
 # prevents.
 MIN_QUOTE_CHARS = 12
 MIN_QUOTE_WORDS = 2
+MAX_RECONSTRUCTED_QUOTE_WORDS = 40
 
 
 def normalize_text(text: str) -> str:
@@ -65,15 +67,15 @@ class CitationValidationResult:
 def validate_report_citations(
     report: LitigationReport, document: ParsedDocument, chunks: list[Chunk]
 ) -> CitationValidationResult:
-    """Remove citations that do not match their declared source location.
+    """Resolve citation ids and replace model text with source-derived values.
 
-    A citation must carry a substantive quote, identify a valid page and quote
-    that page. When it also names a chunk, the chunk must belong to this
-    document, contain the quote, and cover the cited page. This avoids treating
-    a true quote from a different page as valid evidence for a claimed
-    location.
+    The model supplies only a chunk id. A citation is verified only when that
+    id uniquely identifies a chunk belonging to this document and a
+    substantive verbatim excerpt can be reconstructed from both the chunk and
+    one of the source pages it covers. Any model-supplied quote or page is
+    ignored. Duplicate ids are treated as ambiguous and therefore unverifiable.
     """
-    chunks_by_id = {chunk.chunk_id: chunk for chunk in chunks}
+    chunks_by_id = _unique_chunks_by_id(chunks)
     conclusions = list(_report_conclusions(report))
     total = 0
     verified = 0
@@ -84,7 +86,9 @@ def validate_report_citations(
         if event.citation is None:
             continue
         total += 1
-        if _citation_is_valid(event.citation, document, chunks_by_id):
+        reconstructed = _reconstruct_citation(event.citation, document, chunks_by_id)
+        if reconstructed is not None:
+            event.citation = reconstructed
             verified += 1
         else:
             rejected += 1
@@ -94,8 +98,9 @@ def validate_report_citations(
         valid_citations: list[Citation] = []
         for citation in conclusion.citations:
             total += 1
-            if _citation_is_valid(citation, document, chunks_by_id):
-                valid_citations.append(citation)
+            reconstructed = _reconstruct_citation(citation, document, chunks_by_id)
+            if reconstructed is not None:
+                valid_citations.append(reconstructed)
                 verified += 1
             else:
                 rejected += 1
@@ -112,24 +117,111 @@ def validate_report_citations(
     )
 
 
-def _citation_is_valid(
-    citation: Citation, document: ParsedDocument, chunks_by_id: dict[str, Chunk]
-) -> bool:
-    if not is_substantive_quote(citation.quote):
-        return False
-    if citation.page is None or citation.page > document.page_count:
-        return False
-    if not quote_matches(citation.quote, document.pages[citation.page - 1].text):
-        return False
-    if citation.chunk_id is None:
-        return True
+def _unique_chunks_by_id(chunks: list[Chunk]) -> dict[str, Chunk]:
+    """Return only ids that resolve to exactly one supplied chunk."""
+    unique: dict[str, Chunk] = {}
+    ambiguous: set[str] = set()
+    for chunk in chunks:
+        if chunk.chunk_id in unique:
+            ambiguous.add(chunk.chunk_id)
+        else:
+            unique[chunk.chunk_id] = chunk
+    for chunk_id in ambiguous:
+        unique.pop(chunk_id, None)
+    return unique
 
+
+def _reconstruct_citation(
+    citation: Citation, document: ParsedDocument, chunks_by_id: dict[str, Chunk]
+) -> Citation | None:
     chunk = chunks_by_id.get(citation.chunk_id)
-    return bool(
-        chunk
-        and chunk.doc_id == document.doc_id
-        and chunk.page_start <= citation.page <= chunk.page_end
-        and quote_matches(citation.quote, chunk.text)
+    if chunk is None or chunk.doc_id != document.doc_id:
+        return None
+
+    source = _source_excerpt(document, chunk)
+    if source is None:
+        return None
+    page, quote = source
+    return Citation(chunk_id=chunk.chunk_id, quote=quote, page=page)
+
+
+def _source_excerpt(document: ParsedDocument, chunk: Chunk) -> tuple[int, str] | None:
+    """Find a deterministic verbatim page span also present in ``chunk``.
+
+    Chunks can span pages and normalize paragraph whitespace, so direct string
+    slicing is not reliable. We instead find the longest contiguous sequence of
+    normalized word tokens shared by each covered source page and the chunk,
+    then return the corresponding characters from the original page. Ties are
+    resolved by page order and earliest source position.
+    """
+    chunk_tokens = _tokens(chunk.text)
+    if not chunk_tokens:
+        return None
+
+    best: tuple[int, int, int, str] | None = None
+    for page in document.pages:
+        if not chunk.page_start <= page.number <= chunk.page_end:
+            continue
+        match = _longest_common_token_span(page.text, chunk_tokens)
+        if match is None:
+            continue
+        token_count, start, end = match
+        quote = page.text[start:end].strip()
+        if not is_substantive_quote(quote):
+            continue
+        candidate = (token_count, -page.number, -start, quote)
+        if best is None or candidate[:3] > best[:3]:
+            best = candidate
+
+    if best is None:
+        return None
+    return -best[1], best[3]
+
+
+@dataclass(frozen=True)
+class _Token:
+    canonical: str
+    start: int
+    end: int
+
+
+def _tokens(text: str) -> list[_Token]:
+    return [
+        _Token(normalize_text(match.group()), match.start(), match.end())
+        for match in re.finditer(r"\w+", text, flags=re.UNICODE)
+    ]
+
+
+def _longest_common_token_span(
+    page_text: str, chunk_tokens: list[_Token]
+) -> tuple[int, int, int] | None:
+    """Return ``(word_count, start, end)`` for the best shared token run."""
+    page_tokens = _tokens(page_text)
+    if not page_tokens:
+        return None
+
+    previous = [0] * (len(chunk_tokens) + 1)
+    best_length = 0
+    best_end = 0
+    for page_index, page_token in enumerate(page_tokens, start=1):
+        current = [0] * (len(chunk_tokens) + 1)
+        for chunk_index, chunk_token in enumerate(chunk_tokens, start=1):
+            if page_token.canonical == chunk_token.canonical:
+                current[chunk_index] = previous[chunk_index - 1] + 1
+                if current[chunk_index] > best_length:
+                    best_length = current[chunk_index]
+                    best_end = page_index
+        previous = current
+
+    if best_length == 0:
+        return None
+    selected_length = min(best_length, MAX_RECONSTRUCTED_QUOTE_WORDS)
+    start_index = best_end - best_length
+    end_index = start_index + selected_length - 1
+    return (
+        selected_length,
+        page_tokens[start_index].start,
+        page_tokens[end_index].end,
     )
 
 

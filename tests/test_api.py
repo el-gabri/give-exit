@@ -64,6 +64,17 @@ async def _wait_done(client: httpx.AsyncClient, job_id: str, timeout: float = 15
     raise TimeoutError("job did not finish in time")
 
 
+class _ApiGateGraph:
+    def __init__(self) -> None:
+        self.started = asyncio.Event()
+        self.release = asyncio.Event()
+
+    async def astream(self, state, stream_mode: str = "values"):
+        self.started.set()
+        yield {"document": state.document.model_dump()}
+        await self.release.wait()
+
+
 async def test_health(client: httpx.AsyncClient) -> None:
     response = await client.get("/health")
     assert response.status_code == 200
@@ -78,22 +89,24 @@ async def test_full_analysis_lifecycle(client: httpx.AsyncClient) -> None:
 
     # report not ready yet -> 409 (or already done if very fast; poll first)
     status = await _wait_done(client, job_id)
-    assert status["state"] == "succeeded"
+    assert status["state"] == "partial"
     assert all(s["state"] == "done" for s in status["stages"])
     assert [s["name"] for s in status["stages"]][0] == "security_scan"
 
     report_response = await client.get(f"/analyses/{job_id}/report")
     assert report_response.status_code == 200
     report = report_response.json()
+    assert report["evidence_quality"]["status"] == "human_review_required"
     assert report["metrics"]["agents_run"] == 7
     assert report["ai_reasoning"].startswith("Como esta analise")
-    assert report["metrics"]["retrieval_queries"] == 19
+    assert report["metrics"]["retrieval_queries"] == 22
 
     retrieval_response = await client.get(f"/analyses/{job_id}/retrievals")
     assert retrieval_response.status_code == 200
     retrievals = retrieval_response.json()
-    assert len(retrievals) == 19
+    assert len(retrievals) == 22
     assert {item["agent"] for item in retrievals} == {
+        "classifier",
         "entity_extraction",
         "legal_analysis",
         "risk_assessment",
@@ -130,10 +143,54 @@ async def test_full_analysis_lifecycle(client: httpx.AsyncClient) -> None:
     assert runs[0]["run_id"] == job_id
     persisted = await client.get(f"/runs/{job_id}/retrievals")
     assert persisted.status_code == 200
-    assert persisted.json() == retrievals
+    persisted_retrievals = persisted.json()
+    assert len(persisted_retrievals) == len(retrievals)
+    for durable, live in zip(persisted_retrievals, retrievals, strict=True):
+        assert durable["query"] == f"[QUERY_REDACTED:{live['query_sha256'][:12]}]"
+        assert {key: value for key, value in durable.items() if key != "query"} == {
+            key: value for key, value in live.items() if key != "query"
+        }
     totals = (await client.get("/runs/totals")).json()
     assert totals["runs"] == 1
-    assert totals["failures"] == 0
+    assert totals["failures"] == 1
+
+
+async def test_analysis_capacity_returns_retryable_503(tmp_path: Path) -> None:
+    settings = Settings(
+        llm_provider=LLMProvider.MOCK,
+        vector_store=VectorStoreBackend.MEMORY,
+        data_dir=tmp_path / "data",
+        max_concurrent_jobs=1,
+        max_queued_jobs=0,
+        _env_file=None,
+    )
+    app = create_app(settings)
+    graph = _ApiGateGraph()
+    async with app.router.lifespan_context(app):
+        app.state.job_manager._graph = graph
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(
+            transport=transport, base_url="http://test"
+        ) as local_client:
+            first = await local_client.post(
+                "/analyses",
+                files={"file": ("first.pdf", _pdf_bytes(), "application/pdf")},
+            )
+            assert first.status_code == 202
+            await asyncio.wait_for(graph.started.wait(), timeout=2)
+
+            overloaded = await local_client.post(
+                "/analyses",
+                files={"file": ("second.pdf", _pdf_bytes(), "application/pdf")},
+            )
+            assert overloaded.status_code == 503
+            assert overloaded.headers["retry-after"] == "5"
+            assert "capacity is full" in overloaded.json()["detail"]
+
+            graph.release.set()
+            assert (
+                await _wait_done(local_client, first.json()["job_id"])
+            )["state"] == "failed"
 
 
 async def test_rejects_non_pdf_upload(client: httpx.AsyncClient) -> None:
@@ -241,16 +298,17 @@ async def test_approved_review_resumes_the_analysis(client: httpx.AsyncClient) -
         json={"approved": True, "reviewer": "dra.ana", "comment": "Falso positivo."},
     )
     assert decision.status_code == 200
-    assert decision.json()["state"] == "running"
+    assert decision.json()["state"] == "queued"
 
     status = await _wait_done(client, job_id)
-    assert status["state"] == "succeeded"
+    assert status["state"] == "partial"
     assert status["review"]["approved"] is True
     assert status["review"]["reviewer"] == "dra.ana"
     stages = {stage["name"]: stage["state"] for stage in status["stages"]}
     assert stages["classify"] == "done"
 
     report = (await client.get(f"/analyses/{job_id}/report")).json()
+    assert report["evidence_quality"]["status"] == "human_review_required"
     assert report["classification"] is not None
     assert any("revisao humana" in warning for warning in report["warnings"])
     # The flagged excerpt stays masked even after approval.
@@ -291,8 +349,19 @@ async def test_review_requires_a_halted_job(client: httpx.AsyncClient) -> None:
     )
     job_id = response.json()["job_id"]
     status = await _wait_done(client, job_id)
-    assert status["state"] == "succeeded"
+    assert status["state"] == "partial"
     assert (await client.post(f"/analyses/{job_id}/review", json=payload)).status_code == 409
+
+
+async def test_review_rejects_whitespace_only_reviewer_at_request_boundary(
+    client: httpx.AsyncClient,
+) -> None:
+    response = await client.post(
+        "/analyses/nope/review",
+        json={"approved": True, "reviewer": "   "},
+    )
+
+    assert response.status_code == 422
 
 
 async def test_unknown_job_is_404(client: httpx.AsyncClient) -> None:

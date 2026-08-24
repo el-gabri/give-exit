@@ -28,7 +28,7 @@ from app.llm.factory import create_llm_client
 from app.observability.store import RunStore
 from app.orchestration.graph import build_analysis_graph
 from app.rag.factory import create_embedding_client, create_rag_pipeline, create_reranker
-from app.security import PromptInjectionDetector
+from app.security import PromptInjectionDetector, TelemetryRedactor
 from app.services.analysis import create_datajud_client
 
 
@@ -52,8 +52,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             embedder=embedder,
             reranker=reranker,
         )
+        telemetry_redactor = TelemetryRedactor(settings.telemetry_pseudonym_key)
         ingestion = DocumentIngestionService(
-            ocr_engine=create_default_ocr_engine(), max_pages=settings.max_document_pages
+            ocr_engine=create_default_ocr_engine(),
+            max_pages=settings.max_document_pages,
+            telemetry_redactor=telemetry_redactor,
         )
         prompt_injection_detector = PromptInjectionDetector(
             llm,
@@ -61,14 +64,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             strict_max_chars=settings.prompt_injection_strict_max_chars,
             strict_max_batches=settings.prompt_injection_strict_max_batches,
         )
-        run_store = RunStore(settings.data_dir / "runs.jsonl")
+        run_store = RunStore(
+            settings.data_dir / "runs.jsonl",
+            telemetry_redactor=telemetry_redactor,
+        )
         app.state.run_store = run_store
         app.state.job_manager = AnalysisJobManager(
             ingestion=ingestion,
             graph=build_analysis_graph(
                 llm,
                 rag,
-                create_datajud_client(settings),
+                create_datajud_client(settings, telemetry_redactor),
                 prompt_injection_detector=prompt_injection_detector,
             ),
             run_store=run_store,
@@ -77,6 +83,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             rag=rag,
             retain_index=settings.retain_index,
             job_timeout_seconds=settings.job_timeout_seconds,
+            max_concurrent_jobs=settings.max_concurrent_jobs,
+            max_queued_jobs=settings.max_queued_jobs,
+            max_review_required_jobs=settings.max_review_required_jobs,
+            review_required_ttl_seconds=settings.review_required_ttl_seconds,
+            telemetry_redactor=telemetry_redactor,
         )
         app.state.consumer_service = ConsumerCaseService(
             ingestion=ingestion,

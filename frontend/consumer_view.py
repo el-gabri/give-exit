@@ -66,10 +66,10 @@ CONSUMER_STATE_KEYS = (
 )
 
 
-def render_consumer_app(api_url: str) -> None:
+def render_consumer_app(api_url: str, api_key: str | None = None) -> None:
     """Render the complete consumer journey without exposing business history."""
     _initialize_state()
-    client = ConsumerApiClient(api_url)
+    client = ConsumerApiClient(api_url, api_key=api_key)
     connected = _render_sidebar(client, api_url)
 
     st.title("Assistente para reclamações")
@@ -1005,32 +1005,6 @@ def _render_settlement_scenario(scenario: dict[str, Any]) -> None:
         st.info("Não foi calculado um cenário financeiro para este caso.")
         return
 
-    probability_low = _number(
-        scenario,
-        "exploratory_success_probability_low",
-        "exploratory_weight_low",
-        "success_probability_low",
-        "probability_low",
-    )
-    probability_high = _number(
-        scenario,
-        "exploratory_success_probability_high",
-        "exploratory_weight_high",
-        "success_probability_high",
-        "probability_high",
-    )
-    expected_low = _number(
-        scenario,
-        "illustrative_expected_value_low",
-        "expected_value_low",
-        "ev_low",
-    )
-    expected_high = _number(
-        scenario,
-        "illustrative_expected_value_high",
-        "expected_value_high",
-        "ev_high",
-    )
     proposed = _number(
         scenario,
         "public_proposal_amount",
@@ -1047,18 +1021,6 @@ def _render_settlement_scenario(scenario: dict[str, Any]) -> None:
     downside = _number(scenario, "downside_cost_amount")
 
     with st.container(horizontal=True):
-        if probability_low is not None or probability_high is not None:
-            st.metric(
-                "Pesos exploratórios",
-                _format_probability_range(probability_low, probability_high),
-                border=True,
-            )
-        if expected_low is not None or expected_high is not None:
-            st.metric(
-                "Valor esperado",
-                _format_currency_range(expected_low, expected_high),
-                border=True,
-            )
         if proposed is not None:
             st.metric("Proposta inicial", _format_brl(proposed), border=True)
         if floor is not None:
@@ -1068,9 +1030,8 @@ def _render_settlement_scenario(scenario: dict[str, Any]) -> None:
         st.caption(f"Custo explícito informado para o cenário sem acordo: {_format_brl(downside)}.")
 
     st.warning(
-        "Esses pesos não são probabilidades jurídicas calibradas. O resultado é um cenário de "
-        "negociação baseado nos valores confirmados, na completude do relato e nas "
-        "evidências disponíveis."
+        "O cenário usa somente valores confirmados e acréscimos legais explicitamente "
+        "condicionados. Não calcula probabilidade de êxito, valor esperado ou indenização."
     )
     amount_rows = []
     for label, key in (
@@ -1158,6 +1119,13 @@ def _render_consumer_audit(notice: dict[str, Any]) -> None:
     release = notice.get("corpus_release_id")
     if release:
         st.caption(f"Versão da base legal: `{release}`")
+    policy_version = notice.get("legal_ground_policy_version")
+    policy_review = notice.get("legal_ground_policy_review_status")
+    if policy_version:
+        st.caption(
+            f"Política determinística de elegibilidade: `{policy_version}` · "
+            f"revisão: `{policy_review or 'não informada'}`"
+        )
 
     rows = _retrieval_rows(notice.get("retrievals") or [])
     if rows:
@@ -1347,23 +1315,3 @@ def _number(mapping: dict[str, Any], *keys: str) -> float | None:
 def _format_brl(value: float) -> str:
     formatted = f"{value:,.2f}"
     return "R$ " + formatted.replace(",", "_").replace(".", ",").replace("_", ".")
-
-
-def _format_currency_range(low: float | None, high: float | None) -> str:
-    if low is None:
-        return _format_brl(high or 0.0)
-    if high is None or high == low:
-        return _format_brl(low)
-    return f"{_format_brl(low)} – {_format_brl(high)}"
-
-
-def _format_probability_range(low: float | None, high: float | None) -> str:
-    def percentage(value: float) -> str:
-        normalized = value / 100 if value > 1 else value
-        return f"{normalized:.0%}"
-
-    if low is None:
-        return percentage(high or 0.0)
-    if high is None or high == low:
-        return percentage(low)
-    return f"{percentage(low)} – {percentage(high)}"

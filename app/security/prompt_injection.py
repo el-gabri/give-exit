@@ -392,7 +392,7 @@ class PromptInjectionDetector:
                 semantic_meta = _aggregate_metadata(semantic_metadata)
                 logger.warning(
                     "prompt_injection_semantic_review_failed",
-                    error=f"{type(exc).__name__}: {exc}",
+                    error_type=type(exc).__name__,
                 )
                 if self._mode is PromptInjectionScanMode.STRICT:
                     scan_complete = False

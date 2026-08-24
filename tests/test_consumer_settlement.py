@@ -15,8 +15,6 @@ def test_scenario_uses_only_confirmed_loss_and_conditional_legal_increment() -> 
             direct_loss_amount=Decimal("100"),
             improper_payment_amount=Decimal("50"),
             article_42_double_repayment_supported=True,
-            evidence_strength=Decimal("0.8"),
-            factual_completeness=Decimal("0.75"),
         )
     )
 
@@ -25,10 +23,6 @@ def test_scenario_uses_only_confirmed_loss_and_conditional_legal_increment() -> 
     assert scenario.conditional_article_42_increment_amount == Decimal("50.00")
     assert scenario.low_outcome_value == Decimal("100.00")
     assert scenario.high_outcome_value == Decimal("150.00")
-    assert scenario.exploratory_weight_low == Decimal("0.5800")
-    assert scenario.exploratory_weight_high == Decimal("0.7800")
-    assert scenario.illustrative_expected_value_low == Decimal("58.00")
-    assert scenario.illustrative_expected_value_high == Decimal("117.00")
     assert scenario.private_reservation_amount == Decimal("100.00")
     assert scenario.public_proposal_amount == Decimal("150.00")
     assert [component.kind for component in scenario.components] == [
@@ -52,20 +46,18 @@ def test_article_42_increment_is_excluded_without_explicit_support() -> None:
     assert "não inclui devolução em dobro" in scenario.article_42_assumption.lower()
 
 
-def test_explicit_unsuccessful_scenario_cost_is_part_of_expected_value() -> None:
+def test_explicit_unsuccessful_scenario_cost_is_reported_without_invented_weight() -> None:
     scenario = SettlementCalculator().calculate(
         SettlementInputs(
             direct_loss_amount=Decimal("100"),
             downside_cost_amount=Decimal("20"),
-            evidence_strength=Decimal("0.5"),
-            factual_completeness=Decimal("0.5"),
         )
     )
 
     assert scenario.downside_cost_amount == Decimal("20.00")
     assert scenario.unsuccessful_outcome_value == Decimal("-20.00")
-    assert scenario.illustrative_expected_value_low == Decimal("31.00")
-    assert scenario.illustrative_expected_value_high == Decimal("55.00")
+    assert "weight" not in scenario.model_dump()
+    assert "expected" not in " ".join(scenario.model_dump().keys())
 
 
 def test_article_42_uses_only_amount_actually_paid_as_increment() -> None:
@@ -103,14 +95,15 @@ def test_arbitrary_public_and_private_overrides_are_rejected() -> None:
         )
 
 
-def test_scenario_never_labels_exploratory_weights_as_predicted_odds() -> None:
+def test_scenario_does_not_calculate_predicted_odds_or_expected_value() -> None:
     scenario = SettlementCalculator().calculate(SettlementInputs(direct_loss_amount=Decimal("100")))
 
     assert scenario.calibrated is False
     assert scenario.is_legal_outcome_prediction is False
     joined_caveats = " ".join(scenario.caveats).lower()
     assert "não estima chance de vitória" in joined_caveats
-    assert "não foram treinados nem calibrados" in joined_caveats
+    assert "nenhum peso" in joined_caveats
+    assert "valor esperado" in joined_caveats
 
 
 def test_improper_payment_must_be_part_of_direct_loss() -> None:

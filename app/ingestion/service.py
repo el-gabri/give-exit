@@ -19,6 +19,7 @@ from app.ingestion import pdf_reader
 from app.ingestion.language import detect_language
 from app.ingestion.ocr import OcrEngine
 from app.schemas.document import DocumentPage, ExtractionMethod, ParsedDocument
+from app.security.telemetry import TelemetryRedactor
 
 logger = get_logger(__name__)
 SUPPORTED_IMAGE_SUFFIXES = frozenset({".png", ".jpg", ".jpeg"})
@@ -52,9 +53,15 @@ def _has_usable_ocr_text(text: str) -> bool:
 class DocumentIngestionService:
     """Turn an uploaded PDF or image into a ParsedDocument."""
 
-    def __init__(self, ocr_engine: OcrEngine | None = None, max_pages: int | None = None) -> None:
+    def __init__(
+        self,
+        ocr_engine: OcrEngine | None = None,
+        max_pages: int | None = None,
+        telemetry_redactor: TelemetryRedactor | None = None,
+    ) -> None:
         self._ocr_engine = ocr_engine
         self._max_pages = max_pages
+        self._telemetry = telemetry_redactor or TelemetryRedactor()
 
     async def ingest(self, path: Path, *, require_text: bool = False) -> ParsedDocument:
         """Ingest a document, optionally rejecting incomplete OCR evidence.
@@ -66,6 +73,7 @@ class DocumentIngestionService:
         return await asyncio.to_thread(self._ingest_sync, path, require_text=require_text)
 
     def _ingest_sync(self, path: Path, *, require_text: bool = False) -> ParsedDocument:
+        file_ref = self._telemetry.filename_reference(path.name)
         is_image = path.suffix.casefold() in SUPPORTED_IMAGE_SUFFIXES
         if is_image:
             pdf_reader.image_dimensions(path, max_pixels=MAX_IMAGE_PIXELS)
@@ -79,7 +87,7 @@ class DocumentIngestionService:
         if extraction.needs_ocr:
             if self._ocr_engine is not None:
                 ocr_indexes = extraction.ocr_page_indexes
-                logger.info("ocr_started", file=path.name, pages=len(ocr_indexes))
+                logger.info("ocr_started", file_ref=file_ref, pages=len(ocr_indexes))
                 images = (
                     [path.read_bytes()]
                     if is_image
@@ -99,7 +107,12 @@ class DocumentIngestionService:
                             f"OCR failed on page {index + 1}; extracted text may be incomplete."
                         )
                         logger.warning(
-                            "ocr_page_failed", file=path.name, page=index + 1, error=str(exc)
+                            "ocr_page_failed",
+                            file_ref=file_ref,
+                            page=index + 1,
+                            error=self._telemetry.redact_text(
+                                exc, sensitive_values=(str(path), path.name)
+                            ),
                         )
                 if successful_pages:
                     method = (
@@ -113,7 +126,7 @@ class DocumentIngestionService:
                     f"{len(extraction.ocr_page_indexes)} page(s) appear to be scanned but "
                     "no OCR engine is available; extracted text is likely incomplete."
                 )
-                logger.warning("ocr_needed_but_unavailable", file=path.name)
+                logger.warning("ocr_needed_but_unavailable", file_ref=file_ref)
 
         if (is_image or require_text) and (
             unresolved_ocr_indexes or not any(text.strip() for text in page_texts)
@@ -139,7 +152,7 @@ class DocumentIngestionService:
         )
         logger.info(
             "document_ingested",
-            file=path.name,
+            file_ref=file_ref,
             doc_id=document.doc_id,
             pages=document.page_count,
             language=document.language,

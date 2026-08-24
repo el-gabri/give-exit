@@ -21,8 +21,9 @@ def _facts(**updates: object) -> ConsumerCaseFacts:
 def test_legal_queries_are_driven_by_consumer_narrative() -> None:
     queries = build_legal_queries(_facts())
 
-    assert len(queries) == 2
-    assert all("cobrou duas vezes" in query for query in queries)
+    assert len(queries) == 3
+    assert all("cobrou duas vezes" in query for query in queries[:2])
+    assert "cobrou duas vezes" not in queries[2]
     assert any("artigo 42" in query for query in queries)
     assert any("devolução" in query for query in queries)
 
@@ -45,8 +46,9 @@ def test_long_complaint_does_not_remove_resolution_or_category_expansion() -> No
 
     queries = build_legal_queries(facts)
 
-    assert all("devolução integral comprovada" in query for query in queries)
+    assert all("devolução integral comprovada" in query for query in queries[:2])
     assert "artigo 42" in queries[1]
+    assert "artigo 42" in queries[2]
 
 
 def test_scope_gate_abstains_only_on_strong_non_consumer_signals() -> None:

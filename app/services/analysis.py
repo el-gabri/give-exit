@@ -16,15 +16,21 @@ from app.llm.factory import create_llm_client
 from app.orchestration.graph import build_analysis_graph
 from app.orchestration.state import AnalysisState
 from app.rag.factory import create_rag_pipeline
-from app.security import PromptInjectionDetector
+from app.security import PromptInjectionDetector, TelemetryRedactor
 
 
-def create_datajud_client(settings: Settings) -> DataJudClient | None:
+def create_datajud_client(
+    settings: Settings,
+    telemetry_redactor: TelemetryRedactor | None = None,
+) -> DataJudClient | None:
     """DataJud is optional: no key -> enrichment is skipped gracefully."""
     if not settings.datajud_api_key:
         return None
+    redactor = telemetry_redactor or TelemetryRedactor(settings.telemetry_pseudonym_key)
     return DataJudClient(
-        base_url=settings.datajud_base_url, api_key=settings.datajud_api_key
+        base_url=settings.datajud_base_url,
+        api_key=settings.datajud_api_key,
+        telemetry_redactor=redactor,
     )
 
 logger = get_logger(__name__)
@@ -52,12 +58,15 @@ class LawsuitAnalysisService:
 
 def create_analysis_service(settings: Settings) -> LawsuitAnalysisService:
     """Composition root for the full analysis pipeline."""
+    telemetry_redactor = TelemetryRedactor(settings.telemetry_pseudonym_key)
     ingestion = DocumentIngestionService(
-        ocr_engine=create_default_ocr_engine(), max_pages=settings.max_document_pages
+        ocr_engine=create_default_ocr_engine(),
+        max_pages=settings.max_document_pages,
+        telemetry_redactor=telemetry_redactor,
     )
     llm = create_llm_client(settings)
     rag = create_rag_pipeline(settings)
-    datajud = create_datajud_client(settings)
+    datajud = create_datajud_client(settings, telemetry_redactor)
     return LawsuitAnalysisService(
         ingestion=ingestion,
         graph=build_analysis_graph(

@@ -15,6 +15,7 @@ import httpx
 from app.core.logging import get_logger
 from app.enrichment.cnj import normalize_case_number, tribunal_alias
 from app.schemas.enrichment import DataJudCaseInfo, DataJudMovement
+from app.security.telemetry import TelemetryRedactor
 
 logger = get_logger(__name__)
 
@@ -28,11 +29,13 @@ class DataJudClient:
         api_key: str,
         timeout_seconds: float = 10.0,
         transport: httpx.AsyncBaseTransport | None = None,
+        telemetry_redactor: TelemetryRedactor | None = None,
     ) -> None:
         self._base_url = base_url.rstrip("/")
         self._headers = {"Authorization": f"APIKey {api_key}"}
         self._timeout = timeout_seconds
         self._transport = transport  # injectable for tests
+        self._telemetry = telemetry_redactor or TelemetryRedactor()
 
     async def lookup(self, case_number: str) -> tuple[str | None, DataJudCaseInfo | None]:
         """Return (tribunal_alias, case info) - info is None when not found."""
@@ -51,12 +54,18 @@ class DataJudClient:
             body = response.json()
 
         hits = body.get("hits", {}).get("hits", [])
+        case_ref = self._telemetry.case_reference(normalized)
         if not hits:
-            logger.info("datajud_not_found", case=normalized, alias=alias)
+            logger.info("datajud_not_found", case_ref=case_ref, alias=alias)
             return alias, None
         source = hits[0].get("_source", {})
         info = _parse_source(normalized, source)
-        logger.info("datajud_found", case=normalized, alias=alias, classe=info.court_class)
+        logger.info(
+            "datajud_found",
+            case_ref=case_ref,
+            alias=alias,
+            classe=info.court_class,
+        )
         return alias, info
 
 

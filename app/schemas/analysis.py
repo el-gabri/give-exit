@@ -36,14 +36,21 @@ class TimelineEvent(BaseModel):
 
 
 class ClaimAnalysis(BaseModel):
-    """One claim (pedido) and its legal assessment."""
+    """One claim (pedido) and a preliminary document-support assessment."""
 
     claim: str = Field(description="What is being requested")
     legal_basis: str | None = Field(
-        default=None, description="Statute/article/sumula invoked for this claim"
+        default=None,
+        description=(
+            "Statute/article/sumula alleged in the filing; not independently "
+            "validated against an authoritative legal corpus"
+        ),
     )
     assessment: ConfidentConclusion = Field(
-        description="How well-founded the claim appears, with reasoning and citations"
+        description=(
+            "How completely the filing appears to support the claim, with reasoning "
+            "and citations; never an outcome prediction"
+        )
     )
 
 

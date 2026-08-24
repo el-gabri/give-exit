@@ -454,8 +454,6 @@ class SettlementInputs(BaseModel):
         description="Explicit cost assigned to the unsuccessful scenario",
     )
     article_42_double_repayment_supported: bool = False
-    evidence_strength: Decimal = Field(default=Decimal("0.5"), ge=0, le=1)
-    factual_completeness: Decimal = Field(default=Decimal("0.5"), ge=0, le=1)
     direct_loss_sources: list[SettlementComponentSource] = Field(default_factory=list)
     improper_payment_sources: list[SettlementComponentSource] = Field(default_factory=list)
     downside_cost_sources: list[SettlementComponentSource] = Field(default_factory=list)
@@ -468,7 +466,7 @@ class SettlementInputs(BaseModel):
 
 
 class SettlementScenario(BaseModel):
-    """Illustrative negotiation math; weights are not predicted legal odds."""
+    """Traceable negotiation amounts without predicted legal odds."""
 
     methodology_version: str
     calibrated: bool = False
@@ -480,10 +478,6 @@ class SettlementScenario(BaseModel):
     conditional_article_42_increment_amount: Decimal = Field(ge=0)
     low_outcome_value: Decimal = Field(ge=0)
     high_outcome_value: Decimal = Field(ge=0)
-    exploratory_weight_low: Decimal = Field(ge=0, le=1)
-    exploratory_weight_high: Decimal = Field(ge=0, le=1)
-    illustrative_expected_value_low: Decimal
-    illustrative_expected_value_high: Decimal
     public_proposal_amount: Decimal | None = Field(default=None, ge=0)
     private_reservation_amount: Decimal | None = Field(default=None, ge=0)
     article_42_assumption: str
@@ -525,5 +519,9 @@ class ConsumerNotice(BaseModel):
     full_text: str
     corpus_release_id: str
     corpus_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    legal_ground_policy_version: str = Field(min_length=1)
+    legal_ground_policy_review_status: str = Field(
+        pattern=r"^(requires_legal_review|legally_reviewed)$"
+    )
     retrievals: list[RetrievalTrace] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)

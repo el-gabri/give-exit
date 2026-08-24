@@ -3,13 +3,21 @@
 The composer is intentionally NOT an LLM agent. Agents produce typed,
 cited conclusions; this module assembles them into the final report with
 plain code. The last mile of a legal product must not be able to
-hallucinate: aggregate confidence is computed, the AI-reasoning section is
-built from real traces, and missing information comes from the extraction
-schema itself.
+introduce additional generated claims: aggregate confidence is computed, the
+AI-reasoning section is built from real traces, and missing information comes
+from the extraction schema itself. Upstream model claims still require the
+citation gate and human legal review.
 """
 
+from datetime import timedelta
+
 from app.schemas.common import Citation, ConfidentConclusion
-from app.schemas.report import LitigationReport, RunMetrics
+from app.schemas.report import (
+    EvidenceQualityGate,
+    EvidenceQualityStatus,
+    LitigationReport,
+    RunMetrics,
+)
 from app.schemas.security import PromptInjectionAssessment, SecurityRiskLevel
 from app.schemas.trace import AgentStatus, AgentTrace
 from app.services.citations import validate_report_citations
@@ -103,7 +111,70 @@ def compose_report(state: object) -> LitigationReport:
             f"{citation_result.conclusions_without_verified_citation}/"
             f"{citation_result.total_conclusions} conclusao(oes) nao possuem citacao verificada."
         )
+    report.evidence_quality = _evidence_quality_gate(
+        total_conclusions=citation_result.total_conclusions,
+        conclusions_without_citation=(
+            citation_result.conclusions_without_verified_citation
+        ),
+        verified_citations=citation_result.verified_citations,
+        rejected_citations=citation_result.rejected_citations,
+        retrieval_coverage=report.metrics.citation_retrieval_coverage,
+    )
     return report
+
+
+def _evidence_quality_gate(
+    *,
+    total_conclusions: int,
+    conclusions_without_citation: int,
+    verified_citations: int,
+    rejected_citations: int,
+    retrieval_coverage: float | None,
+) -> EvidenceQualityGate:
+    """Build a transparent source-integrity verdict from deterministic checks."""
+
+    if total_conclusions == 0:
+        return EvidenceQualityGate(
+            status=EvidenceQualityStatus.NOT_APPLICABLE,
+            verified_source_citations=verified_citations,
+            rejected_source_citations=rejected_citations,
+            reasons=["Nenhuma conclusão automatizada foi produzida para avaliar."],
+        )
+
+    reasons: list[str] = []
+    if conclusions_without_citation:
+        reasons.append(
+            f"{conclusions_without_citation} conclusão(ões) sem citação reconstruída."
+        )
+    if rejected_citations:
+        reasons.append(
+            f"{rejected_citations} referência(s) de evidência não puderam ser resolvidas."
+        )
+    if retrieval_coverage is not None and retrieval_coverage < 1.0:
+        reasons.append(
+            "Nem todas as citações apontam para trechos registrados no contexto do agente."
+        )
+
+    status = (
+        EvidenceQualityStatus.HUMAN_REVIEW_REQUIRED
+        if reasons
+        else EvidenceQualityStatus.PASSED
+    )
+    if not reasons:
+        reasons.append(
+            "Todas as conclusões têm fonte reconstruída e rastreável; "
+            "nexo semântico e correção jurídica ainda exigem revisão humana."
+        )
+    return EvidenceQualityGate(
+        status=status,
+        total_conclusions=total_conclusions,
+        conclusions_with_traceable_citations=(
+            total_conclusions - conclusions_without_citation
+        ),
+        verified_source_citations=verified_citations,
+        rejected_source_citations=rejected_citations,
+        reasons=reasons,
+    )
 
 
 def _citations_by_agent(report: LitigationReport) -> list[tuple[str, Citation]]:
@@ -205,8 +276,19 @@ def _build_metrics(traces: list[AgentTrace]) -> RunMetrics:
         retrieval.batch_id: retrieval.batch_duration_ms for retrieval in retrievals
     }
     unpriced = [m for m in metered if m.cost_usd is None]
+    total_duration_ms = 0.0
+    if traces:
+        started_at = min(trace.started_at for trace in traces)
+        finished_at = max(
+            trace.started_at + timedelta(milliseconds=trace.duration_ms)
+            for trace in traces
+        )
+        total_duration_ms = max(
+            0.0,
+            (finished_at - started_at).total_seconds() * 1000,
+        )
     return RunMetrics(
-        total_duration_ms=round(sum(t.duration_ms for t in traces), 1),
+        total_duration_ms=round(total_duration_ms, 1),
         total_tokens=sum(m.usage.total_tokens for m in metered),
         total_cost_usd=round(sum(m.cost_usd or 0.0 for m in metered), 6),
         unpriced_calls=len(unpriced),

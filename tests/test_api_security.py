@@ -8,7 +8,7 @@ import pytest
 
 from app.api.main import create_app
 from app.api.security import SlidingWindowRateLimiter
-from app.core.config import LLMProvider, Settings, VectorStoreBackend
+from app.core.config import DeploymentMode, LLMProvider, Settings, VectorStoreBackend
 
 
 def _pdf_bytes() -> bytes:
@@ -98,3 +98,18 @@ def test_sliding_window_recovers_after_the_window_passes() -> None:
 def test_zero_limit_disables_the_limiter() -> None:
     limiter = SlidingWindowRateLimiter(0)
     assert all(limiter.allow("client") for _ in range(50))
+
+
+def test_production_mode_requires_api_authentication(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="LITIGATION_API_AUTH_KEY"):
+        _settings(tmp_path, deployment_mode=DeploymentMode.PRODUCTION)
+
+
+def test_production_mode_accepts_configured_api_authentication(tmp_path: Path) -> None:
+    settings = _settings(
+        tmp_path,
+        deployment_mode=DeploymentMode.PRODUCTION,
+        api_auth_key="production-secret",
+    )
+
+    assert settings.deployment_mode is DeploymentMode.PRODUCTION

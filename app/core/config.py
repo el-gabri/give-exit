@@ -10,7 +10,7 @@ from enum import Enum
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -60,6 +60,13 @@ class PromptInjectionScanMode(str, Enum):
     RULES = "rules"
     BALANCED = "balanced"
     STRICT = "strict"
+
+
+class DeploymentMode(str, Enum):
+    """Runtime posture used to enforce deployment-only safety invariants."""
+
+    LOCAL = "local"
+    PRODUCTION = "production"
 
 
 class Settings(BaseSettings):
@@ -139,6 +146,7 @@ class Settings(BaseSettings):
     datajud_base_url: str = "https://api-publica.datajud.cnj.jus.br"
 
     # --- API ---
+    deployment_mode: DeploymentMode = DeploymentMode.LOCAL
     # Comma-separated list of browser origins allowed by CORS. The default
     # covers the local Streamlit frontend; production deployments override it.
     cors_allow_origins: str = "http://localhost:8501"
@@ -151,12 +159,37 @@ class Settings(BaseSettings):
     # Wall-clock budget for one analysis run, so an unresponsive provider
     # cannot leave a job running forever. 0 disables the deadline.
     job_timeout_seconds: float = Field(default=900.0, ge=0)
+    # Bound both provider/OCR concurrency and the number of accepted jobs
+    # waiting for a worker slot. Requests beyond this combined capacity fail
+    # explicitly with 503 instead of growing an unbounded task backlog.
+    max_concurrent_jobs: int = Field(default=4, ge=1)
+    max_queued_jobs: int = Field(default=16, ge=0)
+    # Halted jobs keep the complete document state in process so approved
+    # reviews can resume. Bound both their count and retention window.
+    max_review_required_jobs: int = Field(default=20, ge=1)
+    review_required_ttl_seconds: float = Field(default=86_400.0, gt=0)
 
     # --- Output ---
     report_language: str = "pt-BR"
 
     # --- Logging ---
     log_level: str = "INFO"
+    # Optional high-entropy HMAC key for privacy-safe telemetry references.
+    # Configure this through a secret manager when references must correlate
+    # across processes. If omitted, correlation is process-local by design.
+    telemetry_pseudonym_key: str | None = Field(default=None, repr=False)
+
+    @model_validator(mode="after")
+    def _production_requires_authentication(self) -> "Settings":
+        if (
+            self.deployment_mode is DeploymentMode.PRODUCTION
+            and not (self.api_auth_key or "").strip()
+        ):
+            raise ValueError(
+                "LITIGATION_API_AUTH_KEY is required when "
+                "LITIGATION_DEPLOYMENT_MODE=production"
+            )
+        return self
 
     @property
     def cors_origin_list(self) -> list[str]:

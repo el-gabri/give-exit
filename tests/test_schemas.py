@@ -1,15 +1,21 @@
 """Tests for domain schema behavior (not just field presence)."""
 
+import pytest
+
 from app.schemas.common import ConfidentConclusion
 from app.schemas.lawsuit import LawsuitExtraction, Party, PartyRole
 
 
-def test_confidence_is_clamped_not_rejected() -> None:
-    high = ConfidentConclusion(statement="s", confidence=1.7, reasoning="r")
-    low = ConfidentConclusion(statement="s", confidence=-0.2, reasoning="r")
-    assert high.confidence == 1.0
-    assert low.confidence == 0.0
-    assert high.confidence_pct == 100
+def test_confidence_outside_documented_range_is_rejected() -> None:
+    with pytest.raises(ValueError, match="confidence must be between"):
+        ConfidentConclusion(statement="s", confidence=1.7, reasoning="r")
+    with pytest.raises(ValueError, match="confidence must be between"):
+        ConfidentConclusion(statement="s", confidence=-0.2, reasoning="r")
+
+
+def test_valid_confidence_retains_percentage_view() -> None:
+    conclusion = ConfidentConclusion(statement="s", confidence=0.87, reasoning="r")
+    assert conclusion.confidence_pct == 87
 
 
 def test_missing_fields_reports_absent_information() -> None:

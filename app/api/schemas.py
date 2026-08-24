@@ -3,7 +3,7 @@
 from datetime import datetime
 from enum import Enum
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.schemas.review import HumanReviewDecision
 
@@ -52,6 +52,8 @@ class JobCreated(BaseModel):
 
 class ReviewRequest(BaseModel):
     """Reviewer decision for a job halted as review_required."""
+
+    model_config = ConfigDict(str_strip_whitespace=True)
 
     approved: bool
     reviewer: str = Field(min_length=1, max_length=200)

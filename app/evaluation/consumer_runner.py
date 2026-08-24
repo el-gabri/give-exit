@@ -48,7 +48,41 @@ _INACTIVE_STATUSES = {
 }
 _UNKNOWN_STATUSES = {"", "desconhecido", "unknown"}
 _UNIT_MARKERS = ("-caput", "-paragrafo-", "-inciso-", "-alinea-")
-QUERY_BUILDER_VERSION = "consumer-legal-two-query-v1"
+QUERY_BUILDER_VERSION = "consumer-legal-three-query-v2"
+
+
+def _threshold(raw: str) -> tuple[str, float]:
+    name, separator, value = raw.partition("=")
+    if not separator or not name.strip():
+        raise argparse.ArgumentTypeError(f"expected metric=value, got {raw!r}")
+    try:
+        return name.strip(), float(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(f"{value!r} is not a number") from exc
+
+
+def check_consumer_gates(
+    summary: EvaluationSummary,
+    *,
+    minimums: Sequence[tuple[str, float]] = (),
+    maximums: Sequence[tuple[str, float]] = (),
+) -> list[str]:
+    """Return deterministic regression-gate violations for a summary."""
+
+    violations: list[str] = []
+    for name, floor in minimums:
+        actual = summary.averages.get(name)
+        if actual is None:
+            violations.append(f"{name}: not produced by this run, cannot gate on it")
+        elif actual < floor:
+            violations.append(f"{name}: {actual:.3f} < required {floor:.3f}")
+    for name, ceiling in maximums:
+        actual = summary.averages.get(name)
+        if actual is None:
+            violations.append(f"{name}: not produced by this run, cannot gate on it")
+        elif actual > ceiling:
+            violations.append(f"{name}: {actual:.3f} > allowed {ceiling:.3f}")
+    return violations
 
 
 def _article_id_from_stable_id(stable_id: str) -> str:
@@ -331,7 +365,7 @@ class ConsumerLegalRetrievalEvaluator:
             corpus_release_id=corpus.release_id,
             corpus_sha256=corpus.corpus_sha256,
             query_builder_version=QUERY_BUILDER_VERSION,
-            queries_per_case=2,
+            queries_per_case=3,
             cutoffs=self._cutoffs,
             retrieval=retrieval,
         )
@@ -547,6 +581,24 @@ async def _cli() -> None:
         help="evaluate explicit abstention instead of running retrieval",
     )
     parser.add_argument("--output", help="optional JSON output path")
+    parser.add_argument(
+        "--min",
+        dest="minimums",
+        action="append",
+        default=[],
+        type=_threshold,
+        metavar="METRIC=VALUE",
+        help="fail if a metric average falls below VALUE (repeatable)",
+    )
+    parser.add_argument(
+        "--max",
+        dest="maximums",
+        action="append",
+        default=[],
+        type=_threshold,
+        metavar="METRIC=VALUE",
+        help="fail if a metric average rises above VALUE (repeatable)",
+    )
     args = parser.parse_args()
 
     if args.retriever and args.empty_baseline:
@@ -568,6 +620,16 @@ async def _cli() -> None:
         print(rendered)
     if summary.failed_case_count:
         raise SystemExit(2)
+    violations = check_consumer_gates(
+        summary,
+        minimums=args.minimums,
+        maximums=args.maximums,
+    )
+    if violations:
+        print("Consumer evaluation gate failures:")
+        for violation in violations:
+            print(f"  FAIL {violation}")
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":

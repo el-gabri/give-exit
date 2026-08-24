@@ -43,7 +43,10 @@ def _report(quotes: list[str]) -> LitigationReport:
                 statement="consumerista",
                 confidence=0.9,
                 reasoning="r",
-                citations=[Citation(quote=q) for q in quotes],
+                citations=[
+                    Citation(chunk_id=f"evaluation:{index}", quote=quote)
+                    for index, quote in enumerate(quotes)
+                ],
             ),
         ),
     )

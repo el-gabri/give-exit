@@ -135,6 +135,12 @@ def build_legal_queries_for_case(
             f"{narrative}. Localizar dispositivos legais diretamente aplicáveis."
         ),
         _bounded(f"{narrative}. {expansion}"),
+        # Keep one authority-focused query free from the long lay narrative.
+        # In the pinned offline benchmark this prevents generic terms in the
+        # complaint from drowning out explicit legal anchors such as arts. 18,
+        # 35, 42, 43 and 49.  The strategy is versioned by the evaluator, so a
+        # future wording change cannot silently move the reported baseline.
+        _bounded(expansion),
     ]
     return _unique_non_empty(queries)
 

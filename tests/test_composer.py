@@ -1,17 +1,20 @@
 """Tests for deterministic report composition and retrieval attribution."""
 
+from datetime import datetime, timedelta, timezone
+
 from app.orchestration.state import AnalysisState
 from app.schemas.analysis import LegalAnalysis
 from app.schemas.common import Citation, ConfidentConclusion
 from app.schemas.document import DocumentPage, ExtractionMethod, ParsedDocument
 from app.schemas.rag import Chunk
+from app.schemas.report import EvidenceQualityStatus
 from app.schemas.trace import (
     AgentStatus,
     AgentTrace,
     RetrievalTrace,
     RetrievedItemTrace,
 )
-from app.services.composer import compose_report
+from app.services.composer import _build_metrics, compose_report
 
 
 def _state_with_retrieval(*, retrieval_agent: str) -> AnalysisState:
@@ -91,6 +94,7 @@ def test_citation_retrieval_coverage_requires_the_producing_agent_context() -> N
     report = compose_report(_state_with_retrieval(retrieval_agent="risk_assessment"))
 
     assert report.metrics.citation_retrieval_coverage == 0.0
+    assert report.evidence_quality.status is EvidenceQualityStatus.HUMAN_REVIEW_REQUIRED
     assert any("rastreabilidade" in warning for warning in report.warnings)
 
 
@@ -98,4 +102,30 @@ def test_citation_retrieval_coverage_accepts_the_producing_agent_context() -> No
     report = compose_report(_state_with_retrieval(retrieval_agent="legal_analysis"))
 
     assert report.metrics.citation_retrieval_coverage == 1.0
+    assert report.evidence_quality.status is EvidenceQualityStatus.PASSED
+    assert report.evidence_quality.semantic_entailment_checked is False
+    assert report.evidence_quality.legal_correctness_checked is False
     assert not any("rastreabilidade" in warning for warning in report.warnings)
+
+
+def test_total_duration_is_wall_clock_span_for_overlapping_agents() -> None:
+    started_at = datetime(2026, 8, 24, tzinfo=timezone.utc)
+
+    metrics = _build_metrics(
+        [
+            AgentTrace(
+                agent="legal_analysis",
+                status=AgentStatus.SUCCESS,
+                started_at=started_at,
+                duration_ms=300.0,
+            ),
+            AgentTrace(
+                agent="risk_assessment",
+                status=AgentStatus.SUCCESS,
+                started_at=started_at + timedelta(milliseconds=100),
+                duration_ms=400.0,
+            ),
+        ]
+    )
+
+    assert metrics.total_duration_ms == 500.0

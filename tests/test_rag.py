@@ -1,6 +1,8 @@
 """Tests for chunking, embeddings, vector stores and retrieval."""
 
 import hashlib
+import sys
+from types import SimpleNamespace
 
 import pytest
 
@@ -11,7 +13,7 @@ from app.agents.context import (
 from app.rag.chunking import SectionAwareChunker, is_heading
 from app.rag.embeddings import MockEmbeddingClient
 from app.rag.pipeline import RagPipeline, RetrievalBatchError
-from app.rag.vector_store import InMemoryVectorStore, _cosine
+from app.rag.vector_store import ChromaVectorStore, InMemoryVectorStore, _cosine
 from app.schemas.document import DocumentPage, ExtractionMethod, ParsedDocument
 
 FACTS = (
@@ -40,6 +42,36 @@ def _petition() -> ParsedDocument:
         language="pt",
         extraction_method=ExtractionMethod.NATIVE_TEXT,
     )
+
+
+def test_chroma_adapter_is_embedded_and_disables_collection_embedding_functions(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    calls: dict[str, object] = {}
+    collection = object()
+
+    class FakeClient:
+        def get_or_create_collection(self, **kwargs):
+            calls.update(kwargs)
+            return collection
+
+    def persistent_client(*, path: str) -> FakeClient:
+        calls["path"] = path
+        return FakeClient()
+
+    # Deliberately expose no HttpClient: constructing the adapter would fail
+    # if a future refactor silently changed the accepted security boundary.
+    monkeypatch.setitem(
+        sys.modules,
+        "chromadb",
+        SimpleNamespace(PersistentClient=persistent_client),
+    )
+
+    store = ChromaVectorStore(tmp_path, collection_name="embedded-only")
+
+    assert store.index_name == "embedded-only"
+    assert calls["path"] == str(tmp_path)
+    assert calls["embedding_function"] is None
 
 
 def test_heading_detection() -> None:

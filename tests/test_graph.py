@@ -1,6 +1,7 @@
 """End-to-end tests of the analysis graph with mock providers (offline)."""
 
 
+from app.agents.classifier import CLASSIFICATION_QUERIES
 from app.core.config import PromptInjectionScanMode
 from app.llm.mock_client import MockLLMClient
 from app.orchestration.graph import build_analysis_graph
@@ -53,13 +54,14 @@ def _document() -> ParsedDocument:
 
 
 def _canned_responses() -> dict:
+    document = _document()
     classification = LawsuitClassification(
         lawsuit_type=LawsuitType.CONSUMER,
         conclusion=ConfidentConclusion(
             statement="Acao de natureza consumerista",
             confidence=0.92,
             reasoning="Cobranca indevida em relacao de consumo bancaria",
-            citations=[Citation(quote="cobrancas indevidas", page=1)],
+            citations=[Citation(chunk_id=f"{document.doc_id}:0000")],
         ),
         secondary_types=[LawsuitType.BANKING],
     )
@@ -183,17 +185,24 @@ async def test_graph_runs_end_to_end() -> None:
     assert report.metrics.agents_run == 7  # security + 5 LLM agents + enrichment
     assert report.datajud is not None and report.datajud.attempted is False
     assert report.metrics.total_tokens > 0
-    assert "classifier:v1.0" in report.metrics.prompt_versions
+    assert "classifier:v1.2" in report.metrics.prompt_versions
+    assert report.classification is not None
+    classifier_citation = report.classification.conclusion.citations[0]
+    assert classifier_citation.chunk_id == f"{report.doc_id}:0000"
+    assert classifier_citation.quote
+    assert classifier_citation.page == 1
+    assert report.metrics.citation_retrieval_coverage == 1.0
     retrievals = [
         retrieval for trace in report.traces for retrieval in trace.retrievals
     ]
     assert {retrieval.agent for retrieval in retrievals} == {
+        "classifier",
         "entity_extraction",
         "legal_analysis",
         "risk_assessment",
         "strategy",
     }
-    assert report.metrics.retrieval_queries == len(retrievals) == 19
+    assert report.metrics.retrieval_queries == len(retrievals) == 22
     assert report.metrics.retrieval_results > 0
     assert report.metrics.retrieval_unique_chunks > 0
     assert report.metrics.context_chunks > 0
@@ -209,6 +218,14 @@ async def test_graph_runs_end_to_end() -> None:
     )
     assert all(retrieval.agent_error is None for retrieval in retrievals)
     assert all(retrieval.prompt_version for retrieval in retrievals)
+    classifier_retrievals = [
+        retrieval for retrieval in retrievals if retrieval.agent == "classifier"
+    ]
+    assert any(
+        item.chunk_id == classifier_citation.chunk_id and item.included_in_context
+        for retrieval in classifier_retrievals
+        for item in retrieval.results
+    )
 
 
 async def test_graph_composes_partial_report_after_agent_failure() -> None:
@@ -227,6 +244,11 @@ async def test_graph_composes_partial_report_after_agent_failure() -> None:
     classifier_trace = next(t for t in state.traces if t.agent == "classifier")
     assert classifier_trace.status is AgentStatus.FAILED
     assert classifier_trace.error is not None
+    assert len(classifier_trace.retrievals) == len(CLASSIFICATION_QUERIES)
+    assert all(
+        retrieval.agent_status is AgentStatus.FAILED
+        for retrieval in classifier_trace.retrievals
+    )
 
 
 async def test_partial_report_when_one_branch_fails() -> None:
@@ -260,7 +282,7 @@ async def test_partial_report_when_one_branch_fails() -> None:
     )
     assert {
         retrieval.prompt_version for retrieval in risk_trace.retrievals
-    } == {"risk:v1.1"}
+    } == {"risk:v1.3"}
 
 
 async def test_retrieval_failure_preserves_all_attempts_in_failed_agent_trace() -> None:
@@ -272,7 +294,7 @@ async def test_retrieval_failure_preserves_all_attempts_in_failed_agent_trace() 
 
         async def query(self, vector, doc_id, k):  # type: ignore[override]
             self.query_calls += 1
-            if self.query_calls == 2 and not self.failed:
+            if self.query_calls == len(CLASSIFICATION_QUERIES) + 2 and not self.failed:
                 self.failed = True
                 raise RuntimeError("vector store timeout")
             return await super().query(vector, doc_id, k)

@@ -15,6 +15,7 @@ from app.evaluation.consumer_golden import load_consumer_legal_dataset
 from app.evaluation.consumer_retrievers import offline_hybrid_retriever
 from app.evaluation.consumer_runner import (
     ConsumerLegalRetrievalEvaluator,
+    check_consumer_gates,
     consumer_legal_metrics_at_k,
     normalize_consumer_retrieval_hit,
 )
@@ -23,9 +24,31 @@ from app.schemas.evaluation import (
     ConsumerLegalGoldenDataset,
     ConsumerLegalRelevance,
     ConsumerLegalRetrievalHit,
+    EvaluationSummary,
 )
 
 DATASET_PATH = Path("eval_data/consumer_legal_retrieval")
+
+
+def test_consumer_regression_gates_check_floors_ceilings_and_missing_metrics() -> None:
+    summary = EvaluationSummary(
+        averages={"consumer_recall@5": 0.4, "consumer_hard_negative_rate@5": 0.1}
+    )
+
+    assert check_consumer_gates(
+        summary,
+        minimums=(("consumer_recall@5", 0.3),),
+        maximums=(("consumer_hard_negative_rate@5", 0.2),),
+    ) == []
+    assert check_consumer_gates(
+        summary,
+        minimums=(("consumer_recall@5", 0.5), ("unknown", 0.1)),
+        maximums=(("consumer_hard_negative_rate@5", 0.05),),
+    ) == [
+        "consumer_recall@5: 0.400 < required 0.500",
+        "unknown: not produced by this run, cannot gate on it",
+        "consumer_hard_negative_rate@5: 0.100 > allowed 0.050",
+    ]
 
 
 def _case(*, no_ground: bool = False) -> ConsumerLegalGoldenCase:
@@ -234,17 +257,18 @@ async def test_evaluator_accepts_sync_and_async_retriever_callables() -> None:
 
     assert sync_summary.cases[0].score("consumer_recall@5") == 0.5
     assert async_summary.cases[0].score("consumer_recall@5") == 0.5
-    assert len(sync_summary.cases[0].queries) == 2
-    assert len(sync_summary.cases[0].query_sha256) == 2
+    assert len(sync_summary.cases[0].queries) == 3
+    assert len(sync_summary.cases[0].query_sha256) == 3
     assert sync_summary.cases[0].retrieved_hits[0].retrieval_id == ("br-cdc-art-42-paragrafo-unico")
-    assert len(calls) == 4
+    assert len(calls) == 6
     assert all(k == 10 for _, k in calls)
-    assert all("cobrou um pacote" in query for query, _ in calls)
+    assert sum("cobrou um pacote" in query for query, _ in calls) == 4
+    assert sum("artigo 42" in query for query, _ in calls) == 4
     assert sync_summary.run is not None
     assert sync_summary.run.dataset_sha256 == dataset.content_sha256
     assert sync_summary.run.corpus_sha256 == get_default_legal_corpus().corpus_sha256
-    assert sync_summary.run.query_builder_version == "consumer-legal-two-query-v1"
-    assert sync_summary.run.queries_per_case == 2
+    assert sync_summary.run.query_builder_version == "consumer-legal-three-query-v2"
+    assert sync_summary.run.queries_per_case == 3
     assert sync_summary.by_category["unauthorized_charge"].case_count == 1
     assert sync_summary.by_slice["supplier:telecom"].case_count == 1
     assert sync_summary.metric_case_counts["consumer_recall@5"] == 1

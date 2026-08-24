@@ -11,7 +11,7 @@ services:
     environment:
       LITIGATION_DATA_DIR: /app/data
     ports:
-      - "8000:8000"
+      - "${LITIGATION_BIND_HOST:-127.0.0.1}:8000:8000"
     volumes:
       - copilot-data:/app/data   # ChromaDB, uploads, run history persist here
 
@@ -21,8 +21,11 @@ services:
       target: frontend
     environment:
       LITIGATION_API_URL: http://api:8000
+      # Streamlit calls the API server-side, so it can forward the same shared
+      # key when production mode enables the API guard.
+      LITIGATION_API_AUTH_KEY: ${LITIGATION_API_AUTH_KEY:-}
     ports:
-      - "8501:8501"
+      - "${LITIGATION_BIND_HOST:-127.0.0.1}:8501:8501"
     depends_on:
       - api
 

@@ -109,7 +109,10 @@ class AgentTrace(BaseModel):
 
     agent: str
     status: AgentStatus
-    started_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    started_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        description="Wall-clock time when the agent started work",
+    )
     duration_ms: float = 0.0
     llm_meta: LLMCallMetadata | None = None
     error: str | None = None

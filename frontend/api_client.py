@@ -34,8 +34,9 @@ class ConsumerApiError(RuntimeError):
 class ConsumerApiClient:
     """Small, token-aware client for the consumer assistance endpoints."""
 
-    def __init__(self, base_url: str) -> None:
+    def __init__(self, base_url: str, api_key: str | None = None) -> None:
         self.base_url = base_url.rstrip("/")
+        self.api_key = (api_key or "").strip() or None
 
     def health(self) -> None:
         self._request("GET", "/health", timeout=10)
@@ -156,6 +157,8 @@ class ConsumerApiClient:
         **kwargs: Any,
     ) -> requests.Response:
         headers = dict(kwargs.pop("headers", {}))
+        if self.api_key:
+            headers["X-API-Key"] = self.api_key
         if token:
             headers["X-Consumer-Case-Token"] = token
         try:

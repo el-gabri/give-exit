@@ -44,9 +44,26 @@ def render_markdown(report: LitigationReport) -> str:  # noqa: PLR0912, PLR0915
         f"Documento `{report.doc_id}` · idioma {report.language} · gerado em "
         f"{report.generated_at:%Y-%m-%d %H:%M} UTC",
         "",
-        f"**Nivel de confianca agregado: {round(report.confidence_level * 100)}%**",
+        "> **Uso informativo.** Este rascunho automatizado não substitui análise "
+        "jurídica individualizada e exige revisão humana antes de qualquer decisão, "
+        "envio ou protocolo.",
+        "",
+        "**Confianca autorrelatada pelos modelos, nao calibrada: "
+        f"{round(report.confidence_level * 100)}%**",
+        "",
+        f"**Integridade de fontes: `{report.evidence_quality.status.value}`**",
         "",
     ]
+    if report.evidence_quality.reasons:
+        md += [
+            "- " + reason
+            for reason in report.evidence_quality.reasons
+        ]
+        md += [
+            "- Este controle verifica origem/localização, não nexo semântico, "
+            "correção jurídica ou probabilidade de resultado.",
+            "",
+        ]
     if report.warnings:
         md += ["> **Avisos:** " + " / ".join(report.warnings), ""]
 
@@ -134,7 +151,11 @@ def render_markdown(report: LitigationReport) -> str:  # noqa: PLR0912, PLR0915
     if report.main_claims:
         md += ["## Pedidos e Avaliacao", ""]
         for claim in report.main_claims:
-            basis = f" (base legal: {claim.legal_basis})" if claim.legal_basis else ""
+            basis = (
+                f" (base legal alegada: {claim.legal_basis})"
+                if claim.legal_basis
+                else ""
+            )
             md += [f"### {claim.claim}{basis}", ""]
             md += _conclusion(claim.assessment)
             md += [""]
@@ -166,7 +187,7 @@ def render_markdown(report: LitigationReport) -> str:  # noqa: PLR0912, PLR0915
 
     if report.suggested_strategy:
         strategy = report.suggested_strategy
-        md += ["## Estrategia Sugerida", ""]
+        md += ["## Opcoes Preliminares para Revisao", ""]
         md += _conclusion(strategy.overall_approach)
         md += [""]
         if strategy.defenses:
@@ -189,7 +210,7 @@ def render_markdown(report: LitigationReport) -> str:  # noqa: PLR0912, PLR0915
         md += [""]
 
     if report.datajud and report.datajud.attempted:
-        md += ["## Validacao DataJud (CNJ)", ""]
+        md += ["## Consulta DataJud (CNJ)", ""]
         if report.datajud.found and report.datajud.info:
             info = report.datajud.info
             md += [

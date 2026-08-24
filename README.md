@@ -2,13 +2,18 @@
 
 [Leia em português](README-pt.md)
 
-AI assistant for Brazilian litigation, built as a production-grade demonstration
-of modern AI engineering: multi-agent orchestration (LangGraph), auditable RAG,
-structured outputs, observability, evaluation and explainability.
+AI assistant for Brazilian litigation, built as a **production-oriented,
+single-node demonstration** of modern AI engineering: a fixed multi-stage
+LangGraph workflow, auditable RAG, structured outputs, observability,
+evaluation and explainability. It is not represented as a production legal
+service: durable workers, user identity/tenant isolation and independent legal
+validation remain explicit gaps.
 
-> **Not a replacement for lawyers.** Every conclusion carries a confidence
-> score, explicit reasoning and verbatim citations from the source document,
-> so a human can audit every claim.
+> **Legal information and decision support, not legal advice.** Automated
+> conclusions carry model-reported (uncalibrated) confidence and reasoning.
+> When a model selects a valid evidence ID, the backend reconstructs the quote
+> and page from the source; unsupported conclusions are marked for human review.
+> Source integrity does not prove semantic entailment or legal correctness.
 
 ## Two product journeys
 
@@ -16,8 +21,16 @@ structured outputs, observability, evaluation and explainability.
 in minutes: executive summary, classification, extracted entities (parties,
 court, claim value, deadlines), timeline, claim-by-claim assessment, risk
 analysis with financial exposure, defense strategy, settlement posture, and
-case-number validation against DataJud (the official CNJ court-records API).
+case-number lookup/enrichment through DataJud (the official CNJ public-records API).
 Export as Markdown, PDF, DOCX or JSON.
+
+The Business legal analysis, risk and strategy are grounded in the uploaded
+filing and chunks derived from it. They do **not** currently consult a
+versioned statute or case-law corpus; legal propositions quoted inside a filing
+remain a party's assertions, not independently verified law. DataJud enriches
+the public case record but does not validate the merits. Treat any workflow as
+filing-grounded unless its trace explicitly identifies a separate authoritative
+corpus — today that explicit corpus boundary exists only in the Consumer flow.
 
 **Consumer** — a guided chat structures a complaint against a supplier and
 accepts PDF/PNG/JPEG evidence (rejected when OCR yields no reviewable text).
@@ -31,12 +44,17 @@ calculation: amounts found in evidence become candidates and enter the total
 only after the consumer confirms them; amounts mentioned in chat are never
 promoted automatically. Every component exposes its source, excerpt and hashes
 for audit. The system never sends or files the notice — a qualified Brazilian
-lawyer must review it first.
+lawyer must review it first. In the current demo this is a product policy and
+prominent warning, not an authenticated lawyer-approval workflow.
+Candidate provisions also pass a versioned, deterministic category-eligibility
+policy whose status is exposed as `requires_legal_review`; retrieval rank alone
+never authorizes a legal ground.
 
 In both journeys, every page of untrusted content passes a prompt-injection
-security gate before reaching the RAG or LLM layers, and every RAG query
-leaves a durable audit trail (ranked chunk IDs, scores, hashes, and which
-chunks actually reached each prompt).
+security gate before indexing or downstream legal analysis (balanced/strict
+scanning may itself call the configured LLM). Completed Business runs persist
+RAG traces to local JSONL; Consumer traces stay with the in-memory case. Traces
+record ranked chunk IDs, scores, hashes and which chunks reached each prompt.
 
 ## Architecture
 
@@ -55,6 +73,8 @@ Browser -> Streamlit -> FastAPI (202 + async job)
 
 Full diagram, layer map and the prompt-injection routing policy:
 [docs/architecture.md](docs/architecture.md).
+The supported storage threat boundary and the time-bounded Chroma advisory
+exception are documented in [SECURITY.md](SECURITY.md).
 
 ### Design decisions (ADRs)
 
@@ -67,7 +87,7 @@ Full diagram, layer map and the prompt-injection routing policy:
 | [0005](docs/adr/0005-pymupdf-ocr-fallback.md) | PyMuPDF + heuristic OCR fallback |
 | [0006](docs/adr/0006-section-aware-chunking.md) | Section-aware chunking for Brazilian petitions |
 | [0007](docs/adr/0007-deterministic-report-composer.md) | No LLM at the last mile — the report is assembled by code |
-| [0008](docs/adr/0008-citation-based-groundedness.md) | Hallucination detection by mechanical citation verification |
+| [0008](docs/adr/0008-citation-based-groundedness.md) | Fabricated-quote prevention by deterministic source reconstruction |
 | [0009](docs/adr/0009-in-process-async-jobs.md) | In-process async jobs with a broker-ready interface |
 | [0010](docs/adr/0010-prompt-injection-security-gate.md) | Scan untrusted content before indexing or LLM analysis |
 | [0011](docs/adr/0011-retrieval-traceability-and-evaluation.md) | Persist query-to-context provenance; evaluate rankings |
@@ -77,30 +97,49 @@ Full diagram, layer map and the prompt-injection routing policy:
 
 ### Explainability
 
-Every important conclusion is a `ConfidentConclusion`:
+Important model conclusions use `ConfidentConclusion`. The model selects only
+an evidence ID; quote and page are reconstructed by the backend:
 
 ```json
 {
-  "statement": "Recomendado buscar acordo ate R$ 8.000,00",
+  "statement": "Opcao preliminar: avaliar acordo dentro dos valores documentados",
   "confidence": 0.87,
-  "reasoning": "O documento comprova a cobranca indevida e o CDC preve...",
-  "citations": [{"quote": "cobrancas mensais indevidas", "page": 3}]
+  "reasoning": "A peticao alega cobrancas mensais e informa o valor discutido...",
+  "citations": [{
+    "chunk_id": "abc123:0007",
+    "quote": "cobrancas mensais indevidas",
+    "page": 3
+  }]
 }
 ```
 
-The evaluation harness verifies each citation actually occurs in the source
-document — a fabricated quote is caught mechanically, not by another LLM's
-opinion.
+Unknown, foreign, duplicate or source-inconsistent evidence IDs are rejected.
+The report exposes a deterministic evidence-quality gate and cannot silently
+turn a fabricated quote into a citation. This verifies provenance/location,
+not whether the excerpt logically supports the claim. Confidence percentages
+are self-reported by the selected LLM and are not outcome probabilities.
 
 ### Observability
 
-Every LLM call returns typed metadata (provider, model, latency, tokens, cost,
-prompt version) — agents physically cannot make untracked calls. Per-run
-aggregates persist to a JSONL run store surfaced at `/runs` and `/runs/totals`
+Every currently implemented agent and security-review call uses the typed
+`LLMClient` boundary, which returns provider, model, latency, tokens, cost and
+prompt version. Per-run aggregates for completed Business analyses persist to a
+JSONL run store surfaced at `/runs` and `/runs/totals`
 and in the UI cost panel. The full retrieval audit for a job is available at
 `/analyses/{job_id}/retrievals` (chunk text previews are opt-in via
 `LITIGATION_RETRIEVAL_TRACE_INCLUDE_PREVIEWS`); the Streamlit explainability
 tab shows the same data as a filterable table.
+
+Before durable JSONL writes, natural-language retrieval queries are replaced by
+`[QUERY_REDACTED:<hash-prefix>]`; filenames and reviewer labels become HMAC
+references. Reviewer comments, result sections/previews and arbitrary source
+metadata are omitted, while durable errors retain only an exception-type
+marker. This is data minimization, not anonymization: current in-memory job
+endpoints still expose raw traces, Consumer cases/traces remain in memory, and
+hashes or pseudonymous metadata can remain personal data. Without
+`LITIGATION_TELEMETRY_PSEUDONYM_KEY`, pseudonyms intentionally change after a
+process restart; configure a high-entropy secret only when cross-process
+correlation is required.
 
 ### Prompt-injection defense
 
@@ -111,8 +150,11 @@ excerpts, `high` halts as `review_required`, `critical` ends as `blocked`.
 A `review_required` halt is resolved by a named human via
 `POST /analyses/{job_id}/review`: approval re-runs the pipeline with the
 flagged excerpts still masked and records the reviewer in the report;
-rejection ends the run as `rejected`. A `blocked` verdict and an incomplete
-scan are never overridable.
+rejection ends the run as `rejected`. The immutable decision is bound to the
+job, document and reviewed security-assessment hash and is persisted before a
+resume is scheduled. Reviewer identity is still self-declared behind the
+deployment-level API key; production RBAC is not implemented. A `blocked`
+verdict and an incomplete scan are never overridable.
 `LITIGATION_PROMPT_INJECTION_SCAN_MODE` selects `rules` (deterministic only),
 `balanced` (default — semantic review of suspicious excerpts) or `strict`
 (bounded semantic review of all text; exceeding its budget fails closed).
@@ -175,6 +217,20 @@ pytest tests/test_consumer_legal_corpus.py tests/test_consumer_evaluation.py
 Review the statutory diff, manifest hash and golden labels before promoting a
 new release. Runtime requests never download law from Planalto.
 
+The deterministic offline Consumer baseline currently gated in CI is:
+
+| Metric | Baseline / gate |
+|---|---:|
+| Exact Recall@5 | 0.295 / >= 0.29 |
+| Article Recall@5 | 0.756 / >= 0.75 |
+| NDCG@5 | 0.254 / >= 0.25 |
+| Hard-negative rate@5 | 0.067 / <= 0.07 |
+| Out-of-scope abstention@5 | 1.000 / = 1.00 |
+
+Labels remain developer-authored and explicitly require independent Brazilian
+legal review; these numbers are retrieval regression evidence, not proof of
+legal quality.
+
 ## Quickstart
 
 ### Docker (recommended)
@@ -187,9 +243,16 @@ docker compose up --build
 # API: http://localhost:8000/docs
 ```
 
-CI runs ruff, `mypy --strict` (clean, enforced), the offline test suite, a
-dependency vulnerability audit, the evaluation harness with retrieval
-regression gates, and the security benchmark.
+Compose publishes both ports on `127.0.0.1` by default. Overriding
+`LITIGATION_BIND_HOST` to expose them on another interface is a deployment
+decision: also set `LITIGATION_DEPLOYMENT_MODE=production` and
+`LITIGATION_API_AUTH_KEY`. Production mode refuses to start without that key.
+
+CI runs Ruff, strict MyPy, the offline suite on Python 3.12 plus a Python 3.10
+compatibility suite, dependency vulnerability audit, Business and Consumer
+retrieval regression gates, the security benchmark, and API/frontend container
+builds. The Business mock gate measures retrieval/pipeline behavior, not the
+quality of generated legal analysis.
 
 ### Local development
 
@@ -242,17 +305,50 @@ PDF/PNG/JPEG with a 40-megapixel cap. Raw consumer evidence is deleted right
 after ingestion; business PDFs are deleted after analysis unless
 `LITIGATION_RETAIN_UPLOADS=true`.
 
-Indexed chunks contain the full document text, so they follow the same
-lifecycle: a document's vectors are deleted when its job finishes unless
-`LITIGATION_RETAIN_INDEX=true`, and startup purges any vectors left behind by
-a previous process (case and job records are in-memory). Run history — hashes
-and metrics, never chunk text unless previews are enabled — persists.
+Indexed chunks contain the full document text. Business vectors are deleted
+when their job finishes unless `LITIGATION_RETAIN_INDEX=true`; when retention
+is disabled, startup also purges Business vectors left by a previous process.
+Consumer evidence vectors remain only while their in-memory case exists: case
+deletion removes them, and startup purges evidence orphaned by a restart while
+preserving the canonical legal corpus. Business job/report state and all
+Consumer case state are in memory. Completed Business run metadata and
+minimized retrieval traces are the durable exception; they do not recreate a
+job or Consumer case after a restart. Chunk previews remain live-only and are
+never written to the JSONL ledger.
 
-Set `LITIGATION_API_AUTH_KEY` to require `X-API-Key` on every route except
-`/health`; uploads are additionally rate-limited per client
-(`LITIGATION_UPLOAD_RATE_LIMIT_PER_MINUTE`, 20 by default). Both are required
-for any deployment reachable beyond localhost, alongside tenant isolation and
-a documented retention policy before using real case data.
+Business execution is bounded in one process by
+`LITIGATION_MAX_CONCURRENT_JOBS` (4 by default) plus
+`LITIGATION_MAX_QUEUED_JOBS` (16). Requests above the combined reservation
+capacity receive `503` with `Retry-After`. This is an in-process semaphore and
+bounded backlog, not a durable broker: queued/running/review-pending jobs are
+lost on restart, replicas do not share capacity or job state, and the JSONL run
+store cannot resume work. Use a broker, shared state and horizontally safe
+workers before multi-replica deployment.
+
+Security-halted jobs keep parsed documents only for a bounded resume window:
+`LITIGATION_MAX_REVIEW_REQUIRED_JOBS` (20) and
+`LITIGATION_REVIEW_REQUIRED_TTL_SECONDS` (24 hours) cap count and age. Oldest or
+expired jobs are evicted after their audit record is durable. If that write
+fails, the halt fails closed and its full resumable state is discarded.
+
+In local mode, setting `LITIGATION_API_AUTH_KEY` requires `X-API-Key` on every
+route except `/health`; in production mode the setting is mandatory at startup.
+Uploads are additionally rate-limited per client
+(`LITIGATION_UPLOAD_RATE_LIMIT_PER_MINUTE`, 20 by default). This is one shared
+deployment key, not user identity, RBAC or tenant isolation. Those controls and
+a documented retention policy remain prerequisites before using real case data.
+
+### Demo data governance
+
+[`demo/manifest.json`](demo/manifest.json) inventories every committed PDF with
+its SHA-256, synthetic/personal-data classification, provenance and review
+status. One retained non-synthetic judicial record contains personal data; its
+exact source URL and redistribution basis are not established. Reported public
+accessibility and repository presence do **not** by themselves grant
+redistribution rights, waive LGPD duties or establish compliance with court
+terms. Do not publish or redistribute it without an independent rights/privacy
+review. Synthetic fixtures also contain identifier-shaped placeholders and
+should remain telemetry-sensitive. See [`demo/README.md`](demo/README.md).
 
 ## Project structure
 

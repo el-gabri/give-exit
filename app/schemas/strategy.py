@@ -27,7 +27,7 @@ class DefenseOption(BaseModel):
 
 
 class RecommendedAction(BaseModel):
-    """A concrete next step for the legal team."""
+    """A preliminary next step for a legal professional to review."""
 
     action: str
     priority: ActionPriority
@@ -35,15 +35,18 @@ class RecommendedAction(BaseModel):
 
 
 class StrategyPlan(BaseModel):
-    """Suggested initial strategy. Decision support, never a decision."""
+    """Initial hypotheses for professional review, never legal advice or a decision."""
 
     overall_approach: ConfidentConclusion = Field(
-        description="Recommended posture (contest / negotiate / hybrid) with reasoning"
+        description=(
+            "Preliminary options to consider (contest / negotiate / hybrid) with "
+            "reasoning; never a final instruction"
+        )
     )
     defenses: list[DefenseOption] = Field(default_factory=list)
     settlement: ConfidentConclusion = Field(
-        description="Settlement recommendation: whether to pursue, plausible "
-        "range if derivable from the document, and why"
+        description="Settlement considerations and a range only when directly "
+        "derivable from document values; never an outcome prediction"
     )
     next_actions: list[RecommendedAction] = Field(default_factory=list)
     missing_information: list[str] = Field(

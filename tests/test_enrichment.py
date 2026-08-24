@@ -11,6 +11,7 @@ from app.enrichment.node import make_enrich_node
 from app.orchestration.state import AnalysisState
 from app.schemas.document import DocumentPage, ExtractionMethod, ParsedDocument
 from app.schemas.lawsuit import LawsuitExtraction
+from app.schemas.trace import AgentStatus
 
 CASE_SP = "0001234-56.2024.8.26.0100"  # TJSP
 CASE_DIGITS = "00012345620248260100"
@@ -165,3 +166,5 @@ async def test_enrich_node_swallows_network_errors() -> None:
     assert enrichment.attempted is True
     assert enrichment.found is False
     assert any("Falha" in note for note in enrichment.notes)
+    assert update["traces"][0].status is AgentStatus.FAILED
+    assert update["traces"][0].error == "ConnectError: DataJud lookup failed"

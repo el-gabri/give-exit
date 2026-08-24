@@ -3,9 +3,13 @@
 import json
 from pathlib import Path
 
+import pytest
+from pydantic import ValidationError
+
 from app.observability import store as store_module
 from app.observability.store import RunRecord, RunStore
 from app.schemas.report import RunMetrics
+from app.schemas.review import HumanReviewDecision
 from app.schemas.trace import (
     AgentStatus,
     AgentTrace,
@@ -66,6 +70,38 @@ def test_empty_store(tmp_path: Path) -> None:
     assert store.totals()["runs"] == 0
 
 
+def test_run_store_roundtrips_an_immutable_bound_review_decision(
+    tmp_path: Path,
+) -> None:
+    store = RunStore(tmp_path / "runs.jsonl")
+    decision = HumanReviewDecision(
+        job_id="review-run",
+        doc_id="doc-review-run",
+        security_assessment_sha256="a" * 64,
+        approved=True,
+        reviewer="dra. ana",
+        comment="Maria Silva mora na Rua das Flores e trata uma doenca grave.",
+    )
+    store.append(_record("review-run", 0.0).model_copy(update={"review": decision}))
+
+    loaded = store.get("review-run")
+
+    assert loaded is not None
+    assert loaded.review is not None
+    assert loaded.review.decision_id == decision.decision_id
+    assert loaded.review.job_id == decision.job_id
+    assert loaded.review.doc_id == decision.doc_id
+    assert loaded.review.security_assessment_sha256 == (
+        decision.security_assessment_sha256
+    )
+    assert loaded.review.reviewer.startswith("reviewer_")
+    assert loaded.review.reviewer != decision.reviewer
+    assert loaded.review.comment is None
+    assert decision.comment is not None
+    with pytest.raises(ValidationError):
+        loaded.review.reviewer = "altered"
+
+
 def test_run_store_persists_retrieval_audit_and_reads_old_records(
     tmp_path: Path,
 ) -> None:
@@ -91,6 +127,7 @@ def test_run_store_persists_retrieval_audit_and_reads_old_records(
                 page_end=2,
                 score=0.91,
                 content_sha256="b" * 64,
+                section="DOS FATOS DE MARIA SILVA",
                 text_preview="pedido de indenizacao",
                 selected_for_merge=True,
                 merged_rank=1,
@@ -114,8 +151,121 @@ def test_run_store_persists_retrieval_audit_and_reads_old_records(
     loaded = store.get("audit")
 
     assert loaded is not None
-    assert loaded.traces[0].retrievals[0] == retrieval
+    persisted_retrieval = loaded.traces[0].retrievals[0]
+    assert persisted_retrieval.query == f"[QUERY_REDACTED:{retrieval.query_sha256[:12]}]"
+    assert persisted_retrieval.query_sha256 == retrieval.query_sha256
+    assert persisted_retrieval.results[0].chunk_id == retrieval.results[0].chunk_id
+    assert persisted_retrieval.results[0].content_sha256 == (
+        retrieval.results[0].content_sha256
+    )
+    assert persisted_retrieval.results[0].section is None
+    assert persisted_retrieval.results[0].text_preview is None
+    assert retrieval.results[0].section == "DOS FATOS DE MARIA SILVA"
+    assert retrieval.results[0].text_preview == "pedido de indenizacao"
     assert store.get("missing") is None
+
+
+def test_run_store_does_not_persist_raw_filename_query_or_reviewer(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "runs.jsonl"
+    store = RunStore(path)
+    query = "CPF 123.456.789-00 e maria@example.com"
+    decision = HumanReviewDecision(
+        job_id="privacy-run",
+        doc_id="doc-privacy",
+        security_assessment_sha256="c" * 64,
+        approved=True,
+        reviewer="Dra. Maria Silva",
+        comment=(
+            "Maria Silva mora na Rua das Flores e faz tratamento de cancer."
+        ),
+    )
+    retrieval = RetrievalTrace(
+        batch_id="batch-private",
+        agent="legal_analysis",
+        doc_id="doc-privacy",
+        query_index=0,
+        query=query,
+        query_sha256="d" * 64,
+        requested_k=1,
+        returned_count=1,
+        embedding_model="mock",
+        vector_store="memory",
+        index_version="test",
+        error=(
+            "TimeoutError: Maria Silva, Rua das Flores, diagnostico de cancer."
+        ),
+        agent_error=(
+            "Maria Silva, Rua das Flores, diagnostico de cancer."
+        ),
+        results=[
+            RetrievedItemTrace(
+                rank=1,
+                chunk_id="doc-privacy:0001",
+                doc_id="doc-privacy",
+                section="ENDERECO DE MARIA SILVA",
+                page_start=1,
+                page_end=1,
+                score=0.9,
+                content_sha256="e" * 64,
+                source_metadata={
+                    "party": "Maria Silva",
+                    "address": "Rua das Flores",
+                    "health": "diagnostico de cancer",
+                },
+                text_preview=(
+                    "Maria Silva, Rua das Flores, diagnostico de cancer."
+                ),
+            )
+        ],
+    )
+    record = RunRecord(
+        run_id="privacy-run",
+        doc_id="doc-privacy",
+        filename="Maria 123.456.789-00.pdf",
+        success=True,
+        errors=[
+            "ValueError: Maria Silva, Rua das Flores, diagnostico de cancer."
+        ],
+        metrics=RunMetrics(),
+        traces=[
+            AgentTrace(
+                agent="legal_analysis",
+                status=AgentStatus.SUCCESS,
+                error=(
+                    "RuntimeError: Maria Silva, Rua das Flores, diagnostico de cancer."
+                ),
+                retrievals=[retrieval],
+            )
+        ],
+        review=decision,
+    )
+
+    store.append(record)
+
+    persisted = path.read_text(encoding="utf-8")
+    assert "123.456.789-00" not in persisted
+    assert "maria@example.com" not in persisted
+    assert "Dra. Maria Silva" not in persisted
+    assert "Maria Silva" not in persisted
+    assert "Rua das Flores" not in persisted
+    assert "cancer" not in persisted
+    assert query not in persisted
+    assert decision.comment is not None
+    assert retrieval.results[0].text_preview is not None
+    assert record.errors[0].startswith("ValueError:")
+    assert record.traces[0].error is not None
+
+    loaded = store.get("privacy-run")
+    assert loaded is not None
+    assert loaded.errors == ["[ERROR_TYPE:ValueError]"]
+    assert loaded.traces[0].error == "[ERROR_TYPE:RuntimeError]"
+    loaded_retrieval = loaded.traces[0].retrievals[0]
+    assert loaded_retrieval.error == "[ERROR_TYPE:TimeoutError]"
+    assert loaded_retrieval.agent_error == "[ERROR_TYPE:unclassified]"
+    assert loaded_retrieval.results[0].source_metadata == {}
+    assert retrieval.results[0].source_metadata["party"] == "Maria Silva"
 
 
 def test_security_outcomes_are_not_counted_as_successes_or_failures(
@@ -183,14 +333,29 @@ def test_reads_legacy_record_and_skips_corrupt_final_line(
         and fields["line_number"] == 2
         for event, fields in recording_logger.events
     )
+    _, warning = recording_logger.events[-1]
+    assert set(warning) == {
+        "path_ref",
+        "line_number",
+        "reason",
+        "exception_type",
+        "validation_issues",
+    }
+    assert warning["exception_type"] == "JSONDecodeError"
+    assert warning["validation_issues"] == []
+    assert str(path) not in json.dumps(warning)
 
 
 def test_skips_schema_invalid_record_with_warning(tmp_path: Path, monkeypatch) -> None:
     path = tmp_path / "runs.jsonl"
+    sensitive = "Maria Silva Rua das Flores diagnostico de cancer"
+    invalid = _record("invalid", 0.02).model_dump(mode="json")
+    invalid["filename"] = f"{sensitive}.pdf"
+    invalid["metrics"]["total_tokens"] = sensitive
     path.write_text(
         _record("valid", 0.01).model_dump_json()
         + "\n"
-        + json.dumps({"run_id": "missing-required-fields"})
+        + json.dumps(invalid)
         + "\n",
         encoding="utf-8",
     )
@@ -206,3 +371,18 @@ def test_skips_schema_invalid_record_with_warning(tmp_path: Path, monkeypatch) -
         and fields["line_number"] == 2
         for event, fields in recording_logger.events
     )
+    _, warning = recording_logger.events[-1]
+    assert set(warning) == {
+        "path_ref",
+        "line_number",
+        "reason",
+        "exception_type",
+        "validation_issues",
+    }
+    assert warning["exception_type"] == "ValidationError"
+    assert warning["validation_issues"] == [
+        {"type": "int_parsing", "location": ["metrics", "total_tokens"]}
+    ]
+    logged = json.dumps(warning, ensure_ascii=False)
+    assert sensitive not in logged
+    assert str(path) not in logged

@@ -156,6 +156,8 @@ async def test_full_consumer_notice_lifecycle(
     assert notice["evidence_references"][0]["filename"] == "extrato.pdf"
     assert notice["legal_grounds"]
     assert len(notice["corpus_sha256"]) == 64
+    assert notice["legal_ground_policy_version"] == "consumer-ground-eligibility-v1"
+    assert notice["legal_ground_policy_review_status"] == "requires_legal_review"
     assert all(
         ground["authority"]["official_url"].startswith("https://www.planalto.gov.br/")
         for ground in notice["legal_grounds"]
@@ -188,7 +190,7 @@ async def test_full_consumer_notice_lifecycle(
     )
     assert notice["settlement"]["calibrated"] is False
     assert notice["settlement"]["is_legal_outcome_prediction"] is False
-    assert notice["settlement"]["methodology_version"] == "consumer-settlement-scenario-v2"
+    assert notice["settlement"]["methodology_version"] == "consumer-settlement-scenario-v3"
     assert len(notice["settlement"]["calculation_sha256"]) == 64
     assert notice["settlement"]["components"][0]["kind"] == "direct_loss"
     assert (

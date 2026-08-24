@@ -59,15 +59,23 @@ def _agent_node(agent: BaseAgent[Any], state_field: str) -> NodeFn:
             output, trace = await agent.run(state)
             return {state_field: output, "traces": [trace]}
         except AgentRunError as exc:
-            logger.exception("agent_failed", agent=agent.name)
             cause = exc.cause
+            logger.error(
+                "agent_failed",
+                agent=agent.name,
+                error_type=type(cause).__name__,
+            )
             return {
                 "errors": [f"{agent.name}: {type(cause).__name__}: {cause}"],
                 "traces": [exc.trace],
             }
         except Exception as exc:
             duration_ms = (time.perf_counter() - start) * 1000
-            logger.exception("agent_failed", agent=agent.name)
+            logger.error(
+                "agent_failed",
+                agent=agent.name,
+                error_type=type(exc).__name__,
+            )
             return {
                 "errors": [f"{agent.name}: {type(exc).__name__}: {exc}"],
                 "traces": [agent.failure_trace(exc, duration_ms)],
@@ -124,7 +132,11 @@ def build_analysis_graph(
             return result
         except Exception as exc:
             duration_ms = (time.perf_counter() - start) * 1000
-            logger.exception("prompt_injection_scan_failed", doc_id=state.document.doc_id)
+            logger.error(
+                "prompt_injection_scan_failed",
+                doc_id=state.document.doc_id,
+                error_type=type(exc).__name__,
+            )
             assessment = failed_scan_assessment(
                 document=state.document,
                 scan_mode=detector.mode,
@@ -150,14 +162,18 @@ def build_analysis_graph(
             )
             return {"chunks": chunks}
         except Exception as exc:
-            logger.exception("indexing_failed", doc_id=state.document.doc_id)
+            logger.error(
+                "indexing_failed",
+                doc_id=state.document.doc_id,
+                error_type=type(exc).__name__,
+            )
             return {"errors": [f"index: {type(exc).__name__}: {exc}"]}
 
     async def compose_node(state: AnalysisState) -> NodeResult:
         # Deterministic assembly - no LLM call, cannot hallucinate.
         return {"report": compose_report(state)}
 
-    classifier = ClassifierAgent(llm)
+    classifier = ClassifierAgent(llm, rag)
     extractor = EntityExtractionAgent(llm, rag)
     analyst = LegalAnalysisAgent(llm, rag)
     risk_assessor = RiskAssessmentAgent(llm, rag)

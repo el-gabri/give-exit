@@ -105,7 +105,9 @@ class ChromaVectorStore:
     """VectorStore backed by a persistent ChromaDB collection.
 
     Chroma's client is synchronous; calls are wrapped in ``asyncio.to_thread``
-    to keep the async contract honest.
+    to keep the async contract honest. This adapter intentionally supports the
+    embedded ``PersistentClient`` only. It never connects to a Chroma server
+    and never accepts a collection-provided embedding function.
     """
 
     COLLECTION = "lawsuits"
@@ -118,6 +120,10 @@ class ChromaVectorStore:
         self._collection = self._client.get_or_create_collection(
             name=self._index_name,
             metadata={"hnsw:space": "cosine"},
+            # Embeddings are computed by our configured adapter and supplied
+            # explicitly on every operation. Do not deserialize or execute an
+            # embedding function stored in collection configuration.
+            embedding_function=None,
         )
 
     @property

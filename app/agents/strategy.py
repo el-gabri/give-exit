@@ -17,7 +17,7 @@ STRATEGY_QUERIES = [
 
 
 class StrategyAgent(BaseAgent[StrategyPlan]):
-    """Proposes initial defense strategy, settlement posture and actions."""
+    """Organizes preliminary defense options for professional review."""
 
     name = "strategy"
     prompt = STRATEGY_PROMPT

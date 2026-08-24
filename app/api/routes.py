@@ -9,7 +9,9 @@ from app.api.jobs import (
     AnalysisJobManager,
     InvalidPdfUploadError,
     Job,
+    JobCapacityExceededError,
     ReviewNotAllowedError,
+    ReviewPersistenceError,
     UploadTooLargeError,
 )
 from app.api.schemas import JobCreated, JobState, JobStatus, ReviewRequest
@@ -60,6 +62,12 @@ async def create_analysis(file: UploadFile, manager: JobManagerDep) -> JobCreate
         raise HTTPException(status_code=413, detail="File exceeds 20 MB limit") from exc
     except InvalidPdfUploadError as exc:
         raise HTTPException(status_code=422, detail="File is not a valid PDF") from exc
+    except JobCapacityExceededError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=str(exc),
+            headers={"Retry-After": "5"},
+        ) from exc
     finally:
         await file.close()
     return JobCreated(job_id=job.job_id, status_url=f"/analyses/{job.job_id}")
@@ -117,6 +125,17 @@ async def review_analysis(
     except ReviewNotAllowedError as exc:
         raise HTTPException(
             status_code=409, detail="Analysis is not awaiting human review"
+        ) from exc
+    except JobCapacityExceededError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=str(exc),
+            headers={"Retry-After": "5"},
+        ) from exc
+    except ReviewPersistenceError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Human review decision could not be durably recorded",
         ) from exc
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
