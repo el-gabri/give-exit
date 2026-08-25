@@ -24,6 +24,7 @@ from app.consumer.schemas import (
 from app.consumer.service import (
     ConsumerCaseNotReadyError,
     ConsumerCaseService,
+    ConsumerLegalCorpusNotReadyError,
     ConsumerRetrievalError,
 )
 from app.consumer.store import ConsumerCaseNotFoundError
@@ -243,6 +244,8 @@ async def generate_consumer_notice(
             status_code=409,
             detail={"message": "Consumer case is not ready", "missing": exc.missing},
         ) from exc
+    except ConsumerLegalCorpusNotReadyError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     except ConsumerRetrievalError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 

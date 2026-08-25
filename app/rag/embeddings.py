@@ -271,8 +271,9 @@ class SentenceTransformerEmbeddingClient:
 
     The model name is entirely configuration-driven, so the same adapter works
     with ``ufca-llms/jua-4B-mixed``, ``BAAI/bge-m3`` and compatible models.
-    Model loading is intentionally explicit and never exercised by offline
-    tests unless this provider is selected.
+    The dependency and model weights are loaded lazily on the first embedding
+    call. This keeps API startup and persisted-index readiness checks fast;
+    pre-indexing still fails explicitly if the optional dependency is absent.
     """
 
     def __init__(
@@ -283,23 +284,16 @@ class SentenceTransformerEmbeddingClient:
         device: str | None = None,
         batch_size: int = 8,
         model_revision: str | None = None,
+        show_progress_bar: bool = False,
     ) -> None:
-        try:
-            import sentence_transformers
-        except ImportError as exc:  # pragma: no cover - environment-specific
-            raise RuntimeError(
-                "sentence-transformers is required for local embeddings; "
-                "install the 'local-embeddings' optional dependency"
-            ) from exc
-
         self._model_name = model
         self._query_instruction = query_instruction
+        self._device = device
         self._batch_size = batch_size
         self._model_revision = model_revision
+        self._show_progress_bar = show_progress_bar
         self._encode_lock = asyncio.Lock()
-        self._model: Any = sentence_transformers.SentenceTransformer(
-            model, device=device, revision=model_revision
-        )
+        self._model: Any | None = None
 
     @property
     def model_name(self) -> str:
@@ -324,11 +318,35 @@ class SentenceTransformerEmbeddingClient:
     def _encode(self, texts: list[str]) -> list[list[float]]:
         if not texts:
             return []
+        if self._model is None:
+            try:
+                import sentence_transformers
+            except ImportError as exc:  # pragma: no cover - environment-specific
+                raise RuntimeError(
+                    "sentence-transformers is required for local embeddings; "
+                    "install the 'local-embeddings' optional dependency"
+                ) from exc
+            logger.info(
+                "local_embedding_model_loading",
+                model=self._model_name,
+                device=self._device or "auto",
+            )
+            started = time.perf_counter()
+            self._model = sentence_transformers.SentenceTransformer(
+                self._model_name,
+                device=self._device,
+                revision=self._model_revision,
+            )
+            logger.info(
+                "local_embedding_model_loaded",
+                model=self._model_name,
+                latency_ms=round((time.perf_counter() - started) * 1000, 1),
+            )
         encoded = self._model.encode(
             texts,
             normalize_embeddings=True,
             convert_to_numpy=True,
-            show_progress_bar=False,
+            show_progress_bar=self._show_progress_bar,
             batch_size=self._batch_size,
         )
         return [[float(value) for value in row] for row in encoded]

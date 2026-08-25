@@ -101,6 +101,7 @@ class Settings(BaseSettings):
     embedding_query_instruction: str | None = None
     embedding_device: str | None = None
     embedding_batch_size: int = Field(default=8, ge=1)
+    embedding_show_progress_bar: bool = False
     gemini_embedding_dimensions: int = Field(default=768, ge=128, le=3072)
 
     # --- Storage ---

@@ -51,6 +51,7 @@ async def consumer_client(tmp_path: Path, monkeypatch):
     )
     app = create_app(settings)
     async with app.router.lifespan_context(app):
+        await app.state.consumer_service.prepare_legal_corpus()
         transport = httpx.ASGITransport(app=app)
         async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
             yield client

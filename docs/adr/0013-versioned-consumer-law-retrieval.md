@@ -45,6 +45,10 @@ leaderboards alone cannot establish which combination works for this product.
 8. Apply a conservative deterministic scope gate before legal retrieval. Clear
    labor and neighbor disputes abstain instead of receiving arbitrary CDC
    grounds; ambiguous cases remain eligible for human review.
+9. Materialize each new corpus/model/revision index through the explicit
+   `python -m app.consumer.preindex_legal` maintenance command. Runtime notice
+   requests reuse the persisted document ID and fail fast when the matching
+   index is absent; they never embed the complete statutory corpus inline.
 
 ## Consequences
 
@@ -53,6 +57,8 @@ leaderboards alone cannot establish which combination works for this product.
 - (+) Retrieval supports exact legal references and semantic paraphrases.
 - (+) Embedding changes become evidence-based rather than configuration guesses.
 - (+) Historical notices retain the source and model versions needed for audit.
+- (+) Large local models do not turn the first public notice request into an
+  unbounded corpus-ingestion operation.
 - (-) Corpus updates require a reviewed ingestion and reindexing process.
 - (-) Local legal embedding models and rerankers may require significant memory
   or GPU capacity; hosted embeddings remain a supported baseline.

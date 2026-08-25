@@ -53,7 +53,10 @@ async def throttled_client(tmp_path: Path):
 
 
 async def test_health_stays_public_with_auth_enabled(secured_client: httpx.AsyncClient) -> None:
-    assert (await secured_client.get("/health")).status_code == 200
+    response = await secured_client.get("/health")
+
+    assert response.status_code == 200
+    assert response.json()["legal_corpus_ready"] is False
 
 
 async def test_routes_require_the_configured_key(secured_client: httpx.AsyncClient) -> None:

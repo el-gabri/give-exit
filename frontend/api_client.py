@@ -38,8 +38,8 @@ class ConsumerApiClient:
         self.base_url = base_url.rstrip("/")
         self.api_key = (api_key or "").strip() or None
 
-    def health(self) -> None:
-        self._request("GET", "/health", timeout=10)
+    def health(self) -> dict[str, Any]:
+        return self._json("GET", "/health", timeout=10)
 
     def create_case(self) -> dict[str, Any]:
         return self._json("POST", "/consumer/cases", timeout=30)
@@ -104,7 +104,9 @@ class ConsumerApiClient:
             "POST",
             f"/consumer/cases/{case_id}/notice",
             token=token,
-            timeout=120,
+            # A pre-indexed local JUÁ process may still spend about a minute
+            # loading weights on the first query in a fresh API process.
+            timeout=600,
         )
 
     def get_notice(self, case_id: str, token: str) -> dict[str, Any]:
@@ -170,6 +172,15 @@ class ConsumerApiClient:
             )
             response.raise_for_status()
             return response
+        except requests.Timeout as exc:
+            raise ConsumerApiError(
+                "A geração excedeu o tempo de espera. A API pode continuar saudável, "
+                "mas a operação não foi concluída.",
+            ) from exc
+        except requests.ConnectionError as exc:
+            raise ConsumerApiError(
+                "Não foi possível conectar à API. Verifique se o backend está em execução.",
+            ) from exc
         except requests.RequestException as exc:
             response = exc.response
             status_code = response.status_code if response is not None else None
@@ -183,8 +194,10 @@ class ConsumerApiClient:
                 detail = "O arquivo excede o limite aceito pela API."
             elif status_code == 422 and not detail:
                 detail = "Revise os campos informados e tente novamente."
+            elif status_code is not None and status_code >= 500 and not detail:
+                detail = "A API encontrou um erro interno durante a operação."
             elif not detail:
-                detail = "Não foi possível conectar à API. Tente novamente."
+                detail = "A API não conseguiu concluir a operação. Tente novamente."
             raise ConsumerApiError(detail, status_code) from exc
 
 

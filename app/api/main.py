@@ -17,14 +17,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.consumer_routes import router as consumer_router
 from app.api.routes import router as system_router
 from app.api.security import ApiKeyGuard, SlidingWindowRateLimiter
-from app.consumer.legal_corpus import get_default_legal_corpus
+from app.consumer.runtime import create_consumer_rag
 from app.consumer.service import ConsumerCaseService
 from app.core.config import Settings, get_settings
 from app.core.logging import configure_logging
 from app.ingestion.ocr import create_default_ocr_engine
 from app.ingestion.service import DocumentIngestionService
 from app.llm.factory import create_llm_client
-from app.rag.factory import create_embedding_client, create_rag_pipeline, create_reranker
 from app.security import PromptInjectionDetector, TelemetryRedactor
 
 
@@ -37,15 +36,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         llm = create_llm_client(settings)
         # The collection identity includes the exact legal-corpus digest and
         # embedding identity, so incompatible releases never share vectors.
-        embedder = create_embedding_client(settings)
-        reranker = create_reranker(settings)
-        legal_corpus = get_default_legal_corpus()
-        consumer_rag = create_rag_pipeline(
-            settings,
-            corpus_version=(f"{legal_corpus.release_id}-{legal_corpus.corpus_sha256[:12]}"),
-            embedder=embedder,
-            reranker=reranker,
-        )
+        legal_corpus, consumer_rag = create_consumer_rag(settings)
         telemetry_redactor = TelemetryRedactor(settings.telemetry_pseudonym_key)
         ingestion = DocumentIngestionService(
             ocr_engine=create_default_ocr_engine(),
@@ -71,6 +62,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # Case records are in-process, so vectors outside the canonical legal
         # corpus are orphaned whenever the service starts.
         await app.state.consumer_service.purge_orphaned_documents()
+        await app.state.consumer_service.legal_corpus_ready()
         yield
 
     app = FastAPI(

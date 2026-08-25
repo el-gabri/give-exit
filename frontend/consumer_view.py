@@ -135,8 +135,13 @@ def _render_sidebar(client: ConsumerApiClient, api_url: str) -> bool:
         st.title("Give Exit")
         st.caption("Área do consumidor")
         try:
-            client.health()
+            health = client.health()
             st.success("API conectada", icon=":material/check_circle:")
+            if health.get("legal_corpus_ready") is False:
+                st.warning(
+                    "Base legal ainda não pré-indexada para o modelo configurado.",
+                    icon=":material/hourglass_top:",
+                )
             connected = True
         except ConsumerApiError:
             st.error("API indisponível", icon=":material/error:")
@@ -836,11 +841,11 @@ def _render_generation_section(
         width="stretch",
         key="consumer_generate_notice",
     ):
-        try:
-            with st.status(
-                "Recuperando base legal e compondo o documento…",
-                expanded=True,
-            ) as status:
+        with st.status(
+            "Recuperando base legal e compondo o documento…",
+            expanded=True,
+        ) as status:
+            try:
                 notice = client.generate_notice(case_id, token)
                 st.session_state.consumer_notice = _notice_from_payload(notice)
                 case["notice_available"] = True
@@ -850,13 +855,19 @@ def _render_generation_section(
                     state="complete",
                     expanded=False,
                 )
-            _set_flash(
-                "success",
-                "Rascunho gerado. Revise fatos, valores, evidências e base legal.",
-            )
-            st.rerun()
-        except ConsumerApiError as exc:
-            st.error(str(exc))
+            except ConsumerApiError as exc:
+                status.update(
+                    label="Não foi possível gerar o rascunho",
+                    state="error",
+                    expanded=True,
+                )
+                st.error(str(exc))
+                return
+        _set_flash(
+            "success",
+            "Rascunho gerado. Revise fatos, valores, evidências e base legal.",
+        )
+        st.rerun()
 
 
 def _render_notice(

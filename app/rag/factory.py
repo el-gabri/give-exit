@@ -48,6 +48,7 @@ def create_embedding_client(settings: Settings) -> EmbeddingBackend:
             device=settings.embedding_device,
             batch_size=settings.embedding_batch_size,
             model_revision=settings.embedding_model_revision,
+            show_progress_bar=settings.embedding_show_progress_bar,
         )
     if provider is EmbeddingProvider.GEMINI:
         api_key = _embedding_api_key(settings.gemini_api_key, provider="Gemini")

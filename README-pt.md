@@ -88,8 +88,18 @@ depois da ingestão.
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -e ".[dev,frontend,ocr]"
-uvicorn app.api.main:app --reload
-streamlit run frontend/streamlit_app.py
+python -m app.consumer.preindex_legal
+```
+
+Depois da pré-indexação, execute em dois terminais:
+
+```powershell
+# Terminal 1
+.\.venv\Scripts\python.exe -m uvicorn app.api.main:app --reload
+
+# Terminal 2
+$env:LITIGATION_API_URL="http://127.0.0.1:8000"
+.\.venv\Scripts\python.exe -m streamlit run frontend/streamlit_app.py
 ```
 
 OCR local de imagens também exige Tesseract e o pacote de idioma português no
@@ -117,13 +127,25 @@ LITIGATION_RETRIEVAL_MODE=hybrid
 ```
 
 Alterar corpus, modelo ou revisão do embedding cria uma nova coleção Chroma,
-sem misturar vetores incompatíveis.
+sem misturar vetores incompatíveis. Materialize a nova coleção antes de iniciar
+o atendimento:
+
+```powershell
+python -m app.consumer.preindex_legal
+python -m app.consumer.preindex_legal --check
+```
+
+O primeiro comando pode levar dezenas de minutos ou horas com o JUÁ em CPU,
+dependendo do hardware e do tamanho dos chunks. A execução mostra o progresso
+no terminal. Depois de concluído, a API reutiliza os 460 chunks persistidos e
+não recalcula a base legal durante a geração do rascunho. Use `--force` somente
+para uma reindexação deliberada.
 
 ## API
 
 | Método | Rota | Finalidade |
 |---|---|---|
-| `GET` | `/health` | Verificação de vida |
+| `GET` | `/health` | Vida da API e prontidão do corpus legal |
 | `POST` | `/consumer/cases` | Criar caso efêmero e token |
 | `GET` | `/consumer/cases/{id}` | Consultar caso autorizado |
 | `POST` | `/consumer/cases/{id}/messages` | Adicionar mensagem |

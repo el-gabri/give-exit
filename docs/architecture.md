@@ -55,8 +55,10 @@ flowchart LR
    reviews the full bounded document and fails closed if its budget is exceeded.
 6. Only content allowed by the security policy is sanitized and retained as
    evidence. The raw temporary file is deleted at the route boundary.
-7. Notice generation indexes a synthetic combined evidence document and ensures
-   the canonical legal corpus is indexed.
+7. A maintenance command materializes the canonical legal corpus before the
+   API serves generation traffic. Notice generation fails fast when that exact
+   versioned index is absent and only indexes the case's synthetic evidence
+   document during the request.
 8. Legal and evidence queries run in hybrid mode. Dense and BM25 candidates are
    fused deterministically with reciprocal-rank fusion; reranking is optional.
 9. Legal chunks must pass status, provenance, score and corroboration rules.

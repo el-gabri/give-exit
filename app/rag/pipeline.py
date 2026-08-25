@@ -253,6 +253,12 @@ class RagPipeline:
             raise TypeError("vector store does not support document listing")
         return await self._store.list_document_ids()
 
+    def register_indexed_document(self, doc_id: str, *, chunking_version: str) -> None:
+        """Restore audit metadata for a document already present in persistence."""
+        if not doc_id.strip() or not chunking_version.strip():
+            raise ValueError("doc_id and chunking_version must be non-empty")
+        self._document_chunking_versions[doc_id] = chunking_version
+
     async def delete_document(self, doc_id: str) -> None:
         """Remove every indexed chunk for ``doc_id``.
 

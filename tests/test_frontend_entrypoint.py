@@ -2,10 +2,11 @@
 
 from pathlib import Path
 
+import pytest
 import requests
 from streamlit.testing.v1 import AppTest
 
-from frontend.api_client import ConsumerApiClient
+from frontend.api_client import ConsumerApiClient, ConsumerApiError
 from frontend.consumer_view import _financial_source_rows
 
 
@@ -89,3 +90,13 @@ def test_consumer_client_forwards_configured_api_key(monkeypatch) -> None:
     ConsumerApiClient("https://api.example", api_key="shared-secret").health()
 
     assert captured["headers"]["X-API-Key"] == "shared-secret"
+
+
+def test_consumer_client_distinguishes_timeout_from_connection_failure(monkeypatch) -> None:
+    def request(*args, **kwargs):
+        raise requests.Timeout("deadline exceeded")
+
+    monkeypatch.setattr("frontend.api_client.requests.request", request)
+
+    with pytest.raises(ConsumerApiError, match="excedeu o tempo de espera"):
+        ConsumerApiClient("https://api.example").generate_notice("case", "token")

@@ -21,6 +21,11 @@ from app.consumer.intake import (
     recommended_documents,
 )
 from app.consumer.legal_corpus import LegalCorpus, get_default_legal_corpus
+from app.consumer.legal_index import (
+    LegalIndexResult,
+    legal_corpus_is_indexed,
+    preindex_legal_corpus,
+)
 from app.consumer.legal_policy import (
     LEGAL_GROUND_POLICY_REVIEW_STATUS,
     LEGAL_GROUND_POLICY_VERSION,
@@ -100,6 +105,10 @@ class ConsumerCaseNotReadyError(ValueError):
 
 class ConsumerRetrievalError(RuntimeError):
     """Required evidence or authority retrieval failed."""
+
+
+class ConsumerLegalCorpusNotReadyError(ConsumerRetrievalError):
+    """Notice generation requires a pre-indexed versioned legal corpus."""
 
 
 class ConsumerCaseService:
@@ -432,13 +441,38 @@ class ConsumerCaseService:
             logger.info("consumer_orphan_documents_purged", documents=len(orphans))
         return len(orphans)
 
-    async def _ensure_legal_corpus_indexed(self) -> None:
+    async def legal_corpus_ready(self) -> bool:
+        """Refresh readiness without loading or invoking the embedding model."""
+
         if self._legal_indexed:
-            return
+            return True
         async with self._legal_index_lock:
             if not self._legal_indexed:
-                await self._rag.index_chunks(self._legal_corpus.as_chunks())
-                self._legal_indexed = True
+                self._legal_indexed = await legal_corpus_is_indexed(
+                    self._rag,
+                    self._legal_corpus,
+                )
+            return self._legal_indexed
+
+    async def prepare_legal_corpus(self, *, force: bool = False) -> LegalIndexResult:
+        """Materialize the legal index outside a notice-generation request."""
+
+        async with self._legal_index_lock:
+            result = await preindex_legal_corpus(
+                self._rag,
+                self._legal_corpus,
+                force=force,
+            )
+            self._legal_indexed = True
+            return result
+
+    async def _ensure_legal_corpus_indexed(self) -> None:
+        if await self.legal_corpus_ready():
+            return
+        raise ConsumerLegalCorpusNotReadyError(
+            "A base legal do modelo configurado ainda não foi pré-indexada. "
+            "Execute `python -m app.consumer.preindex_legal` e reinicie a API."
+        )
 
     def _snapshot(self, record: ConsumerCaseRecord) -> ConsumerCaseSnapshot:
         missing = record.facts.missing_fields()

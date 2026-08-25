@@ -105,8 +105,18 @@ after ingestion.
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -e ".[dev,frontend,ocr]"
-uvicorn app.api.main:app --reload
-streamlit run frontend/streamlit_app.py
+python -m app.consumer.preindex_legal
+```
+
+After pre-indexing, run two terminals:
+
+```powershell
+# Terminal 1
+.\.venv\Scripts\python.exe -m uvicorn app.api.main:app --reload
+
+# Terminal 2
+$env:LITIGATION_API_URL="http://127.0.0.1:8000"
+.\.venv\Scripts\python.exe -m streamlit run frontend/streamlit_app.py
 ```
 
 Local image OCR also requires the Tesseract executable and Portuguese language
@@ -143,13 +153,24 @@ LITIGATION_EMBEDDING_BATCH_SIZE=2
 ```
 
 Changing the corpus release, embedding model or pinned revision produces a new
-versioned Chroma collection instead of mixing incompatible vectors.
+versioned Chroma collection instead of mixing incompatible vectors. Materialize
+that collection before accepting notice-generation traffic:
+
+```powershell
+python -m app.consumer.preindex_legal
+python -m app.consumer.preindex_legal --check
+```
+
+The first JUÁ CPU run can take tens of minutes or hours, depending on the
+hardware and chunk sizes. The command reports progress in the terminal. Once
+complete, the API reuses the 460 persisted legal chunks instead of recomputing
+them inside a notice request. Use `--force` only for a deliberate reindex.
 
 ## API surface
 
 | Method | Route | Purpose |
 |---|---|---|
-| `GET` | `/health` | Liveness |
+| `GET` | `/health` | API liveness and legal-corpus readiness |
 | `POST` | `/consumer/cases` | Create an ephemeral case and possession token |
 | `GET` | `/consumer/cases/{id}` | Read the authorized case |
 | `POST` | `/consumer/cases/{id}/messages` | Add a consumer message |
