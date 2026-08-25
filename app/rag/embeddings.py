@@ -337,6 +337,4 @@ class SentenceTransformerEmbeddingClient:
 def _with_instruction(text: str, instruction: str | None) -> str:
     if not instruction or not instruction.strip():
         return text
-    prefix = instruction.strip()
-    separator = "" if prefix.endswith((":", " ")) else " "
-    return f"{prefix}{separator}{text}"
+    return f"{instruction.rstrip()} {text.lstrip()}"
