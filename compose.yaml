@@ -13,7 +13,7 @@ services:
     ports:
       - "${LITIGATION_BIND_HOST:-127.0.0.1}:8000:8000"
     volumes:
-      - copilot-data:/app/data   # ChromaDB, uploads, run history persist here
+      - consumer-data:/app/data   # ChromaDB and transient upload workspace
 
   frontend:
     build:
@@ -30,4 +30,4 @@ services:
       - api
 
 volumes:
-  copilot-data:
+  consumer-data:

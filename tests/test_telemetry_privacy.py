@@ -2,9 +2,6 @@
 
 from pathlib import Path
 
-import httpx
-
-from app.enrichment.datajud import DataJudClient
 from app.ingestion.pdf_reader import PdfExtraction
 from app.ingestion.service import DocumentIngestionService
 from app.security.telemetry import TelemetryRedactor
@@ -69,32 +66,6 @@ def test_filename_reference_retains_only_safe_suffix() -> None:
     assert reference.endswith(".pdf")
     assert "123.456.789-00" not in reference
     assert "maria@example.com" not in reference
-
-
-async def test_datajud_logs_pseudonym_not_case_number(monkeypatch) -> None:
-    recording_logger = _RecordingLogger()
-    monkeypatch.setattr("app.enrichment.datajud.logger", recording_logger)
-
-    def not_found(_: httpx.Request) -> httpx.Response:
-        return httpx.Response(200, json={"hits": {"hits": []}})
-
-    client = DataJudClient(
-        base_url="https://api.example",
-        api_key="public-key",
-        transport=httpx.MockTransport(not_found),
-        telemetry_redactor=TelemetryRedactor("test-key"),
-    )
-
-    await client.lookup(CASE_FORMATTED)
-
-    assert len(recording_logger.events) == 1
-    event, values = recording_logger.events[0]
-    assert event == "datajud_not_found"
-    assert "case_ref" in values
-    assert "case" not in values
-    serialized = repr(recording_logger.events)
-    assert CASE_FORMATTED not in serialized
-    assert CASE_DIGITS not in serialized
 
 
 async def test_ingestion_logs_filename_reference_not_raw_filename(monkeypatch) -> None:

@@ -124,7 +124,7 @@ def render_pdf(markdown: str) -> bytes:
     flush_bullets()
 
     buffer = io.BytesIO()
-    SimpleDocTemplate(buffer, pagesize=A4, title="Relatorio - AI Litigation Copilot").build(
+    SimpleDocTemplate(buffer, pagesize=A4, title="Notificação extrajudicial - Give Exit").build(
         story
     )
     return buffer.getvalue()

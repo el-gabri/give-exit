@@ -80,7 +80,7 @@ class FakeOcr:
 
 @pytest.fixture
 def text_pdf(tmp_path: Path) -> Path:
-    return _make_pdf(tmp_path / "lawsuit.pdf", [PT_TEXT, PT_TEXT])
+    return _make_pdf(tmp_path / "consumer-evidence.pdf", [PT_TEXT, PT_TEXT])
 
 
 @pytest.fixture

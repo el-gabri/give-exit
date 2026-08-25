@@ -28,9 +28,10 @@ leaderboards alone cannot establish which combination works for this product.
    auxiliary metadata but are never represented as statutory quotations.
 3. Chunk at legal boundaries.  A chunk never crosses an article; long articles
    split at subdivisions and repeat enough hierarchy to remain interpretable.
-4. Keep the Business and Consumer retrieval stores in separate indexes.  The
-   Consumer namespace binds the canonical corpus hash, embedding model and
-   optional model revision; any change creates a new index and requires
+4. Keep uploaded evidence and the canonical legal corpus under distinct,
+   stable document IDs, and require every retrieval to be scoped by `doc_id`.
+   The collection identity binds the canonical corpus hash, embedding model
+   and optional model revision; any change creates a new index and requires
    reindexing.
 5. Retrieve legal candidates with a deterministic hybrid of lexical and dense
    rankings, with an optional bounded reranker.  The confirmed complaint and

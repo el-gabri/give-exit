@@ -1,8 +1,8 @@
 """Ephemeral case repository with possession-token authorization.
 
 Consumer cases contain financial and identity data, so the local MVP keeps
-them out of the append-only business telemetry store. A production adapter
-must replace this repository with authenticated, encrypted persistence.
+them out of operational telemetry. A production adapter must replace this
+repository with authenticated, encrypted persistence.
 """
 
 from __future__ import annotations

@@ -1,1 +1,1 @@
-"""AI Litigation Copilot."""
+"""Give Exit consumer-assistance application."""

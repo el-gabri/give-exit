@@ -5,7 +5,7 @@ Strategy (see ADR 0006):
    ("DOS FATOS", "DO DIREITO", "DOS PEDIDOS", "I - PRELIMINARMENTE"...).
    Heuristic: short lines whose letters are (almost) all uppercase.
 2. Chunk WITHIN sections, never across them - a chunk mixing facts with
-   requests poisons retrieval for both questions.
+   requests pollutes retrieval across otherwise independent questions.
 3. Pack whole paragraphs greedily up to a target size, with a character
    overlap between consecutive chunks of the same section.
 4. Every chunk keeps provenance: section title + page span, powering the

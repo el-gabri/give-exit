@@ -58,7 +58,7 @@ async def test_gemini_embedding_2_preserves_cardinality_and_purpose_prefixes() -
     ]
     assert _call_texts(fake.models.calls[1]) == ["title: none | text: artigo 3"]
     assert _call_texts(fake.models.calls[2]) == [
-        "task: search result | query: Brazilian legal retrieval:cobranca indevida"
+        "task: search result | query: Brazilian legal retrieval: cobranca indevida"
     ]
     assert fake.models.calls[0]["config"].output_dimensionality == 2
     assert fake.models.calls[0]["config"].task_type is None

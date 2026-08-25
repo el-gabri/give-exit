@@ -47,27 +47,6 @@
         "redistribution_status": "no_external_source_identified",
         "notes": "No known real personal data; PII-shaped values remain test-sensitive content."
       }
-    },
-    {
-      "path": "demo/peticao_labor_overtime.pdf",
-      "sha256": "16c5a23b36210d61adba88451fde0e53e0c48c4e488c4b7beb6576bed9838f9a",
-      "record_kind": "synthetic_fixture",
-      "synthetic": true,
-      "contains_personal_data": false,
-      "contains_personal_data_like_content": true,
-      "provenance": {
-        "source_url": null,
-        "access_status": "not_applicable_synthetic",
-        "basis": "repository_fixture",
-        "notes": "Synthetic petition with fictitious names and placeholder identifier patterns; no external source URL applies."
-      },
-      "review": {
-        "status": "reviewed_synthetic",
-        "reviewed_on": "2026-08-24",
-        "review_basis": "fixture_content_review",
-        "redistribution_status": "no_external_source_identified",
-        "notes": "No known real personal data; PII-shaped values remain test-sensitive content."
-      }
     }
   ]
 }

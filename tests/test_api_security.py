@@ -57,29 +57,47 @@ async def test_health_stays_public_with_auth_enabled(secured_client: httpx.Async
 
 
 async def test_routes_require_the_configured_key(secured_client: httpx.AsyncClient) -> None:
-    upload = {"file": ("peticao.pdf", _pdf_bytes(), "application/pdf")}
-
-    assert (await secured_client.post("/analyses", files=upload)).status_code == 401
-    assert (await secured_client.get("/runs")).status_code == 401
     assert (await secured_client.post("/consumer/cases")).status_code == 401
     assert (
-        await secured_client.post("/analyses", files=upload, headers={"X-API-Key": "wrong"})
+        await secured_client.post("/consumer/cases", headers={"X-API-Key": "wrong"})
     ).status_code == 401
 
     accepted = await secured_client.post(
-        "/analyses", files=upload, headers={"X-API-Key": "test-key-123"}
+        "/consumer/cases", headers={"X-API-Key": "test-key-123"}
     )
-    assert accepted.status_code == 202
+    assert accepted.status_code == 201
 
 
 async def test_upload_rate_limit_returns_429(throttled_client: httpx.AsyncClient) -> None:
-    upload = {"file": ("peticao.pdf", _pdf_bytes(), "application/pdf")}
+    created = (await throttled_client.post("/consumer/cases")).json()
+    case_id = created["case_id"]
+    headers = {"X-Consumer-Case-Token": created["case_token"]}
 
-    assert (await throttled_client.post("/analyses", files=upload)).status_code == 202
-    assert (await throttled_client.post("/analyses", files=upload)).status_code == 202
-    assert (await throttled_client.post("/analyses", files=upload)).status_code == 429
+    for index in range(2):
+        upload = {
+            "file": (
+                f"comprovante-{index}.pdf",
+                _pdf_bytes(),
+                "application/pdf",
+            )
+        }
+        response = await throttled_client.post(
+            f"/consumer/cases/{case_id}/documents",
+            headers=headers,
+            files=upload,
+        )
+        assert response.status_code == 201
+
+    overloaded = await throttled_client.post(
+        f"/consumer/cases/{case_id}/documents",
+        headers=headers,
+        files={"file": ("comprovante-3.pdf", _pdf_bytes(), "application/pdf")},
+    )
+    assert overloaded.status_code == 429
     # Read-only routes remain unthrottled.
-    assert (await throttled_client.get("/runs")).status_code == 200
+    assert (
+        await throttled_client.get(f"/consumer/cases/{case_id}", headers=headers)
+    ).status_code == 200
 
 
 def test_sliding_window_recovers_after_the_window_passes() -> None:

@@ -74,7 +74,7 @@ class RetrievalTrace(BaseModel):
     )
     candidate_multiplier: int | None = Field(default=None, ge=1)
     returned_count: int = Field(ge=0)
-    retrieval_mode: str = "dense"
+    retrieval_mode: str = "hybrid"
     embedding_model: str
     embedding_model_revision: str | None = None
     embedding_query_instruction: str | None = None

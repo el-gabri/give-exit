@@ -78,7 +78,7 @@ def create_vector_store(
     collection_name = versioned_collection_name(
         corpus_version or settings.rag_corpus_version,
         embedding_model or _embedding_model_for(settings, _embedding_provider_for(settings)),
-        prefix="give-exit",
+        prefix="give-exit-consumer",
     )
     if settings.vector_store is VectorStoreBackend.MEMORY:
         return InMemoryVectorStore(index_name=collection_name)

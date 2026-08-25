@@ -1,6 +1,6 @@
 # Multi-stage build: one source of truth for both services.
-#   docker build --target api -t litigation-api .
-#   docker build --target frontend -t litigation-frontend .
+#   docker build --target api -t give-exit-api .
+#   docker build --target frontend -t give-exit-frontend .
 
 FROM python:3.12-slim AS base
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -11,7 +11,7 @@ COPY pyproject.toml README.md ./
 
 # ---------------------------------------------------------------- api
 FROM base AS api
-# Tesseract (por) enables OCR for scanned lawsuits inside the container
+# Tesseract (por) enables OCR for consumer evidence inside the container.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-por \
     && rm -rf /var/lib/apt/lists/*

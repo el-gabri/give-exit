@@ -246,9 +246,9 @@ def test_factory_keeps_mock_mode_offline_and_versions_memory_index() -> None:
 
     assert isinstance(embedder, MockEmbeddingClient)
     assert store.index_name == versioned_collection_name(
-        "cdc-v1", embedder.model_name, prefix="give-exit"
+        "cdc-v1", embedder.model_name, prefix="give-exit-consumer"
     )
-    assert settings.retrieval_mode is RetrievalMode.DENSE
+    assert settings.retrieval_mode is RetrievalMode.HYBRID
 
 
 async def test_chroma_roundtrip_preserves_structured_metadata(tmp_path) -> None:

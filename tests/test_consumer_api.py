@@ -67,6 +67,16 @@ def _headers(token: str) -> dict[str, str]:
     return {"X-Consumer-Case-Token": token}
 
 
+async def test_api_surface_is_consumer_only(consumer_client: httpx.AsyncClient) -> None:
+    schema = (await consumer_client.get("/openapi.json")).json()
+    paths = set(schema["paths"])
+
+    assert paths
+    assert all(path == "/health" or path.startswith("/consumer/") for path in paths)
+    assert "/analyses" not in paths
+    assert "/runs" not in paths
+
+
 async def test_consumer_case_is_token_isolated_and_message_is_idempotent(
     consumer_client: httpx.AsyncClient,
 ) -> None:

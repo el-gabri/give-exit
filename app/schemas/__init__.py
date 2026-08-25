@@ -1,15 +1,6 @@
-"""Domain schemas - the typed contract between all agents and layers."""
+"""Shared typed contracts for ingestion, retrieval and document security."""
 
-from app.schemas.common import Citation, ConfidentConclusion
 from app.schemas.document import DocumentPage, ExtractionMethod, ParsedDocument
-from app.schemas.lawsuit import (
-    Deadline,
-    LawsuitExtraction,
-    LawsuitType,
-    MonetaryValue,
-    Party,
-    PartyRole,
-)
 from app.schemas.security import (
     InjectionCategory,
     PromptInjectionAssessment,
@@ -19,17 +10,9 @@ from app.schemas.security import (
 )
 
 __all__ = [
-    "Citation",
-    "ConfidentConclusion",
-    "Deadline",
     "DocumentPage",
     "ExtractionMethod",
-    "LawsuitExtraction",
-    "LawsuitType",
-    "MonetaryValue",
     "ParsedDocument",
-    "Party",
-    "PartyRole",
     "InjectionCategory",
     "PromptInjectionAssessment",
     "PromptInjectionFinding",

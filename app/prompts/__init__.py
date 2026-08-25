@@ -1,4 +1,4 @@
-"""Versioned prompt templates, one module per agent."""
+"""Versioned prompts used by bounded Consumer security checks."""
 
 from app.prompts.base import PromptTemplate
 

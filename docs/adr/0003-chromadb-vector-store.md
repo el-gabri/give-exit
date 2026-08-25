@@ -25,7 +25,7 @@ network-reachable or multi-tenant Chroma deployment is outside this decision.
 - (+) Zero-infrastructure start; runs inside Docker Compose.
 - (+) Metadata filtering (per-document isolation) built in - FAISS would
   need extra bookkeeping for this.
-- (+) Migration path to managed stores without touching agent code.
+- (+) Migration path to managed stores without changing the Consumer service.
 - (+) The narrow embedded boundary avoids relying on Chroma's server-side
   authentication, tenant authorization or remote embedding configuration.
 - (-) Not horizontally scalable; acceptable for the current stage and

@@ -67,7 +67,7 @@ CONSUMER_STATE_KEYS = (
 
 
 def render_consumer_app(api_url: str, api_key: str | None = None) -> None:
-    """Render the complete consumer journey without exposing business history."""
+    """Render the complete consumer journey."""
     _initialize_state()
     client = ConsumerApiClient(api_url, api_key=api_key)
     connected = _render_sidebar(client, api_url)
@@ -132,7 +132,7 @@ def _has_case_credentials() -> bool:
 
 def _render_sidebar(client: ConsumerApiClient, api_url: str) -> bool:
     with st.sidebar:
-        st.title("Litigation Copilot")
+        st.title("Give Exit")
         st.caption("Área do consumidor")
         try:
             client.health()

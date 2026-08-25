@@ -1,9 +1,8 @@
 """Consumer case application service.
 
-The service keeps the consumer workflow separate from the defendant-side
-analysis graph. Facts are user allegations, evidence is scanned before RAG,
-legal authorities come only from the reviewed corpus, and the final artifact
-is assembled deterministically.
+Facts remain user allegations, evidence is scanned before RAG, legal
+authorities come only from the reviewed corpus, and the final artifact is
+assembled deterministically.
 """
 
 from __future__ import annotations
@@ -305,6 +304,7 @@ class ConsumerCaseService:
                 doc_id=evidence_document.doc_id,
                 agent="consumer_case_evidence",
                 k=6,
+                mode="hybrid",
             )
         except Exception as exc:
             raise ConsumerRetrievalError(

@@ -1,32 +1,25 @@
-# ADR 0007: Deterministic report composer (no LLM at the last mile)
+# ADR 0007: Compose consumer notices deterministically
 
-Status: accepted · Date: 2026-07-23 · Amended: 2026-08-24
+**Status:** accepted
 
 ## Context
 
-The final report aggregates outputs of five agents. The obvious pattern is
-a "composer agent" that receives everything and writes the report with an
-LLM. That adds one more opportunity to hallucinate - at the exact step
-where all conclusions converge and errors are least detectable.
+An extrajudicial notice combines confirmed allegations, evidence references,
+legal authorities, requests, deadlines and a transparent settlement scenario.
+Allowing a generative model to rewrite those sections would weaken provenance
+and make the same confirmed case produce different legal language.
 
 ## Decision
 
-`compose_report` is plain Python. Sections map 1:1 to typed agent outputs;
-aggregate confidence is an unweighted mean over every ConfidentConclusion
-(transparent arithmetic over uncalibrated model scores, not an outcome
-probability); "missing information" is computed from the
-extraction schema plus the strategy agent's requests; the AI-reasoning
-section is generated from the actual execution traces (models, prompt
-versions, timings) - it describes what really happened, not what an LLM
-says happened.
+The notice composer is plain Python. It accepts typed Consumer facts, evidence
+citations, eligible legal grounds and settlement components. It renders one
+canonical Markdown artifact; PDF and DOCX are derived from that Markdown.
+
+The LLM does not write, revise or polish the notice.
 
 ## Consequences
 
-- (+) Assembly introduces no new generated claims; report structure is guaranteed.
-- (+) Free and instant (no extra LLM call); partial reports on branch
-  failure are trivial (None sections + warning).
-- (+) The aggregate score is reproducible and explicitly labeled uncalibrated.
-- (-) Deterministic assembly does not make upstream model claims correct; the
-  evidence-quality gate and human legal review remain mandatory.
-- (-) The report's prose polish is bounded by what agents produced;
-  acceptable - polish belongs to the section content, not the assembly.
+- Identical inputs and versions produce identical notice content.
+- Legal citations and monetary values can be traced to typed sources.
+- Unsupported sections fail before an artifact is returned.
+- Language is more constrained than free-form generation, by design.

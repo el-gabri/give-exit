@@ -17,8 +17,8 @@ document.
 
 ## Decision
 
-Add `security_scan` as the first LangGraph node, before RAG indexing. It scans
-every page with conservative Portuguese and English rules that target
+Run `PromptInjectionDetector` before any uploaded document reaches the RAG
+index. It scans every page with conservative Portuguese and English rules that target
 model-directed instructions, role overrides, secret extraction, tool
 manipulation, forced output and obfuscated payloads.
 
@@ -38,15 +38,16 @@ this deterministic policy:
 - `none` and `low`: continue;
 - `medium`: continue with a visible warning and mask the flagged excerpts from
   downstream prompts;
-- `high`: halt with job outcome `review_required`;
-- `critical`: end with job outcome `blocked`.
+- `high`: quarantine the document with outcome `review_required`;
+- `critical`: reject the document with outcome `blocked`.
 
-Neither security outcome is recorded as a successful legal analysis; run
-totals expose them separately from provider/pipeline failures.
+Neither security outcome is recorded as successful document processing; the
+API exposes it separately from provider and ingestion failures.
 
-Masking changes only the context sent to analysis agents. The source document
-is preserved, and each finding records category, severity, page, verbatim
-excerpt, reasoning and confidence in the structured report, UI and exports.
+Masking changes only the text eligible for retrieval and drafting. The source
+document is preserved according to the configured retention policy, and each
+finding records category, severity, page, verbatim excerpt, reasoning and
+confidence in the structured audit data.
 
 ## Consequences
 
@@ -62,6 +63,6 @@ excerpt, reasoning and confidence in the structured report, UI and exports.
 - (-) Heuristics can produce false positives and a semantic classifier can
   still make mistakes; this is risk reduction, not proof that a document is
   safe.
-- (-) High-risk documents require an explicit human review path before legal
-  analysis can continue.
+- (-) High-risk documents require an explicit human review path before the
+  evidence can be used in a notice.
 - (-) Strict mode may add substantial latency and LLM cost on long filings.

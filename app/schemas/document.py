@@ -42,7 +42,7 @@ class ParsedDocument(BaseModel):
     def doc_id(self) -> str:
         """Content-addressed id: same file -> same id.
 
-        Makes vector-store upserts idempotent and lets us cache analyses.
+        Makes vector-store upserts idempotent and supports reproducible indexing.
         """
         digest = hashlib.sha256(self.full_text.encode("utf-8")).hexdigest()
         return digest[:16]

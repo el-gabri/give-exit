@@ -61,13 +61,13 @@ class RagPipeline:
         chunker: SectionAwareChunker | None = None,
         default_k: int = 6,
         include_trace_previews: bool = False,
-        retrieval_mode: RetrievalMode | str = RetrievalMode.DENSE,
+        retrieval_mode: RetrievalMode | str = RetrievalMode.HYBRID,
         candidate_multiplier: int = 4,
         rrf_constant: int = 60,
         dense_weight: float = 1.0,
         lexical_weight: float = 1.0,
         reranker: Reranker | None = None,
-        corpus_version: str = "documents-v1",
+        corpus_version: str = "consumer-documents-v1",
     ) -> None:
         if default_k < 1:
             raise ValueError("default_k must be positive")

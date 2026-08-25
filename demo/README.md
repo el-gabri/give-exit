@@ -1,8 +1,9 @@
-# Demo data governance
+# Consumer demo-data governance
 
-`manifest.json` is the inventory and integrity record for every PDF committed
-under this directory. A PDF addition or replacement must update its SHA-256,
-classification, provenance, and review metadata in the same change.
+`manifest.json` inventories the consumer-domain PDFs committed under this
+directory. They may be used only as evidence-upload examples; they are not a
+second judicial-filing analysis product. A PDF addition or replacement must update its
+SHA-256, classification, provenance, and review metadata in the same change.
 
 `contains_personal_data` means the file is known or reasonably expected to
 contain data about a real identifiable person. Synthetic fixtures can still

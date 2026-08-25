@@ -24,8 +24,6 @@ def test_consumer_view_uses_supplier_neutral_title(monkeypatch) -> None:
     app_path = Path(__file__).parents[1] / "frontend" / "streamlit_app.py"
     app = AppTest.from_file(app_path).run(timeout=10)
 
-    app.segmented_control[0].set_value("Sou consumidor").run(timeout=10)
-
     assert not app.exception
     titles = [element.value for element in app.title]
     assert "Assistente para reclamações" in titles

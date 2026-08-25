@@ -107,24 +107,20 @@ class Settings(BaseSettings):
     data_dir: Path = Path("./data")
     vector_store: VectorStoreBackend = VectorStoreBackend.CHROMA
     max_document_pages: int = Field(default=250, ge=1)
-    retain_uploads: bool = False
-    # Indexed chunks contain the full document text. They are only queried
-    # while the analysis runs, so they are deleted with the job by default.
-    retain_index: bool = False
 
     # --- RAG ---
     chunk_target_chars: int = 1200
     chunk_overlap_chars: int = 150
     retrieval_k: int = Field(default=6, ge=1)
     retrieval_trace_include_previews: bool = False
-    # Preserve the established Business ranking. Consumer retrieval opts into
-    # hybrid explicitly at its call site.
-    retrieval_mode: RetrievalMode = RetrievalMode.DENSE
+    # Consumer queries need semantic paraphrase matching and exact statutory,
+    # protocol, date and monetary terms, so hybrid is the product default.
+    retrieval_mode: RetrievalMode = RetrievalMode.HYBRID
     retrieval_candidate_multiplier: int = Field(default=4, ge=1)
     retrieval_rrf_constant: int = Field(default=60, ge=1)
     retrieval_dense_weight: float = Field(default=1.0, gt=0)
     retrieval_lexical_weight: float = Field(default=1.0, gt=0)
-    rag_corpus_version: str = Field(default="documents-v1", min_length=1)
+    rag_corpus_version: str = Field(default="consumer-documents-v1", min_length=1)
     reranker_provider: RerankerProvider = RerankerProvider.NONE
     reranker_model: str = "BAAI/bge-reranker-v2-m3"
     reranker_model_revision: str | None = None
@@ -138,13 +134,6 @@ class Settings(BaseSettings):
     prompt_injection_strict_max_chars: int = Field(default=500_000, ge=1)
     prompt_injection_strict_max_batches: int = Field(default=64, ge=1)
 
-    # --- DataJud (CNJ public API) ---
-    # The key is published openly by CNJ at
-    # https://datajud-wiki.cnj.jus.br/api-publica/acesso/ but is still
-    # injected via environment so rotation never requires a code change.
-    datajud_api_key: str | None = Field(default=None, repr=False)
-    datajud_base_url: str = "https://api-publica.datajud.cnj.jus.br"
-
     # --- API ---
     deployment_mode: DeploymentMode = DeploymentMode.LOCAL
     # Comma-separated list of browser origins allowed by CORS. The default
@@ -156,22 +145,6 @@ class Settings(BaseSettings):
     # Per-client ceiling for the expensive upload endpoints (OCR + scan + LLM).
     # 0 disables the limiter.
     upload_rate_limit_per_minute: int = Field(default=20, ge=0)
-    # Wall-clock budget for one analysis run, so an unresponsive provider
-    # cannot leave a job running forever. 0 disables the deadline.
-    job_timeout_seconds: float = Field(default=900.0, ge=0)
-    # Bound both provider/OCR concurrency and the number of accepted jobs
-    # waiting for a worker slot. Requests beyond this combined capacity fail
-    # explicitly with 503 instead of growing an unbounded task backlog.
-    max_concurrent_jobs: int = Field(default=4, ge=1)
-    max_queued_jobs: int = Field(default=16, ge=0)
-    # Halted jobs keep the complete document state in process so approved
-    # reviews can resume. Bound both their count and retention window.
-    max_review_required_jobs: int = Field(default=20, ge=1)
-    review_required_ttl_seconds: float = Field(default=86_400.0, gt=0)
-
-    # --- Output ---
-    report_language: str = "pt-BR"
-
     # --- Logging ---
     log_level: str = "INFO"
     # Optional high-entropy HMAC key for privacy-safe telemetry references.
@@ -202,11 +175,6 @@ class Settings(BaseSettings):
     @property
     def uploads_dir(self) -> Path:
         return self.data_dir / "uploads"
-
-    @property
-    def reports_dir(self) -> Path:
-        return self.data_dir / "reports"
-
 
 @lru_cache
 def get_settings() -> Settings:

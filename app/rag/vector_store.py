@@ -110,7 +110,7 @@ class ChromaVectorStore:
     and never accepts a collection-provided embedding function.
     """
 
-    COLLECTION = "lawsuits"
+    COLLECTION = "consumer-documents"
 
     def __init__(self, persist_dir: Path, *, collection_name: str | None = None) -> None:
         import chromadb
@@ -236,7 +236,7 @@ def _cosine(a: list[float], b: list[float]) -> float:
 
 
 def versioned_collection_name(
-    corpus_version: str, embedding_model: str, *, prefix: str = "lawsuits"
+    corpus_version: str, embedding_model: str, *, prefix: str = "give-exit-consumer"
 ) -> str:
     """Build a stable Chroma-safe namespace for one incompatible vector space."""
     raw = f"{corpus_version}:{embedding_model}"

@@ -13,8 +13,8 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request, UploadFi
 from fastapi.responses import PlainTextResponse, Response
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.api.jobs import UploadTooLargeError, _write_upload_in_chunks
 from app.api.security import enforce_upload_rate_limit
+from app.api.uploads import UploadTooLargeError, write_upload_in_chunks
 from app.consumer.schemas import (
     ConsumerCaseSnapshot,
     ConsumerEvidence,
@@ -193,7 +193,7 @@ async def add_consumer_document(
     uploads_dir.mkdir(parents=True, exist_ok=True)
     upload_path = uploads_dir / f"{uuid.uuid4().hex}{suffix}"
     try:
-        header = await _write_upload_in_chunks(
+        header = await write_upload_in_chunks(
             file=file,
             path=upload_path,
             max_upload_bytes=MAX_UPLOAD_BYTES,

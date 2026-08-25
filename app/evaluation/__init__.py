@@ -1,1 +1,1 @@
-"""Evaluation harness: measures pipeline quality against golden cases."""
+"""Consumer legal-retrieval and document-security evaluation harnesses."""

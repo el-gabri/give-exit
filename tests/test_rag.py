@@ -6,10 +6,6 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.agents.context import (
-    format_retrieval_bundle,
-    retrieve_for_queries_with_trace,
-)
 from app.rag.chunking import SectionAwareChunker, is_heading
 from app.rag.embeddings import MockEmbeddingClient
 from app.rag.pipeline import RagPipeline, RetrievalBatchError
@@ -376,49 +372,6 @@ async def test_embedding_cardinality_mismatch_fails_with_complete_audit() -> Non
         trace.error == "ValueError: embedding provider returned 1 vectors for 2 queries"
         for trace in traces
     )
-
-
-async def test_context_audit_distinguishes_raw_merge_and_prompt_selection() -> None:
-    pipeline = RagPipeline(
-        embedder=MockEmbeddingClient(), store=InMemoryVectorStore(), default_k=3
-    )
-    doc = _petition()
-    await pipeline.index_document(doc)
-
-    bundle = await retrieve_for_queries_with_trace(
-        pipeline,
-        doc_id=doc.doc_id,
-        queries=["danos morais", "restituicao em dobro"],
-        agent="legal_analysis",
-    )
-    context, traces = format_retrieval_bundle(doc, bundle, max_chars=650)
-
-    assert len(traces) == 2
-    assert all(len(trace.results) == 3 for trace in traces)
-    all_chunk_ids = {
-        item.chunk_id for trace in traces for item in trace.results
-    }
-    for chunk_id in all_chunk_ids:
-        hits = [
-            item
-            for trace in traces
-            for item in trace.results
-            if item.chunk_id == chunk_id
-        ]
-        assert sum(item.selected_for_merge for item in hits) == 1
-        assert sum(item.included_in_context for item in hits) <= 1
-        assert {item.merged_rank for item in hits} != {None}
-
-    included_ids = {
-        item.chunk_id
-        for trace in traces
-        for item in trace.results
-        if item.included_in_context
-    }
-    assert included_ids
-    assert included_ids < all_chunk_ids
-    assert all(trace.context_truncated for trace in traces)
-    assert all(chunk_id in context for chunk_id in included_ids)
 
 
 async def test_retrieval_is_isolated_per_document() -> None:

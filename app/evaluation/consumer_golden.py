@@ -1,9 +1,7 @@
 """Loading for the Consumer legal-retrieval golden dataset.
 
-This dataset is deliberately separate from the lawsuit-analysis goldens in
-``eval_data/*.json``.  Its input is a lay complaint and its labels are stable
-CDC/CF article or subdivision ids, so corpus re-chunking does not invalidate
-the judgments.
+Its input is a lay complaint and its labels are stable CDC/CF article or
+subdivision ids, so corpus re-chunking does not invalidate the judgments.
 """
 
 from __future__ import annotations

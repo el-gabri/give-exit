@@ -4,8 +4,8 @@ Status: accepted · Date: 2026-07-23
 
 ## Context
 
-The product must support OpenAI, Anthropic and Gemini without coupling agents
-to any vendor SDK. Options: LiteLLM (uniform API over 100+ providers),
+The product must support OpenAI, Anthropic and Gemini without coupling its
+security and drafting services to any vendor SDK. Options: LiteLLM (uniform API over 100+ providers),
 LangChain chat models, or our own thin protocol.
 
 ## Decision

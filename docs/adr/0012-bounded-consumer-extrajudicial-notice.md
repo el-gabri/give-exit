@@ -4,10 +4,8 @@ Status: accepted · Date: 2026-08-04 · Amended: 2026-08-24
 
 ## Context
 
-The product originally supports companies receiving a lawsuit. A second
-journey can help a consumer organize a dispute with a supplier, connect evidence
-to applicable consumer protections and prepare a settlement request without
-removing or weakening the business workflow.
+The product helps a consumer organize a dispute with a supplier, connect
+evidence to applicable consumer protections and prepare a settlement request.
 
 That journey has a different risk profile. Messages and uploaded documents can
 contain sensitive personal and financial data. Retrieved evidence must not be
@@ -18,10 +16,10 @@ scope of this demonstration.
 
 ## Decision
 
-1. Add a separate consumer mode while preserving the existing
-   business mode. Bound the first consumer intake to the complaint, supplier,
-   relevant dates, prior protocols, user-confirmed loss, desired resolution and
-   supporting PDF or image evidence. Do not silently infer absent facts.
+1. Make the Consumer journey the product's only supported workflow. Bound its
+   intake to the complaint, supplier, relevant dates, prior protocols,
+   user-confirmed loss, desired resolution and supporting PDF or image
+   evidence. Do not silently infer absent facts.
 2. Produce a **notificação extrajudicial com proposta de acordo**, not a
    lawsuit, initial petition or court filing. The application only creates an
    exportable draft; it does not send, file or represent the consumer. A human
@@ -64,7 +62,7 @@ scope of this demonstration.
    evidence and retrieved legal grounds. Mark uncertainty and missing evidence
    rather than asking the language model to fill gaps. Exports carry the review
    warning and source provenance.
-8. Do not position the consumer mode as production-ready until all of these
+8. Do not position the product as production-ready until all of these
    blockers are addressed:
    - authenticated users, authorization and tenant-isolated storage/retrieval;
    - an LGPD-compliant lawful basis, consent/notice where applicable, data

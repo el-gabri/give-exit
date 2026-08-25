@@ -66,9 +66,8 @@ class DocumentIngestionService:
     async def ingest(self, path: Path, *, require_text: bool = False) -> ParsedDocument:
         """Ingest a document, optionally rejecting incomplete OCR evidence.
 
-        The flag is intentionally per call: business lawsuit analysis keeps
-        its warning-based behavior, while consumer evidence can fail closed
-        when scanned pages cannot be read.
+        The flag is intentionally per call so upload boundaries can fail
+        closed when scanned pages cannot be read.
         """
         return await asyncio.to_thread(self._ingest_sync, path, require_text=require_text)
 
