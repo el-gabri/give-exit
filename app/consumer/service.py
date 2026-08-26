@@ -78,11 +78,6 @@ from app.security.sanitization import sanitized_document
 
 logger = get_logger(__name__)
 
-CONSUMER_NOTICE_WARNING = (
-    "Rascunho informativo para revisão humana. Não é petição judicial nem substitui "
-    "orientação jurídica individualizada. Confira fatos, documentos, destinatário e prazos."
-)
-
 # A notice cites law; a weakly ranked article is worse than a shorter notice.
 # Only the strongest merged hits are eligible, each hit must stay within reach
 # of the best one, and the score-type-aware gate in legal_policy must show
@@ -440,7 +435,7 @@ class ConsumerCaseService:
                 total_ms=(perf_counter() - generation_started) * 1000,
             ),
             retrievals=[*legal_traces, *evidence_traces],
-            warnings=[CONSUMER_NOTICE_WARNING, *composition_warnings],
+            warnings=composition_warnings,
         )
         record.notice = notice
         record.touch()
@@ -1015,10 +1010,6 @@ def _render_notice_markdown(
             "Solicita-se resposta escrita em até "
             f"**{facts.response_deadline_business_days} dias úteis**. "
             "A ausência de acordo não altera direitos, defesas ou prazos legais de qualquer parte.",
-            "",
-            "---",
-            "",
-            f"> {CONSUMER_NOTICE_WARNING}",
         ]
     )
     markdown = "\n".join(lines)

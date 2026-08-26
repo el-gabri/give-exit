@@ -211,6 +211,7 @@ async def test_full_consumer_notice_lifecycle(
     assert notice["settlement"]["downside_cost_amount"] == "50.00"
     assert "reserva privada" not in notice["full_text"].casefold()
     assert "R$" in notice["full_text"]
+    assert "rascunho informativo para revisão humana" not in notice["full_text"].casefold()
 
     assert (
         await consumer_client.get(f"/consumer/cases/{case_id}/notice.md", headers=headers)
