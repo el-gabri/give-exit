@@ -126,12 +126,34 @@ LITIGATION_EMBEDDING_BATCH_SIZE=2
 LITIGATION_RETRIEVAL_MODE=hybrid
 ```
 
-Alterar corpus, modelo ou revisão do embedding cria uma nova coleção Chroma,
-sem misturar vetores incompatíveis. Materialize a nova coleção antes de iniciar
-o atendimento:
+Alterar corpus, modelo ou revisão do embedding cria um namespace versionado,
+sem misturar vetores incompatíveis. Por padrão ele é uma coleção Chroma.
+Para migrar uma coleção local já pronta para PostgreSQL sem recalcular os
+embeddings, instale o extra, habilite pgvector no banco de destino e configure
+o DSN:
 
 ```powershell
-python -m app.consumer.preindex_legal
+python -m pip install -e ".[postgres]"
+& "C:\Program Files\PostgreSQL\18\bin\psql.exe" -U postgres -d postgres -c "CREATE EXTENSION IF NOT EXISTS vector;"
+```
+
+```env
+LITIGATION_POSTGRES_DSN=postgresql://postgres:SUA_SENHA@localhost:5432/postgres
+```
+
+```powershell
+python -m app.consumer.migrate_legal_index_to_postgres
+```
+
+Após a mensagem de sucesso, altere também:
+
+```env
+LITIGATION_VECTOR_STORE=postgres
+```
+
+e valide a execução normal:
+
+```powershell
 python -m app.consumer.preindex_legal --check
 ```
 

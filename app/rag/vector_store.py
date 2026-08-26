@@ -10,11 +10,12 @@ import hashlib
 import json
 import math
 import re
+import threading
 import unicodedata
 from collections import Counter
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 from app.schemas.rag import Chunk, RetrievedChunk
 
@@ -226,6 +227,269 @@ class ChromaVectorStore:
 
     async def delete_document(self, doc_id: str) -> None:
         await asyncio.to_thread(self._collection.delete, where={"doc_id": doc_id})
+
+    async def export_entries(self) -> list[tuple[Chunk, list[float]]]:
+        """Return stored chunks and vectors for an explicit backend migration.
+
+        This method is intentionally not part of ``VectorStore``: ordinary
+        request handling never needs to read raw embeddings from persistence.
+        """
+
+        def _export() -> list[tuple[Chunk, list[float]]]:
+            result = self._collection.get(
+                include=["documents", "metadatas", "embeddings"],
+            )
+            documents = result["documents"]
+            metadatas = result["metadatas"]
+            embeddings = result["embeddings"]
+            if documents is None or metadatas is None or embeddings is None:
+                raise RuntimeError("Chroma omitted entries required for migration")
+            return [
+                (
+                    _restore_chunk(chunk_id, text, metadata),
+                    [float(value) for value in embedding],
+                )
+                for chunk_id, text, metadata, embedding in zip(
+                    result["ids"], documents, metadatas, embeddings, strict=True
+                )
+            ]
+
+        return await asyncio.to_thread(_export)
+
+
+class PostgresVectorStore:
+    """pgvector-backed persistence with exact cosine retrieval.
+
+    The table stores every provenance field in a JSONB payload and scopes rows
+    by the versioned index namespace. It deliberately uses an unconstrained
+    ``vector`` column: a namespace is immutable for one embedding space, while
+    different namespaces can safely have different dimensions in one table.
+    The Consumer corpus is small (460 chunks), so exact search is both fast
+    and avoids an index that could silently mix incompatible dimensions.
+    """
+
+    TABLE = "give_exit_vector_chunks"
+
+    def __init__(self, *, dsn: str, index_name: str) -> None:
+        if not dsn.strip():
+            raise ValueError("Postgres DSN must be non-empty")
+        self._dsn = dsn
+        self._index_name = index_name
+        self._schema_ready = False
+        self._schema_lock = threading.Lock()
+
+    @property
+    def index_name(self) -> str:
+        return self._index_name
+
+    async def upsert(self, chunks: list[Chunk], vectors: list[list[float]]) -> None:
+        rows = _postgres_rows(chunks, vectors, namespace=self._index_name)
+        if not rows:
+            return
+        await asyncio.to_thread(self._upsert_sync, rows)
+
+    async def replace_document(self, chunks: list[Chunk], vectors: list[list[float]]) -> None:
+        rows = _postgres_rows(chunks, vectors, namespace=self._index_name)
+        if not rows:
+            return
+        doc_ids = {chunk.doc_id for chunk in chunks}
+        if len(doc_ids) != 1:
+            raise ValueError("replace_document requires exactly one doc_id")
+        await asyncio.to_thread(self._replace_document_sync, next(iter(doc_ids)), rows)
+
+    async def query(self, vector: list[float], doc_id: str, k: int) -> list[RetrievedChunk]:
+        if k < 1:
+            return []
+        return await asyncio.to_thread(self._query_sync, _vector_literal(vector), doc_id, k)
+
+    async def lexical_query(self, query: str, doc_id: str, k: int) -> list[RetrievedChunk]:
+        if k < 1:
+            return []
+        return await asyncio.to_thread(self._lexical_query_sync, query, doc_id, k)
+
+    async def list_document_ids(self) -> set[str]:
+        return await asyncio.to_thread(self._list_document_ids_sync)
+
+    async def delete_document(self, doc_id: str) -> None:
+        await asyncio.to_thread(self._delete_document_sync, doc_id)
+
+    def _connect(self) -> Any:
+        try:
+            import psycopg
+        except ImportError as exc:  # pragma: no cover - depends on optional extra
+            raise RuntimeError(
+                "Postgres vector storage requires `pip install -e \".[postgres]\"`"
+            ) from exc
+        return psycopg.connect(self._dsn)
+
+    def _ensure_schema_sync(self) -> None:
+        if self._schema_ready:
+            return
+        with self._schema_lock:
+            if self._schema_ready:
+                return
+            with self._connect() as connection, connection.cursor() as cursor:
+                cursor.execute("SELECT 1 FROM pg_extension WHERE extname = 'vector'")
+                if cursor.fetchone() is None:
+                    raise RuntimeError(
+                        "pgvector is not enabled in this database; run `CREATE EXTENSION vector;`"
+                    )
+                cursor.execute(
+                    f"""
+                    CREATE TABLE IF NOT EXISTS {self.TABLE} (
+                        namespace TEXT NOT NULL,
+                        chunk_id TEXT NOT NULL,
+                        doc_id TEXT NOT NULL,
+                        content TEXT NOT NULL,
+                        section TEXT,
+                        page_start INTEGER NOT NULL,
+                        page_end INTEGER NOT NULL,
+                        chunk_payload JSONB NOT NULL,
+                        embedding vector NOT NULL,
+                        PRIMARY KEY (namespace, chunk_id)
+                    )
+                    """
+                )
+                cursor.execute(
+                    f"""
+                    CREATE INDEX IF NOT EXISTS {self.TABLE}_namespace_doc_id_idx
+                    ON {self.TABLE} (namespace, doc_id)
+                    """
+                )
+            self._schema_ready = True
+
+    def _upsert_sync(self, rows: list[tuple[object, ...]]) -> None:
+        self._ensure_schema_sync()
+        with self._connect() as connection, connection.cursor() as cursor:
+            cursor.executemany(_POSTGRES_UPSERT_SQL, rows)
+
+    def _replace_document_sync(self, doc_id: str, rows: list[tuple[object, ...]]) -> None:
+        self._ensure_schema_sync()
+        chunk_ids = [str(row[1]) for row in rows]
+        with self._connect() as connection, connection.cursor() as cursor:
+            cursor.executemany(_POSTGRES_UPSERT_SQL, rows)
+            cursor.execute(
+                f"""
+                DELETE FROM {self.TABLE}
+                WHERE namespace = %s AND doc_id = %s AND NOT (chunk_id = ANY(%s))
+                """,
+                (self._index_name, doc_id, chunk_ids),
+            )
+
+    def _query_sync(self, vector: str, doc_id: str, k: int) -> list[RetrievedChunk]:
+        self._ensure_schema_sync()
+        with self._connect() as connection, connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT chunk_id, content, chunk_payload,
+                       1 - (embedding <=> %s::vector) AS score
+                FROM {self.TABLE}
+                WHERE namespace = %s AND doc_id = %s
+                ORDER BY embedding <=> %s::vector, chunk_id ASC
+                LIMIT %s
+                """,
+                (vector, self._index_name, doc_id, vector, k),
+            )
+            return [
+                RetrievedChunk(
+                    chunk=_restore_postgres_chunk(chunk_id, content, payload), score=float(score)
+                )
+                for chunk_id, content, payload, score in cursor.fetchall()
+            ]
+
+    def _lexical_query_sync(self, query: str, doc_id: str, k: int) -> list[RetrievedChunk]:
+        self._ensure_schema_sync()
+        with self._connect() as connection, connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT chunk_id, content, chunk_payload
+                FROM {self.TABLE}
+                WHERE namespace = %s AND doc_id = %s
+                ORDER BY chunk_id ASC
+                """,
+                (self._index_name, doc_id),
+            )
+            chunks = [
+                _restore_postgres_chunk(chunk_id, content, payload)
+                for chunk_id, content, payload in cursor.fetchall()
+            ]
+        return _bm25_rank(query, chunks, k)
+
+    def _list_document_ids_sync(self) -> set[str]:
+        self._ensure_schema_sync()
+        with self._connect() as connection, connection.cursor() as cursor:
+            cursor.execute(
+                f"SELECT DISTINCT doc_id FROM {self.TABLE} WHERE namespace = %s",
+                (self._index_name,),
+            )
+            return {str(row[0]) for row in cursor.fetchall()}
+
+    def _delete_document_sync(self, doc_id: str) -> None:
+        self._ensure_schema_sync()
+        with self._connect() as connection, connection.cursor() as cursor:
+            cursor.execute(
+                f"DELETE FROM {self.TABLE} WHERE namespace = %s AND doc_id = %s",
+                (self._index_name, doc_id),
+            )
+
+
+_POSTGRES_UPSERT_SQL = f"""
+INSERT INTO {PostgresVectorStore.TABLE} (
+    namespace, chunk_id, doc_id, content, section, page_start, page_end, chunk_payload, embedding
+) VALUES (%s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s::vector)
+ON CONFLICT (namespace, chunk_id) DO UPDATE SET
+    doc_id = EXCLUDED.doc_id,
+    content = EXCLUDED.content,
+    section = EXCLUDED.section,
+    page_start = EXCLUDED.page_start,
+    page_end = EXCLUDED.page_end,
+    chunk_payload = EXCLUDED.chunk_payload,
+    embedding = EXCLUDED.embedding
+"""
+
+
+def _postgres_rows(
+    chunks: list[Chunk], vectors: list[list[float]], *, namespace: str
+) -> list[tuple[object, ...]]:
+    if len(chunks) != len(vectors):
+        raise ValueError("one vector is required for every chunk")
+    return [
+        (
+            namespace,
+            chunk.chunk_id,
+            chunk.doc_id,
+            chunk.text,
+            chunk.section,
+            chunk.page_start,
+            chunk.page_end,
+            json.dumps(
+                chunk.model_dump(mode="json", exclude={"text"}),
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            ),
+            _vector_literal(vector),
+        )
+        for chunk, vector in zip(chunks, vectors, strict=True)
+    ]
+
+
+def _vector_literal(vector: list[float]) -> str:
+    if not vector:
+        raise ValueError("embedding vectors must not be empty")
+    values = [float(value) for value in vector]
+    if not all(math.isfinite(value) for value in values):
+        raise ValueError("embedding vectors must contain only finite values")
+    return "[" + ",".join(repr(value) for value in values) + "]"
+
+
+def _restore_postgres_chunk(chunk_id: object, text: object, payload: object) -> Chunk:
+    if not isinstance(payload, dict):
+        raise RuntimeError("Postgres returned an invalid chunk payload")
+    restored = dict(payload)
+    restored["chunk_id"] = str(chunk_id)
+    restored["text"] = str(text)
+    return Chunk.model_validate(restored)
 
 
 def _cosine(a: list[float], b: list[float]) -> float:

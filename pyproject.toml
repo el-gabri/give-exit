@@ -39,6 +39,9 @@ local-embeddings = [
     "sentence-transformers>=3.0",
     "transformers>=4.51.0",
 ]
+postgres = [
+    "psycopg[binary]>=3.2,<4",
+]
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.23",

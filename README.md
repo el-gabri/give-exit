@@ -153,11 +153,33 @@ LITIGATION_EMBEDDING_BATCH_SIZE=2
 ```
 
 Changing the corpus release, embedding model or pinned revision produces a new
-versioned Chroma collection instead of mixing incompatible vectors. Materialize
-that collection before accepting notice-generation traffic:
+versioned namespace instead of mixing incompatible vectors. Chroma is the
+default backend. To move an existing local collection to PostgreSQL without
+recomputing its embeddings, install the optional dependency, enable pgvector
+in the destination database and configure a DSN:
 
 ```powershell
-python -m app.consumer.preindex_legal
+python -m pip install -e ".[postgres]"
+& "C:\Program Files\PostgreSQL\18\bin\psql.exe" -U postgres -d postgres -c "CREATE EXTENSION IF NOT EXISTS vector;"
+```
+
+```env
+LITIGATION_POSTGRES_DSN=postgresql://postgres:YOUR_PASSWORD@localhost:5432/postgres
+```
+
+```powershell
+python -m app.consumer.migrate_legal_index_to_postgres
+```
+
+After success, switch the runtime backend:
+
+```env
+LITIGATION_VECTOR_STORE=postgres
+```
+
+Then validate the normal runtime path:
+
+```powershell
 python -m app.consumer.preindex_legal --check
 ```
 

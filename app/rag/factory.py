@@ -22,6 +22,7 @@ from app.rag.reranking import Reranker, SentenceTransformerReranker
 from app.rag.vector_store import (
     ChromaVectorStore,
     InMemoryVectorStore,
+    PostgresVectorStore,
     VectorStore,
     versioned_collection_name,
 )
@@ -76,15 +77,44 @@ def create_vector_store(
     embedding_model: str | None = None,
     corpus_version: str | None = None,
 ) -> VectorStore:
+    collection_name = vector_store_index_name(
+        settings,
+        corpus_version=corpus_version,
+        embedding_model=embedding_model,
+    )
+    if settings.vector_store is VectorStoreBackend.MEMORY:
+        return InMemoryVectorStore(index_name=collection_name)
+    if settings.vector_store is VectorStoreBackend.POSTGRES:
+        dsn = (settings.postgres_dsn or "").strip()
+        if not dsn:  # guarded by Settings, retained for direct construction clarity
+            raise ValueError("LITIGATION_POSTGRES_DSN is required for the Postgres vector store")
+        return PostgresVectorStore(dsn=dsn, index_name=collection_name)
+    settings.chroma_dir.mkdir(parents=True, exist_ok=True)
+    return ChromaVectorStore(persist_dir=settings.chroma_dir, collection_name=collection_name)
+
+
+def vector_store_index_name(
+    settings: Settings,
+    *,
+    embedding_model: str | None = None,
+    corpus_version: str | None = None,
+) -> str:
+    """Return the stable namespace shared by compatible vector-store backends."""
+
     collection_name = versioned_collection_name(
         corpus_version or settings.rag_corpus_version,
         embedding_model or _embedding_model_for(settings, _embedding_provider_for(settings)),
         prefix="give-exit-consumer",
     )
-    if settings.vector_store is VectorStoreBackend.MEMORY:
-        return InMemoryVectorStore(index_name=collection_name)
-    settings.chroma_dir.mkdir(parents=True, exist_ok=True)
-    return ChromaVectorStore(persist_dir=settings.chroma_dir, collection_name=collection_name)
+    return collection_name
+
+
+def configured_embedding_identity(settings: Settings, *, embedding_model: str | None = None) -> str:
+    """Return the versioned embedding-space identity without loading the model."""
+
+    model = embedding_model or _embedding_model_for(settings, _embedding_provider_for(settings))
+    revision = (settings.embedding_model_revision or "").strip()
+    return f"{model}@{revision}" if revision else model
 
 
 def create_reranker(settings: Settings) -> Reranker | None:
@@ -114,10 +144,7 @@ def create_rag_pipeline(
     effective_corpus_version = corpus_version or settings.rag_corpus_version
     fallback_model = _embedding_model_for(settings, _embedding_provider_for(settings))
     embedding_model = str(getattr(effective_embedder, "model_name", fallback_model))
-    embedding_revision = getattr(effective_embedder, "_model_revision", None)
-    embedding_identity = (
-        f"{embedding_model}@{embedding_revision}" if embedding_revision else embedding_model
-    )
+    embedding_identity = configured_embedding_identity(settings, embedding_model=embedding_model)
     return RagPipeline(
         embedder=effective_embedder,
         store=create_vector_store(

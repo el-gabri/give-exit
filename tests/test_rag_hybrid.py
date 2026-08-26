@@ -9,7 +9,12 @@ from app.core.config import EmbeddingProvider, LLMProvider, RetrievalMode, Setti
 from app.rag.embeddings import MockEmbeddingClient, embed_query_texts
 from app.rag.factory import create_embedding_client, create_vector_store
 from app.rag.pipeline import RagPipeline, reciprocal_rank_fusion
-from app.rag.vector_store import InMemoryVectorStore, versioned_collection_name
+from app.rag.vector_store import (
+    InMemoryVectorStore,
+    PostgresVectorStore,
+    _vector_literal,
+    versioned_collection_name,
+)
 from app.schemas.rag import Chunk, RetrievedChunk
 
 
@@ -249,6 +254,31 @@ def test_factory_keeps_mock_mode_offline_and_versions_memory_index() -> None:
         "cdc-v1", embedder.model_name, prefix="give-exit-consumer"
     )
     assert settings.retrieval_mode is RetrievalMode.HYBRID
+
+
+def test_factory_selects_postgres_without_connecting_during_startup() -> None:
+    settings = Settings(
+        llm_provider=LLMProvider.MOCK,
+        embedding_provider=EmbeddingProvider.MOCK,
+        embedding_model="legal-test-model",
+        vector_store="postgres",
+        postgres_dsn="postgresql://give_exit:password@localhost:5432/give_exit",
+        rag_corpus_version="cdc-v1",
+        _env_file=None,
+    )
+
+    store = create_vector_store(settings)
+
+    assert isinstance(store, PostgresVectorStore)
+    assert store.index_name == versioned_collection_name(
+        "cdc-v1", "legal-test-model", prefix="give-exit-consumer"
+    )
+
+
+def test_pgvector_literal_rejects_invalid_embeddings() -> None:
+    assert _vector_literal([1, 2.5, -0.25]) == "[1.0,2.5,-0.25]"
+    with pytest.raises(ValueError, match="finite"):
+        _vector_literal([float("nan")])
 
 
 async def test_chroma_roundtrip_preserves_structured_metadata(tmp_path) -> None:

@@ -27,6 +27,7 @@ class VectorStoreBackend(str, Enum):
     """Supported vector store backends (see ADR 0003)."""
 
     CHROMA = "chroma"
+    POSTGRES = "postgres"
     MEMORY = "memory"
 
 
@@ -107,6 +108,12 @@ class Settings(BaseSettings):
     # --- Storage ---
     data_dir: Path = Path("./data")
     vector_store: VectorStoreBackend = VectorStoreBackend.CHROMA
+    # A libpq connection string, for example
+    # postgresql://give_exit:password@localhost:5432/give_exit.
+    # It is deliberately a single secret setting so deployments can use a
+    # managed Postgres URL without coupling application configuration to one
+    # particular authentication scheme.
+    postgres_dsn: str | None = Field(default=None, repr=False)
     max_document_pages: int = Field(default=250, ge=1)
 
     # --- RAG ---
@@ -162,6 +169,16 @@ class Settings(BaseSettings):
             raise ValueError(
                 "LITIGATION_API_AUTH_KEY is required when "
                 "LITIGATION_DEPLOYMENT_MODE=production"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _postgres_requires_dsn(self) -> "Settings":
+        if self.vector_store is VectorStoreBackend.POSTGRES and not (
+            self.postgres_dsn or ""
+        ).strip():
+            raise ValueError(
+                "LITIGATION_POSTGRES_DSN is required when LITIGATION_VECTOR_STORE=postgres"
             )
         return self
 
