@@ -20,6 +20,12 @@ from app.consumer.intake import (
     next_assistant_message,
     recommended_documents,
 )
+from app.consumer.composer import (
+    DeterministicNoticeComposer,
+    NoticeComposition,
+    NoticeDraftComposer,
+    NoticeProse,
+)
 from app.consumer.legal_corpus import LegalCorpus, get_default_legal_corpus
 from app.consumer.legal_index import (
     LegalIndexResult,
@@ -121,6 +127,7 @@ class ConsumerCaseService:
         store: ConsumerCaseStore | None = None,
         legal_corpus: LegalCorpus | None = None,
         settlement_calculator: SettlementCalculator | None = None,
+        notice_composer: NoticeDraftComposer | None = None,
     ) -> None:
         self._ingestion = ingestion
         self._detector = detector
@@ -128,6 +135,7 @@ class ConsumerCaseService:
         self._store = store or ConsumerCaseStore()
         self._legal_corpus = legal_corpus or get_default_legal_corpus()
         self._settlement = settlement_calculator or SettlementCalculator()
+        self._notice_composer = notice_composer or DeterministicNoticeComposer()
         self._legal_index_lock = asyncio.Lock()
         self._legal_indexed = False
 
@@ -382,12 +390,20 @@ class ConsumerCaseService:
             )
         )
         requests = _requests(record.facts)
+        composition, composition_warnings = await self._compose_notice_prose(
+            facts=record.facts,
+            evidence=evidence_references,
+            legal_grounds=legal_grounds,
+            requests=requests,
+            public_proposal=settlement.public_proposal_amount,
+        )
         full_text = _render_notice_markdown(
             facts=record.facts,
             evidence=evidence_references,
             legal_grounds=legal_grounds,
             requests=requests,
             public_proposal=settlement.public_proposal_amount,
+            prose=composition.prose,
         )
         notice = ConsumerNotice(
             notice_id=uuid.uuid4().hex,
@@ -404,12 +420,50 @@ class ConsumerCaseService:
             corpus_sha256=self._legal_corpus.corpus_sha256,
             legal_ground_policy_version=LEGAL_GROUND_POLICY_VERSION,
             legal_ground_policy_review_status=LEGAL_GROUND_POLICY_REVIEW_STATUS,
+            composition_mode=composition.mode,
+            composition_metadata=composition.metadata,
             retrievals=[*legal_traces, *evidence_traces],
-            warnings=[CONSUMER_NOTICE_WARNING],
+            warnings=[CONSUMER_NOTICE_WARNING, *composition_warnings],
         )
         record.notice = notice
         record.touch()
         return notice
+
+    async def _compose_notice_prose(
+        self,
+        *,
+        facts: ConsumerCaseFacts,
+        evidence: list[EvidenceCitation],
+        legal_grounds: list[LegalGround],
+        requests: list[str],
+        public_proposal: Decimal | None,
+    ) -> tuple[NoticeComposition, list[str]]:
+        """Degrade safely when the optional prose provider is unavailable."""
+        try:
+            composition = await self._notice_composer.compose(
+                facts=facts,
+                evidence=evidence,
+                legal_grounds=legal_grounds,
+                requests=requests,
+                public_proposal=public_proposal,
+            )
+            return composition, []
+        except Exception as exc:
+            logger.warning(
+                "consumer_notice_composer_fallback",
+                error_type=type(exc).__name__,
+            )
+            fallback = await DeterministicNoticeComposer().compose(
+                facts=facts,
+                evidence=evidence,
+                legal_grounds=legal_grounds,
+                requests=requests,
+                public_proposal=public_proposal,
+            )
+            return fallback, [
+                "A composição por IA não esteve disponível; o rascunho foi montado "
+                "deterministicamente."
+            ]
 
     def get_notice(self, case_id: str, token: str) -> ConsumerNotice:
         record = self._store.get_authorized(case_id, token)
@@ -822,6 +876,7 @@ def _render_notice_markdown(
     legal_grounds: list[LegalGround],
     requests: list[str],
     public_proposal: Decimal | None,
+    prose: NoticeProse | None = None,
 ) -> str:
     name = facts.consumer_name or "[PREENCHER NOME DO(A) CONSUMIDOR(A)]"
     supplier = facts.bank_name or "[PREENCHER EMPRESA, FORNECEDOR OU INSTITUIÇÃO]"
@@ -836,12 +891,17 @@ def _render_notice_markdown(
         "",
         "## 1. Finalidade",
         "",
-        "Esta notificação busca solução consensual de uma controvérsia de consumo. "
-        "Não se trata de ação judicial nem de reconhecimento definitivo de responsabilidade.",
+        (
+            prose.purpose
+            if prose is not None
+            else "Esta notificação busca solução consensual de uma controvérsia de consumo. "
+            "Não se trata de ação judicial nem de reconhecimento definitivo de responsabilidade."
+        ),
         "",
         "## 2. Fatos declarados pelo(a) consumidor(a)",
         "",
         facts.complaint_summary or "[PREENCHER RELATO]",
+        *(["", prose.facts_framing] if prose is not None else []),
         "",
         f"**Data ou período:** {facts.incident_date_or_period or '[PREENCHER]'}",
         f"**Protocolos anteriores:** {protocols}",
@@ -854,6 +914,8 @@ def _render_notice_markdown(
             f"- **{item.filename}, p. {item.page}** — {item.quote} (chunk `{item.chunk_id}`)"
         )
     lines.extend(["", "## 4. Fundamentos jurídicos", ""])
+    if prose is not None:
+        lines.extend([prose.legal_transition, ""])
     for ground in legal_grounds:
         authority = ground.authority
         official_excerpt = _bounded_legal_excerpt(
@@ -872,6 +934,8 @@ def _render_notice_markdown(
             f"(corpus `{authority.corpus_release_id}`, SHA-256 `{source_hash}`)"
         )
     lines.extend(["", "## 5. Providências solicitadas", ""])
+    if prose is not None:
+        lines.extend([prose.requests_transition, ""])
     lines.extend(f"- {request}" for request in requests)
     lines.extend(["", "## 6. Proposta para composição", ""])
     if public_proposal is None:
@@ -890,6 +954,7 @@ def _render_notice_markdown(
             "",
             "## 7. Prazo e encerramento",
             "",
+            *([prose.closing, ""] if prose is not None else []),
             "Solicita-se resposta escrita em até "
             f"**{facts.response_deadline_business_days} dias úteis**. "
             "A ausência de acordo não altera direitos, defesas ou prazos legais de qualquer parte.",

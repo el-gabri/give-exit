@@ -23,6 +23,13 @@ class LLMProvider(str, Enum):
     MOCK = "mock"
 
 
+class NoticeComposer(str, Enum):
+    """How the final consumer-notice prose is composed."""
+
+    DETERMINISTIC = "deterministic"
+    OPENAI = "openai"
+
+
 class VectorStoreBackend(str, Enum):
     """Supported vector store backends (see ADR 0003)."""
 
@@ -94,6 +101,13 @@ class Settings(BaseSettings):
     # Total attempts per LLM call for transient provider errors (429/5xx,
     # timeouts, dropped connections). 1 disables retrying.
     llm_retry_max_attempts: int = Field(default=3, ge=1)
+    # Notice composition is separate from the document-security LLM. It stays
+    # offline by default; enabling it sends only the already-grounded case
+    # packet to the configured OpenAI endpoint.
+    notice_composer: NoticeComposer = NoticeComposer.DETERMINISTIC
+    notice_composer_model: str = "gpt-5.6-terra"
+    notice_composer_reasoning_effort: str = "low"
+    notice_composer_max_output_tokens: int = Field(default=2_500, ge=256, le=16_384)
     embedding_provider: EmbeddingProvider = EmbeddingProvider.AUTO
     # Optional override. AUTO resolves a provider-specific default instead of
     # accidentally sending another vendor's model name.
@@ -179,6 +193,29 @@ class Settings(BaseSettings):
         ).strip():
             raise ValueError(
                 "LITIGATION_POSTGRES_DSN is required when LITIGATION_VECTOR_STORE=postgres"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _openai_notice_composer_requires_key(self) -> "Settings":
+        if self.notice_composer is NoticeComposer.OPENAI and not (
+            self.openai_api_key or ""
+        ).strip():
+            raise ValueError(
+                "LITIGATION_OPENAI_API_KEY is required when "
+                "LITIGATION_NOTICE_COMPOSER=openai"
+            )
+        if self.notice_composer_reasoning_effort not in {
+            "none",
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max",
+        }:
+            raise ValueError(
+                "LITIGATION_NOTICE_COMPOSER_REASONING_EFFORT must be one of "
+                "none, low, medium, high, xhigh or max"
             )
         return self
 

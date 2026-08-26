@@ -78,6 +78,8 @@ class LLMClient(Protocol):
         schema: type[SchemaT],
         temperature: float = 0.0,
         prompt_version: str | None = None,
+        reasoning_effort: str | None = None,
+        max_output_tokens: int | None = None,
     ) -> ParsedResult[SchemaT]:
         """Return a completion validated against ``schema``."""
         ...

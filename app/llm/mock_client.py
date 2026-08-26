@@ -61,7 +61,10 @@ class MockLLMClient:
         schema: type[SchemaT],
         temperature: float = 0.0,
         prompt_version: str | None = None,
+        reasoning_effort: str | None = None,
+        max_output_tokens: int | None = None,
     ) -> ParsedResult[SchemaT]:
+        del temperature, reasoning_effort, max_output_tokens
         self.calls.append(
             {"kind": "parse", "system": system, "user": user, "schema": schema.__name__}
         )

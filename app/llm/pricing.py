@@ -13,6 +13,7 @@ PRICING_USD_PER_1M: dict[str, tuple[float, float]] = {
     "gpt-4o-mini": (0.15, 0.60),
     "gpt-4.1": (2.00, 8.00),
     "gpt-4.1-mini": (0.40, 1.60),
+    "gpt-5.6-terra": (2.00, 12.00),
     "claude-sonnet-5": (3.00, 15.00),
     "gemini-3.6-flash": (1.50, 7.50),
     "text-embedding-3-small": (0.02, 0.0),

@@ -17,6 +17,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.consumer_routes import router as consumer_router
 from app.api.routes import router as system_router
 from app.api.security import ApiKeyGuard, SlidingWindowRateLimiter
+from app.consumer.composer import create_notice_composer
 from app.consumer.runtime import create_consumer_rag
 from app.consumer.service import ConsumerCaseService
 from app.core.config import Settings, get_settings
@@ -54,6 +55,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             detector=prompt_injection_detector,
             rag=consumer_rag,
             legal_corpus=legal_corpus,
+            notice_composer=create_notice_composer(settings),
         )
         app.state.consumer_uploads_dir = settings.uploads_dir / "consumer"
         app.state.upload_rate_limiter = SlidingWindowRateLimiter(

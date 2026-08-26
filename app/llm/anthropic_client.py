@@ -82,12 +82,14 @@ class AnthropicClient:
         schema: type[SchemaT],
         temperature: float = 0.0,
         prompt_version: str | None = None,
+        reasoning_effort: str | None = None,
+        max_output_tokens: int | None = None,
     ) -> ParsedResult[SchemaT]:
-        del temperature
+        del temperature, reasoning_effort
         start = time.perf_counter()
         response = await self._client.messages.parse(
             model=self._model,
-            max_tokens=self._max_output_tokens,
+            max_tokens=max_output_tokens or self._max_output_tokens,
             system=system,
             messages=[{"role": "user", "content": user}],
             output_format=schema,

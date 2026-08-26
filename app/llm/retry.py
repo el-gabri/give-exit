@@ -97,6 +97,8 @@ class RetryingLLMClient:
         schema: type[SchemaT],
         temperature: float = 0.0,
         prompt_version: str | None = None,
+        reasoning_effort: str | None = None,
+        max_output_tokens: int | None = None,
     ) -> ParsedResult[SchemaT]:
         return await self._call(
             lambda: self._inner.parse(
@@ -105,6 +107,8 @@ class RetryingLLMClient:
                 schema=schema,
                 temperature=temperature,
                 prompt_version=prompt_version,
+                reasoning_effort=reasoning_effort,
+                max_output_tokens=max_output_tokens,
             )
         )
 

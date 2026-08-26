@@ -14,6 +14,8 @@ from enum import Enum
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from app.core.config import NoticeComposer
+from app.llm.base import LLMCallMetadata
 from app.schemas.document import ExtractionMethod
 from app.schemas.security import PromptInjectionAssessment
 from app.schemas.trace import RetrievalTrace
@@ -523,5 +525,7 @@ class ConsumerNotice(BaseModel):
     legal_ground_policy_review_status: str = Field(
         pattern=r"^(requires_legal_review|legally_reviewed)$"
     )
+    composition_mode: NoticeComposer = NoticeComposer.DETERMINISTIC
+    composition_metadata: LLMCallMetadata | None = None
     retrievals: list[RetrievalTrace] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)

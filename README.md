@@ -138,6 +138,23 @@ LITIGATION_EMBEDDING_MODEL=text-embedding-3-small
 LITIGATION_RETRIEVAL_MODE=hybrid
 ```
 
+To have the final notice phrased by GPT-5.6 Terra while retaining deterministic
+source selection and rendering of citations, requests and settlement values:
+
+```env
+LITIGATION_OPENAI_API_KEY=sk-...
+LITIGATION_NOTICE_COMPOSER=openai
+LITIGATION_NOTICE_COMPOSER_MODEL=gpt-5.6-terra
+LITIGATION_NOTICE_COMPOSER_REASONING_EFFORT=low
+LITIGATION_NOTICE_COMPOSER_MAX_OUTPUT_TOKENS=2500
+```
+
+This sends the confirmed facts, selected evidence excerpts and already-filtered
+legal grounds to OpenAI only when a notice is generated. The database,
+embeddings and legal corpus stay local. The model returns strict structured
+prose through the Responses API (`store=False`); a provider failure or invalid
+output falls back to the deterministic composer and is recorded in the notice.
+
 Brazilian legal embedding bake-off:
 
 ```bash

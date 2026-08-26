@@ -141,4 +141,5 @@ def test_pricing_known_and_unknown_models() -> None:
     assert estimate_cost_usd("gpt-4o-mini", usage) == pytest.approx(0.75)
     assert estimate_cost_usd("claude-sonnet-5", usage) == pytest.approx(18.0)
     assert estimate_cost_usd("gemini-3.6-flash", usage) == pytest.approx(9.0)
+    assert estimate_cost_usd("gpt-5.6-terra", usage) == pytest.approx(14.0)
     assert estimate_cost_usd("some-future-model", usage) is None

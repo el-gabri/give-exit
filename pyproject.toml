@@ -12,7 +12,7 @@ authors = [{ name = "Gabriel", email = "gabrielbhl@gmail.com" }]
 dependencies = [
     "pydantic>=2.12.5",
     "pydantic-settings>=2.3",
-    "openai>=1.40",
+    "openai>=2.0",
     "anthropic>=0.120,<1",
     "google-genai>=2.16,<3",
     "structlog>=24.1",
