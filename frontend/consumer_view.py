@@ -1138,6 +1138,18 @@ def _render_consumer_audit(notice: dict[str, Any]) -> None:
             f"revisão: `{policy_review or 'não informada'}`"
         )
 
+    timing = notice.get("generation_timing")
+    if isinstance(timing, dict):
+        reused = "sim" if timing.get("evidence_index_reused") else "não"
+        st.caption(
+            "Tempo de geração — "
+            f"índice de evidências: {_format_duration_ms(timing.get('evidence_index_ms'))} "
+            f"(reutilizado: {reused}) · recuperação: "
+            f"{_format_duration_ms(timing.get('retrieval_ms'))} · composição: "
+            f"{_format_duration_ms(timing.get('composition_ms'))} · total: "
+            f"{_format_duration_ms(timing.get('total_ms'))}"
+        )
+
     rows = _retrieval_rows(notice.get("retrievals") or [])
     if rows:
         st.dataframe(
@@ -1171,6 +1183,16 @@ def _render_consumer_audit(notice: dict[str, Any]) -> None:
         "contexto. O conteúdo dos arquivos é tratado como dado não confiável, nunca como "
         "instrução para o assistente."
     )
+
+
+def _format_duration_ms(value: Any) -> str:
+    try:
+        milliseconds = float(value)
+    except (TypeError, ValueError):
+        return "—"
+    if milliseconds < 1_000:
+        return f"{milliseconds:.0f} ms"
+    return f"{milliseconds / 1_000:.1f} s"
 
 
 def _retrieval_rows(retrievals: Iterable[Any]) -> list[dict[str, Any]]:

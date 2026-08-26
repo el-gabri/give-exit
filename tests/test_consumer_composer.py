@@ -49,7 +49,7 @@ def _prose(**overrides: str) -> NoticeProse:
 
 async def test_openai_composer_requests_low_reasoning_structured_prose() -> None:
     fake = _FakeStructuredClient(_prose())
-    composer = OpenAINoticeComposer(fake, reasoning_effort="low", max_output_tokens=2500)
+    composer = OpenAINoticeComposer(fake, reasoning_effort="low", max_output_tokens=1200)
     facts = ConsumerCaseFacts(
         complaint_summary="Houve cobrança não reconhecida.",
         desired_resolution="Cancelar a cobrança.",
@@ -78,7 +78,7 @@ async def test_openai_composer_requests_low_reasoning_structured_prose() -> None
     assert fake.call is not None
     assert fake.call["schema"] is NoticeProse
     assert fake.call["reasoning_effort"] == "low"
-    assert fake.call["max_output_tokens"] == 2500
+    assert fake.call["max_output_tokens"] == 1200
     assert "Lançamento de R$ 50,00." in str(fake.call["user"])
 
 

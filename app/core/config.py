@@ -107,7 +107,9 @@ class Settings(BaseSettings):
     notice_composer: NoticeComposer = NoticeComposer.DETERMINISTIC
     notice_composer_model: str = "gpt-5.6-terra"
     notice_composer_reasoning_effort: str = "low"
-    notice_composer_max_output_tokens: int = Field(default=2_500, ge=256, le=16_384)
+    # Five short prose fields are sufficient for the renderer. This also caps
+    # hidden reasoning/output time for a latency-sensitive UI path.
+    notice_composer_max_output_tokens: int = Field(default=1_200, ge=256, le=16_384)
     embedding_provider: EmbeddingProvider = EmbeddingProvider.AUTO
     # Optional override. AUTO resolves a provider-specific default instead of
     # accidentally sending another vendor's model name.

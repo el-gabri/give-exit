@@ -504,6 +504,16 @@ class ConsumerCaseSnapshot(BaseModel):
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
+class NoticeGenerationTiming(BaseModel):
+    """Latency ledger for one generation, safe to expose in its audit trail."""
+
+    evidence_index_ms: float = Field(ge=0)
+    evidence_index_reused: bool
+    retrieval_ms: float = Field(ge=0)
+    composition_ms: float = Field(ge=0)
+    total_ms: float = Field(ge=0)
+
+
 class ConsumerNotice(BaseModel):
     """Auditable extrajudicial notice draft, not a filed lawsuit."""
 
@@ -527,5 +537,6 @@ class ConsumerNotice(BaseModel):
     )
     composition_mode: NoticeComposer = NoticeComposer.DETERMINISTIC
     composition_metadata: LLMCallMetadata | None = None
+    generation_timing: NoticeGenerationTiming
     retrievals: list[RetrievalTrace] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)

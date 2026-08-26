@@ -7,6 +7,7 @@ repository with authenticated, encrypted persistence.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import hmac
 import secrets
@@ -43,6 +44,11 @@ class ConsumerCaseRecord:
     facts_confirmed: bool = False
     notice: ConsumerNotice | None = None
     indexed_document_ids: set[str] = field(default_factory=set)
+    # The combined evidence document is content-addressed. Retaining its id
+    # prevents re-embedding unchanged uploads every time a user regenerates a
+    # notice; the lock also collapses accidental double-clicks into one job.
+    active_evidence_document_id: str | None = None
+    evidence_index_lock: asyncio.Lock = field(default_factory=asyncio.Lock, repr=False)
     idempotent_messages: dict[str, str] = field(default_factory=dict)
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))

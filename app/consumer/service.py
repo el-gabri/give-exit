@@ -12,6 +12,7 @@ import hashlib
 import uuid
 from decimal import Decimal
 from pathlib import Path
+from time import perf_counter
 from typing import Any
 
 from app.consumer.intake import (
@@ -58,6 +59,7 @@ from app.consumer.schemas import (
     EvidenceStatus,
     LegalGround,
     MonetarySourceType,
+    NoticeGenerationTiming,
     ProvisionStatus,
     SettlementComponentSource,
     SettlementInputs,
@@ -294,6 +296,7 @@ class ConsumerCaseService:
         return self._snapshot(record), public
 
     async def generate_notice(self, case_id: str, token: str) -> ConsumerNotice:
+        generation_started = perf_counter()
         record = self._store.get_authorized(case_id, token)
         snapshot = self._snapshot(record)
         if not snapshot.ready_for_notice:
@@ -301,32 +304,37 @@ class ConsumerCaseService:
 
         await self._ensure_legal_corpus_indexed()
         evidence_document, page_sources = self._combined_evidence(record)
-        evidence_chunks = await self._rag.index_document(evidence_document)
-        if not evidence_chunks:
-            raise ConsumerRetrievalError("accepted evidence produced no retrievable text")
-        record.indexed_document_ids.add(evidence_document.doc_id)
+        index_started = perf_counter()
+        evidence_index_reused = await self._ensure_evidence_indexed(record, evidence_document)
+        evidence_index_ms = (perf_counter() - index_started) * 1000
 
         legal_queries = build_legal_queries(record.facts)
         evidence_queries = build_evidence_queries(record.facts)
+        retrieval_started = perf_counter()
         try:
-            legal_results, legal_traces = await self._rag.retrieve_many_with_traces(
-                legal_queries,
-                doc_id=self._legal_corpus.as_parsed_document().doc_id,
-                agent="consumer_legal_authorities",
-                k=8,
-                mode="hybrid",
-            )
-            evidence_results, evidence_traces = await self._rag.retrieve_many_with_traces(
-                evidence_queries,
-                doc_id=evidence_document.doc_id,
-                agent="consumer_case_evidence",
-                k=6,
-                mode="hybrid",
+            (legal_results, legal_traces), (evidence_results, evidence_traces) = (
+                await asyncio.gather(
+                    self._rag.retrieve_many_with_traces(
+                        legal_queries,
+                        doc_id=self._legal_corpus.as_parsed_document().doc_id,
+                        agent="consumer_legal_authorities",
+                        k=8,
+                        mode="hybrid",
+                    ),
+                    self._rag.retrieve_many_with_traces(
+                        evidence_queries,
+                        doc_id=evidence_document.doc_id,
+                        agent="consumer_case_evidence",
+                        k=6,
+                        mode="hybrid",
+                    ),
+                )
             )
         except Exception as exc:
             raise ConsumerRetrievalError(
                 "required retrieval failed; no unsupported notice was generated"
             ) from exc
+        retrieval_ms = (perf_counter() - retrieval_started) * 1000
 
         legal_grounds = self._legal_grounds(
             legal_results,
@@ -390,6 +398,7 @@ class ConsumerCaseService:
             )
         )
         requests = _requests(record.facts)
+        composition_started = perf_counter()
         composition, composition_warnings = await self._compose_notice_prose(
             facts=record.facts,
             evidence=evidence_references,
@@ -397,6 +406,7 @@ class ConsumerCaseService:
             requests=requests,
             public_proposal=settlement.public_proposal_amount,
         )
+        composition_ms = (perf_counter() - composition_started) * 1000
         full_text = _render_notice_markdown(
             facts=record.facts,
             evidence=evidence_references,
@@ -422,12 +432,59 @@ class ConsumerCaseService:
             legal_ground_policy_review_status=LEGAL_GROUND_POLICY_REVIEW_STATUS,
             composition_mode=composition.mode,
             composition_metadata=composition.metadata,
+            generation_timing=NoticeGenerationTiming(
+                evidence_index_ms=evidence_index_ms,
+                evidence_index_reused=evidence_index_reused,
+                retrieval_ms=retrieval_ms,
+                composition_ms=composition_ms,
+                total_ms=(perf_counter() - generation_started) * 1000,
+            ),
             retrievals=[*legal_traces, *evidence_traces],
             warnings=[CONSUMER_NOTICE_WARNING, *composition_warnings],
         )
         record.notice = notice
         record.touch()
+        logger.info(
+            "consumer_notice_generated",
+            case_id=record.case_id,
+            **notice.generation_timing.model_dump(),
+        )
         return notice
+
+    async def _ensure_evidence_indexed(
+        self, record: ConsumerCaseRecord, evidence_document: ParsedDocument
+    ) -> bool:
+        """Index a changed evidence set once; return whether a cached index was reused."""
+        async with record.evidence_index_lock:
+            current_id = evidence_document.doc_id
+            if (
+                record.active_evidence_document_id == current_id
+                and current_id in record.indexed_document_ids
+            ):
+                logger.info(
+                    "consumer_evidence_index_reused",
+                    case_id=record.case_id,
+                    doc_id=current_id,
+                )
+                return True
+
+            chunks = await self._rag.index_document(evidence_document)
+            if not chunks:
+                raise ConsumerRetrievalError("accepted evidence produced no retrievable text")
+
+            previous_id = record.active_evidence_document_id
+            record.active_evidence_document_id = current_id
+            record.indexed_document_ids.add(current_id)
+            if previous_id is not None and previous_id != current_id:
+                await self._rag.delete_document(previous_id)
+                record.indexed_document_ids.discard(previous_id)
+            logger.info(
+                "consumer_evidence_indexed",
+                case_id=record.case_id,
+                doc_id=current_id,
+                chunks=len(chunks),
+            )
+            return False
 
     async def _compose_notice_prose(
         self,
