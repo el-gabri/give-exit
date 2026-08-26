@@ -37,16 +37,18 @@ FastAPI /consumer/cases
         |
         +--> triagem determinística + confirmação explícita
         +--> upload limitado --> extração/OCR --> segurança de documento
-        +--> ChromaDB + dense + BM25 + RRF + reranker opcional
+        +--> PostgreSQL/Chroma + dense + busca textual + RRF
         |      +--> evidências aceitas
         |      +--> CDC versionado + dispositivos selecionados da CF
         +--> política jurídica e cenário financeiro determinísticos
         +--> notificação auditável --> Markdown / PDF / DOCX
 ```
 
-O LLM conversacional **não redige a notificação**. Quando configurado, ele é
-usado somente na revisão semântica limitada de trechos suspeitos encontrados
-nos documentos. O provedor de embeddings é configurado separadamente.
+Não existe LLM conversacional dando aconselhamento jurídico. Um LLM configurado
+pode revisar semanticamente trechos suspeitos de documentos. Um compositor
+OpenAI opcional e separado pode redigir somente cinco campos de prosa depois
+que fatos, evidências, fundamentos, pedidos, valores e citações já foram fixados
+de forma determinística; saída inválida aciona o compositor determinístico.
 
 ## Fontes e citações
 
@@ -60,6 +62,8 @@ nos documentos. O provedor de embeddings é configurado separadamente.
   `requires_legal_review`.
 - As citações são reconstruídas no backend; não são strings de citação geradas
   e aceitas do modelo.
+- Os traces registram revisão e geração ativa do embedding, cache, eventual
+  modo degradado, ranking, chunk IDs e hashes das fontes.
 
 Auditoria:
 
@@ -120,17 +124,27 @@ python -m pip install -e ".[local-embeddings]"
 ```env
 LITIGATION_EMBEDDING_PROVIDER=sentence_transformers
 LITIGATION_EMBEDDING_MODEL=ufca-llms/jua-4B-mixed
+LITIGATION_EMBEDDING_MODEL_REVISION=57f491c1718171c0ad71d723c4f6b2030684c4eb
+LITIGATION_EMBEDDING_EXPECTED_DIMENSIONS=2560
+LITIGATION_EMBEDDING_REQUIRE_MODEL_REVISION=true
 LITIGATION_EMBEDDING_QUERY_INSTRUCTION=Instruct: Dada uma consulta jurídica brasileira, recupere os trechos ou dispositivos legais vigentes mais relevantes. Query:
 LITIGATION_EMBEDDING_DEVICE=cpu
 LITIGATION_EMBEDDING_BATCH_SIZE=2
+LITIGATION_EMBEDDING_INDEX_SHARD_SIZE=25
 LITIGATION_RETRIEVAL_MODE=hybrid
 ```
 
-Alterar corpus, modelo ou revisão do embedding cria um namespace versionado,
-sem misturar vetores incompatíveis. Por padrão ele é uma coleção Chroma.
-Para migrar uma coleção local já pronta para PostgreSQL sem recalcular os
-embeddings, instale o extra, habilite pgvector no banco de destino e configure
-o DSN:
+O formatador insere a quebra de linha exigida pelo JUÁ depois de `Query:`; os
+documentos legais permanecem sem prefixo. Alterar corpus, modelo, revisão exata,
+formatador ou hash da instrução cria uma geração diferente. A indexação grava
+shards gzip com checksum e manifesto em
+`data/embedding_generations/<generation-id>/`, retoma somente shards válidos e
+só ativa o namespace após validar cobertura, dimensão e normalização.
+
+Por padrão o backend é Chroma. No PostgreSQL, a busca lexical ocorre no banco
+com full-text search em português e a busca densa usa pgvector. Para migrar uma
+coleção local já pronta sem recalcular embeddings, instale o extra, habilite
+pgvector e configure o DSN:
 
 ```powershell
 python -m pip install -e ".[postgres]"
@@ -158,10 +172,27 @@ python -m app.consumer.preindex_legal --check
 ```
 
 O primeiro comando pode levar dezenas de minutos ou horas com o JUÁ em CPU,
-dependendo do hardware e do tamanho dos chunks. A execução mostra o progresso
-no terminal. Depois de concluído, a API reutiliza os 460 chunks persistidos e
-não recalcula a base legal durante a geração do rascunho. Use `--force` somente
-para uma reindexação deliberada.
+dependendo do hardware e do tamanho dos chunks. Cada shard concluído é durável;
+reiniciar o mesmo comando continua do último shard verificado. Depois de
+concluído, a API reutiliza os 460 chunks persistidos. Use `--force` somente para
+uma reconstrução deliberada.
+
+Um namespace legado pode ser promovido sem outra execução longa se o operador
+tiver verificado de forma independente a revisão exata presente no cache:
+
+```powershell
+python -m app.consumer.preindex_legal `
+  --adopt-source-index <namespace-legado> `
+  --attest-source-revision <commit-exato-do-hugging-face>
+```
+
+O manifesto registra `adopted_existing_vectors`; essa atestação não vira prova
+retroativa de metadados que a execução antiga não registrou.
+
+Nas consultas, timeout, limite de concorrência, cache por hash e circuit breaker
+protegem o modelo local. Se ele falhar, o modo híbrido pode degradar para busca
+lexical auditada (`degraded_mode=lexical_only`), sem relaxar os gates jurídicos
+ou de citação.
 
 ## API
 
@@ -195,7 +226,7 @@ subdivisão, hard negatives, autoridades inativas e abstenção fora do escopo.
 Ele é uma semente criada por engenharia e ainda exige revisão jurídica
 brasileira independente.
 
-Para avaliar o embedding configurado:
+Para avaliar a geração configurada que já está ativa, sem reindexação implícita:
 
 ```powershell
 python -m app.evaluation.consumer_runner `

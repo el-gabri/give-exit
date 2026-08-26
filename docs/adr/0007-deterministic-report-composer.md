@@ -1,6 +1,6 @@
 # ADR 0007: Compose consumer notices deterministically
 
-**Status:** accepted
+**Status:** superseded by ADR 0015
 
 ## Context
 
@@ -15,7 +15,9 @@ The notice composer is plain Python. It accepts typed Consumer facts, evidence
 citations, eligible legal grounds and settlement components. It renders one
 canonical Markdown artifact; PDF and DOCX are derived from that Markdown.
 
-The LLM does not write, revise or polish the notice.
+The original decision prohibited any generated prose. ADR 0015 preserves this
+deterministic path as the default and introduces a separately configured,
+strictly bounded prose-only option.
 
 ## Consequences
 

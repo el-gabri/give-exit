@@ -19,9 +19,9 @@ flowchart LR
     SEC -->|accepted and sanitized| RAG[Consumer RAG pipeline]
     RAG --> EVID[Case evidence chunks]
     RAG --> LAW[Versioned CDC and selected CF corpus]
-    RAG --> HYB[Dense plus BM25 plus RRF]
+    RAG --> HYB[Dense plus lexical ranking plus RRF]
     HYB --> POLICY[Deterministic authority policy]
-    POLICY --> NOTICE[Deterministic notice composer]
+    POLICY --> NOTICE[Bounded notice composer]
     NOTICE --> EXPORT[Markdown PDF DOCX]
     NOTICE --> AUDIT[Retrieval and citation audit]
 ```
@@ -34,8 +34,8 @@ flowchart LR
 | `app/consumer` | Intake, state, legal corpus, policy, settlement and notice |
 | `app/ingestion` | PDF/image validation, text extraction and OCR |
 | `app/security` | Prompt-injection detection, sanitization and telemetry privacy |
-| `app/rag` | Chunking, embeddings, Chroma, BM25/RRF and optional reranking |
-| `app/llm` | Provider-neutral client used by bounded semantic security review |
+| `app/rag` | Chunking, embeddings, vector stores, lexical/RRF and reranking |
+| `app/llm` | Provider-neutral clients for security review and bounded notice prose |
 | `app/reporting` | PDF and DOCX conversion from canonical notice Markdown |
 | `app/evaluation` | Consumer legal retrieval and document-security benchmarks |
 | `app/schemas` | Shared typed ingestion, retrieval, trace and security contracts |
@@ -59,12 +59,16 @@ flowchart LR
    API serves generation traffic. Notice generation fails fast when that exact
    versioned index is absent and only indexes the case's synthetic evidence
    document during the request.
-8. Legal and evidence queries run in hybrid mode. Dense and BM25 candidates are
-   fused deterministically with reciprocal-rank fusion; reranking is optional.
+8. Legal and evidence queries run in hybrid mode. Dense and backend lexical
+   candidates are fused deterministically with reciprocal-rank fusion;
+   reranking is optional.
 9. Legal chunks must pass status, provenance, score and corroboration rules.
    Evidence citations resolve back to original filename and page mappings.
 10. The settlement component is a transparent scenario calculation, not an
-    outcome prediction. The notice is assembled without generative prose.
+    outcome prediction. By default notice prose is deterministic. An optional
+    structured composer may phrase five bounded fields after every source,
+    request and value is fixed; the renderer still owns those authoritative
+    fields and invalid/provider output falls back deterministically.
 11. Retrieval traces mark raw ranks, merge winners and chunks used in the final
     artifact. The API exposes these traces to the case-token holder.
 12. Deleting a case removes its evidence vectors. Startup purges orphaned
@@ -75,11 +79,23 @@ flowchart LR
 The LLM provider and embedding provider are independent.
 
 - The LLM may classify bounded suspicious excerpts for prompt-injection risk.
-- The LLM does not extract case facts, choose legal grounds or write notices.
+- The LLM does not extract case facts, choose legal grounds, construct citations,
+  choose requests or calculate values. An optional separate composer may phrase
+  only the bounded `NoticeProse` fields described above.
 - Embeddings represent legal chunks, evidence chunks and retrieval queries.
 - The offline mock embedding is deterministic and suitable only for tests.
-- Model name and optional revision are part of the collection identity.
+- Model name and revision are part of the collection identity; production local
+  generations require an exact revision.
 - Query instructions and their hashes are captured in evaluation and traces.
+- The JUÁ query formatter is versioned separately from the plain-document
+  formatter and inserts `Instruct: ...\nQuery: ...` deterministically.
+
+Offline legal indexing is a resumable batch path, not a request-time side
+effect. It writes checksummed immutable shards and a generation manifest,
+validates canonical chunk identity, vector dimension and normalization, imports
+precomputed vectors, verifies persistence and only then marks the generation
+active. Legacy vectors may be adopted only with an explicit operator attestation
+and retain that weaker provenance in the manifest.
 
 ## Legal provenance
 
@@ -99,13 +115,15 @@ Each `RetrievalTrace` contains:
 
 - query and query hash;
 - agent/component label and batch identity;
-- embedding model and optional revision;
+- embedding model and configured revision;
+- active embedding-generation ID;
 - query instruction and hash;
 - retrieval mode, candidate depth and fusion parameters;
 - vector index and chunking versions;
 - rank, score, chunk ID, page range and source hashes;
 - merge and final-context selection flags;
 - latency and failure fields.
+- embedding cache hits and an explicit degraded-mode reason.
 
 Text previews are disabled by default to minimize sensitive-data retention.
 Legal and evidence citations in the notice are reconstructed from selected
@@ -128,6 +146,8 @@ filters and explicit PII minimization in exported artifacts.
 - Missing OCR fails closed for image evidence.
 - High-risk or critical prompt injection prevents automated use of the file.
 - Retrieval failure or insufficient eligible evidence prevents notice creation.
+- A semantic embedding timeout may use lexical-only retrieval, but the trace is
+  marked degraded and the normal evidence-corroboration policy may still abstain.
 - Missing facts, confirmation, consumer relationship or accepted evidence
   returns an explicit readiness error.
 - No generated citation or legal assertion is allowed to bypass the

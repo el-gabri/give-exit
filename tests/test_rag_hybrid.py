@@ -281,6 +281,52 @@ def test_pgvector_literal_rejects_invalid_embeddings() -> None:
         _vector_literal([float("nan")])
 
 
+def test_postgres_lexical_search_ranks_and_limits_inside_database(monkeypatch) -> None:
+    chunk = _chunk("cdc:42", "Artigo 42. Cobrança indevida.")
+    statements: list[tuple[str, tuple[object, ...]]] = []
+
+    class FakeCursor:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+        def execute(self, statement: str, parameters: tuple[object, ...]) -> None:
+            statements.append((statement, parameters))
+
+        def fetchall(self) -> list[tuple[object, ...]]:
+            payload = chunk.model_dump(mode="json", exclude={"text", "chunk_id"})
+            return [(chunk.chunk_id, chunk.text, payload, 0.75)]
+
+    class FakeConnection:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+        def cursor(self) -> FakeCursor:
+            return FakeCursor()
+
+    store = PostgresVectorStore(
+        dsn="postgresql://unused",
+        index_name="legal-index",
+    )
+    store._schema_ready = True
+    monkeypatch.setattr(store, "_connect", lambda: FakeConnection())
+
+    results = store._lexical_query_sync("cobrança indevida", chunk.doc_id, 3)
+
+    assert [item.chunk.chunk_id for item in results] == [chunk.chunk_id]
+    assert results[0].score == 0.75
+    [(statement, parameters)] = statements
+    assert "websearch_to_tsquery('portuguese'::regconfig" in statement
+    assert "search_vector @@ parsed_query.value" in statement
+    assert "LIMIT %s" in statement
+    assert parameters == ("cobrança indevida", "legal-index", chunk.doc_id, 3)
+
+
 async def test_chroma_roundtrip_preserves_structured_metadata(tmp_path) -> None:
     pytest.importorskip("chromadb")
     from app.rag.vector_store import ChromaVectorStore

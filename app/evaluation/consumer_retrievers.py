@@ -6,6 +6,7 @@ import asyncio
 from collections.abc import Callable
 
 from app.consumer.legal_corpus import LegalCorpus, get_default_legal_corpus
+from app.consumer.legal_index import legal_corpus_is_indexed
 from app.core.config import RetrievalMode, Settings
 from app.rag.embeddings import MockEmbeddingClient
 from app.rag.factory import create_rag_pipeline
@@ -62,7 +63,13 @@ class _LazyConsumerRetriever:
                 corpus = get_default_legal_corpus()
                 pipeline = self._factory(corpus)
                 chunks = corpus.as_chunks()
-                await pipeline.index_chunks(chunks)
+                if pipeline.embedding_artifacts_dir is None:
+                    await pipeline.index_chunks(chunks)
+                elif not await legal_corpus_is_indexed(pipeline, corpus):
+                    raise RuntimeError(
+                        "the configured legal embedding generation is not active; "
+                        "run `python -m app.consumer.preindex_legal` first"
+                    )
                 self._pipeline = pipeline
                 self._doc_id = chunks[0].doc_id
                 self._corpus = corpus

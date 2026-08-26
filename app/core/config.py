@@ -119,6 +119,16 @@ class Settings(BaseSettings):
     embedding_device: str | None = None
     embedding_batch_size: int = Field(default=8, ge=1)
     embedding_show_progress_bar: bool = False
+    embedding_expected_dimensions: int | None = Field(default=None, ge=1)
+    embedding_require_model_revision: bool = False
+    embedding_index_shard_size: int = Field(default=25, ge=1, le=1_000)
+    embedding_query_timeout_seconds: float = Field(default=30.0, gt=0, le=600)
+    embedding_query_max_concurrency: int = Field(default=1, ge=1, le=64)
+    embedding_circuit_breaker_failures: int = Field(default=2, ge=1, le=100)
+    embedding_circuit_breaker_reset_seconds: float = Field(default=60.0, gt=0, le=3_600)
+    embedding_query_cache_ttl_seconds: float = Field(default=300.0, ge=0, le=86_400)
+    embedding_query_cache_max_entries: int = Field(default=256, ge=0, le=100_000)
+    embedding_lexical_fallback: bool = True
     gemini_embedding_dimensions: int = Field(default=768, ge=128, le=3072)
 
     # --- Storage ---
@@ -232,6 +242,11 @@ class Settings(BaseSettings):
     @property
     def uploads_dir(self) -> Path:
         return self.data_dir / "uploads"
+
+    @property
+    def embedding_artifacts_dir(self) -> Path:
+        return self.data_dir / "embedding_generations"
+
 
 @lru_cache
 def get_settings() -> Settings:

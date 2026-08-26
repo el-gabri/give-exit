@@ -71,6 +71,10 @@ async def embed_query_texts(client: EmbeddingBackend, texts: list[str]) -> list[
 class OpenAIEmbeddingClient:
     """EmbeddingClient backed by the OpenAI embeddings API."""
 
+    document_format_version = "plain-document-v1"
+    query_format_version = "instruction-prefix-v2"
+    normalization = "l2"
+
     def __init__(
         self,
         api_key: str,
@@ -121,7 +125,7 @@ class OpenAIEmbeddingClient:
                 tokens=usage.prompt_tokens,
                 cost_usd=estimate_cost_usd(self._model, usage),
             )
-            vectors.extend(item.embedding for item in response.data)
+            vectors.extend(_l2_normalize(item.embedding) for item in response.data)
         return vectors
 
 
@@ -134,6 +138,9 @@ class GeminiEmbeddingClient:
     """
 
     FRAME_VERSION = "retrieval-prefix-v1"
+    document_format_version = "gemini-retrieval-document-v1"
+    query_format_version = "gemini-retrieval-query-v1"
+    normalization = "l2"
 
     def __init__(
         self,
@@ -234,6 +241,10 @@ class GeminiEmbeddingClient:
 class MockEmbeddingClient:
     """Deterministic bag-of-words embeddings for tests/offline mode."""
 
+    document_format_version = "plain-document-v1"
+    query_format_version = "instruction-prefix-v2"
+    normalization = "l2"
+
     def __init__(self, dimensions: int = 128, query_instruction: str | None = None) -> None:
         self._dimensions = dimensions
         self._query_instruction = query_instruction
@@ -275,6 +286,10 @@ class SentenceTransformerEmbeddingClient:
     call. This keeps API startup and persisted-index readiness checks fast;
     pre-indexing still fails explicitly if the optional dependency is absent.
     """
+
+    document_format_version = "plain-document-v1"
+    query_format_version = "instruction-prefix-v2"
+    normalization = "l2"
 
     def __init__(
         self,
@@ -355,4 +370,54 @@ class SentenceTransformerEmbeddingClient:
 def _with_instruction(text: str, instruction: str | None) -> str:
     if not instruction or not instruction.strip():
         return text
-    return f"{instruction.rstrip()} {text.lstrip()}"
+    prefix = instruction.strip()
+    separator = "\n" if prefix.casefold().endswith("query:") else " "
+    return f"{prefix}{separator}{text.lstrip()}"
+
+
+def validate_embedding_vectors(
+    vectors: list[list[float]],
+    *,
+    expected_count: int,
+    expected_dimension: int | None = None,
+    require_l2_normalized: bool = True,
+    norm_tolerance: float = 0.05,
+) -> int:
+    """Validate the stable vector contract and return its single dimension."""
+
+    if len(vectors) != expected_count:
+        raise ValueError(
+            f"embedding provider returned {len(vectors)} vectors for {expected_count} texts"
+        )
+    if not vectors:
+        if expected_count == 0:
+            return expected_dimension or 0
+        raise ValueError("embedding provider returned no vectors")
+    dimensions = {len(vector) for vector in vectors}
+    if 0 in dimensions or len(dimensions) != 1:
+        raise ValueError("embedding vectors must have one non-zero dimension")
+    [dimension] = dimensions
+    if expected_dimension is not None and dimension != expected_dimension:
+        raise ValueError(
+            f"embedding dimension mismatch: expected {expected_dimension}, received {dimension}"
+        )
+    for vector in vectors:
+        if not all(math.isfinite(float(value)) for value in vector):
+            raise ValueError("embedding vectors must contain only finite values")
+        if require_l2_normalized:
+            norm = math.sqrt(sum(float(value) * float(value) for value in vector))
+            if abs(norm - 1.0) > norm_tolerance:
+                raise ValueError(
+                    f"embedding vector is not L2-normalized: norm={norm:.6f}"
+                )
+    return dimension
+
+
+def _l2_normalize(values: list[float]) -> list[float]:
+    vector = [float(value) for value in values]
+    if not vector or not all(math.isfinite(value) for value in vector):
+        raise ValueError("embedding vectors must be non-empty and finite")
+    norm = math.sqrt(sum(value * value for value in vector))
+    if norm == 0:
+        raise ValueError("embedding vectors must have non-zero norm")
+    return [value / norm for value in vector]

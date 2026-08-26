@@ -52,6 +52,13 @@ class DocumentListingVectorStore(Protocol):
     async def list_document_ids(self) -> set[str]: ...
 
 
+@runtime_checkable
+class DocumentExportingVectorStore(Protocol):
+    """Store that can export one document for validation or controlled migration."""
+
+    async def export_document(self, doc_id: str) -> list[tuple[Chunk, list[float]]]: ...
+
+
 class InMemoryVectorStore:
     """Reference implementation with exact cosine similarity."""
 
@@ -97,6 +104,16 @@ class InMemoryVectorStore:
 
     async def list_document_ids(self) -> set[str]:
         return {chunk.doc_id for chunk, _ in self._rows.values()}
+
+    async def export_document(self, doc_id: str) -> list[tuple[Chunk, list[float]]]:
+        return sorted(
+            (
+                (chunk, list(vector))
+                for chunk, vector in self._rows.values()
+                if chunk.doc_id == doc_id
+            ),
+            key=lambda item: item[0].chunk_id,
+        )
 
     async def delete_document(self, doc_id: str) -> None:
         self._rows = {cid: row for cid, row in self._rows.items() if row[0].doc_id != doc_id}
@@ -256,6 +273,32 @@ class ChromaVectorStore:
 
         return await asyncio.to_thread(_export)
 
+    async def export_document(self, doc_id: str) -> list[tuple[Chunk, list[float]]]:
+        """Export one isolated document with its stored vectors."""
+
+        def _export() -> list[tuple[Chunk, list[float]]]:
+            result = self._collection.get(
+                where={"doc_id": doc_id},
+                include=["documents", "metadatas", "embeddings"],
+            )
+            documents = result["documents"]
+            metadatas = result["metadatas"]
+            embeddings = result["embeddings"]
+            if documents is None or metadatas is None or embeddings is None:
+                raise RuntimeError("Chroma omitted entries required for document export")
+            entries = [
+                (
+                    _restore_chunk(chunk_id, text, metadata),
+                    [float(value) for value in embedding],
+                )
+                for chunk_id, text, metadata, embedding in zip(
+                    result["ids"], documents, metadatas, embeddings, strict=True
+                )
+            ]
+            return sorted(entries, key=lambda item: item[0].chunk_id)
+
+        return await asyncio.to_thread(_export)
+
 
 class PostgresVectorStore:
     """pgvector-backed persistence with exact cosine retrieval.
@@ -310,6 +353,9 @@ class PostgresVectorStore:
     async def list_document_ids(self) -> set[str]:
         return await asyncio.to_thread(self._list_document_ids_sync)
 
+    async def export_document(self, doc_id: str) -> list[tuple[Chunk, list[float]]]:
+        return await asyncio.to_thread(self._export_document_sync, doc_id)
+
     async def delete_document(self, doc_id: str) -> None:
         await asyncio.to_thread(self._delete_document_sync, doc_id)
 
@@ -354,6 +400,21 @@ class PostgresVectorStore:
                     f"""
                     CREATE INDEX IF NOT EXISTS {self.TABLE}_namespace_doc_id_idx
                     ON {self.TABLE} (namespace, doc_id)
+                    """
+                )
+                cursor.execute(
+                    f"""
+                    ALTER TABLE {self.TABLE}
+                    ADD COLUMN IF NOT EXISTS search_vector tsvector
+                    GENERATED ALWAYS AS (
+                        to_tsvector('portuguese'::regconfig, coalesce(content, ''))
+                    ) STORED
+                    """
+                )
+                cursor.execute(
+                    f"""
+                    CREATE INDEX IF NOT EXISTS {self.TABLE}_search_vector_idx
+                    ON {self.TABLE} USING GIN (search_vector)
                     """
                 )
             self._schema_ready = True
@@ -402,18 +463,47 @@ class PostgresVectorStore:
         with self._connect() as connection, connection.cursor() as cursor:
             cursor.execute(
                 f"""
-                SELECT chunk_id, content, chunk_payload
+                WITH parsed_query AS (
+                    SELECT websearch_to_tsquery('portuguese'::regconfig, %s) AS value
+                )
+                SELECT chunk_id, content, chunk_payload,
+                       ts_rank_cd(search_vector, parsed_query.value) AS score
+                FROM {self.TABLE}, parsed_query
+                WHERE namespace = %s
+                  AND doc_id = %s
+                  AND search_vector @@ parsed_query.value
+                ORDER BY score DESC, chunk_id ASC
+                LIMIT %s
+                """,
+                (query, self._index_name, doc_id, k),
+            )
+            return [
+                RetrievedChunk(
+                    chunk=_restore_postgres_chunk(chunk_id, content, payload),
+                    score=float(score),
+                )
+                for chunk_id, content, payload, score in cursor.fetchall()
+            ]
+
+    def _export_document_sync(self, doc_id: str) -> list[tuple[Chunk, list[float]]]:
+        self._ensure_schema_sync()
+        with self._connect() as connection, connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT chunk_id, content, chunk_payload, embedding::text
                 FROM {self.TABLE}
                 WHERE namespace = %s AND doc_id = %s
                 ORDER BY chunk_id ASC
                 """,
                 (self._index_name, doc_id),
             )
-            chunks = [
-                _restore_postgres_chunk(chunk_id, content, payload)
-                for chunk_id, content, payload in cursor.fetchall()
+            return [
+                (
+                    _restore_postgres_chunk(chunk_id, content, payload),
+                    _parse_vector_text(vector_text),
+                )
+                for chunk_id, content, payload, vector_text in cursor.fetchall()
             ]
-        return _bm25_rank(query, chunks, k)
 
     def _list_document_ids_sync(self) -> set[str]:
         self._ensure_schema_sync()
@@ -481,6 +571,21 @@ def _vector_literal(vector: list[float]) -> str:
     if not all(math.isfinite(value) for value in values):
         raise ValueError("embedding vectors must contain only finite values")
     return "[" + ",".join(repr(value) for value in values) + "]"
+
+
+def _parse_vector_text(value: object) -> list[float]:
+    """Parse pgvector's stable text representation without a global adapter."""
+
+    try:
+        parsed = json.loads(str(value))
+    except (TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise RuntimeError("PostgreSQL returned an invalid vector representation") from exc
+    if not isinstance(parsed, list) or not parsed:
+        raise RuntimeError("PostgreSQL returned an empty vector representation")
+    vector = [float(item) for item in parsed]
+    if not all(math.isfinite(item) for item in vector):
+        raise RuntimeError("PostgreSQL returned non-finite vector values")
+    return vector
 
 
 def _restore_postgres_chunk(chunk_id: object, text: object, payload: object) -> Chunk:

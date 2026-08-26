@@ -15,17 +15,17 @@ from pathlib import Path
 from time import perf_counter
 from typing import Any
 
-from app.consumer.intake import (
-    extract_explicit_facts,
-    merge_explicit_facts,
-    next_assistant_message,
-    recommended_documents,
-)
 from app.consumer.composer import (
     DeterministicNoticeComposer,
     NoticeComposition,
     NoticeDraftComposer,
     NoticeProse,
+)
+from app.consumer.intake import (
+    extract_explicit_facts,
+    merge_explicit_facts,
+    next_assistant_message,
+    recommended_documents,
 )
 from app.consumer.legal_corpus import LegalCorpus, get_default_legal_corpus
 from app.consumer.legal_index import (

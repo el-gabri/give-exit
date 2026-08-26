@@ -77,6 +77,7 @@ class RetrievalTrace(BaseModel):
     retrieval_mode: str = "hybrid"
     embedding_model: str
     embedding_model_revision: str | None = None
+    embedding_generation_id: str | None = None
     embedding_query_instruction: str | None = None
     embedding_query_instruction_sha256: str | None = None
     vector_store: str
@@ -89,12 +90,21 @@ class RetrievalTrace(BaseModel):
     reranker_model: str | None = None
     reranker_model_revision: str | None = None
     embedding_duration_ms: float = Field(default=0.0, ge=0)
+    embedding_cache_hits: int = Field(default=0, ge=0)
     search_duration_ms: float = Field(default=0.0, ge=0)
     total_duration_ms: float = Field(default=0.0, ge=0)
     batch_duration_ms: float = Field(default=0.0, ge=0)
     context_truncated: bool = Field(
         default=False,
         description="Whether the assembled context omitted merged retrieval results",
+    )
+    degraded_mode: str | None = Field(
+        default=None,
+        description="Explicit fallback mode used when the configured retrieval path degraded",
+    )
+    degraded_reason: str | None = Field(
+        default=None,
+        description="Bounded dependency failure class; never contains the raw query",
     )
     error: str | None = None
     agent_status: AgentStatus | None = None

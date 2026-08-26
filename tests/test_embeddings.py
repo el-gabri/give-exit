@@ -16,7 +16,7 @@ def test_query_instruction_is_separated_from_query_text() -> None:
 
     assert framed == (
         "Instruct: Recupere dispositivos legais brasileiros. "
-        "Query: negativação indevida"
+        "Query:\nnegativação indevida"
     )
 
 

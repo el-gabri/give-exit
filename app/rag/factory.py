@@ -82,15 +82,23 @@ def create_vector_store(
         corpus_version=corpus_version,
         embedding_model=embedding_model,
     )
+    return create_vector_store_for_index(settings, index_name=collection_name)
+
+
+def create_vector_store_for_index(settings: Settings, *, index_name: str) -> VectorStore:
+    """Build one backend for an explicit immutable index namespace."""
+
+    if not index_name.strip():
+        raise ValueError("index_name must be non-empty")
     if settings.vector_store is VectorStoreBackend.MEMORY:
-        return InMemoryVectorStore(index_name=collection_name)
+        return InMemoryVectorStore(index_name=index_name)
     if settings.vector_store is VectorStoreBackend.POSTGRES:
         dsn = (settings.postgres_dsn or "").strip()
         if not dsn:  # guarded by Settings, retained for direct construction clarity
             raise ValueError("LITIGATION_POSTGRES_DSN is required for the Postgres vector store")
-        return PostgresVectorStore(dsn=dsn, index_name=collection_name)
+        return PostgresVectorStore(dsn=dsn, index_name=index_name)
     settings.chroma_dir.mkdir(parents=True, exist_ok=True)
-    return ChromaVectorStore(persist_dir=settings.chroma_dir, collection_name=collection_name)
+    return ChromaVectorStore(persist_dir=settings.chroma_dir, collection_name=index_name)
 
 
 def vector_store_index_name(
@@ -165,6 +173,19 @@ def create_rag_pipeline(
         lexical_weight=settings.retrieval_lexical_weight,
         reranker=effective_reranker,
         corpus_version=effective_corpus_version,
+        embedding_expected_dimension=settings.embedding_expected_dimensions,
+        embedding_artifacts_dir=settings.embedding_artifacts_dir,
+        embedding_shard_size=settings.embedding_index_shard_size,
+        embedding_require_model_revision=settings.embedding_require_model_revision,
+        embedding_query_timeout_seconds=settings.embedding_query_timeout_seconds,
+        embedding_query_max_concurrency=settings.embedding_query_max_concurrency,
+        embedding_circuit_breaker_failures=settings.embedding_circuit_breaker_failures,
+        embedding_circuit_breaker_reset_seconds=(
+            settings.embedding_circuit_breaker_reset_seconds
+        ),
+        embedding_query_cache_ttl_seconds=settings.embedding_query_cache_ttl_seconds,
+        embedding_query_cache_max_entries=settings.embedding_query_cache_max_entries,
+        embedding_lexical_fallback=settings.embedding_lexical_fallback,
     )
 
 

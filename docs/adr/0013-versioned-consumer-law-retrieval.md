@@ -31,8 +31,8 @@ leaderboards alone cannot establish which combination works for this product.
 4. Keep uploaded evidence and the canonical legal corpus under distinct,
    stable document IDs, and require every retrieval to be scoped by `doc_id`.
    The collection identity binds the canonical corpus hash, embedding model
-   and optional model revision; any change creates a new index and requires
-   reindexing.
+   and any configured model revision; local production generations require an
+   exact revision. Any change creates a new index and requires reindexing.
 5. Retrieve legal candidates with a deterministic hybrid of lexical and dense
    rankings, with an optional bounded reranker.  The confirmed complaint and
    desired resolution must appear in the legal retrieval queries.
@@ -49,6 +49,13 @@ leaderboards alone cannot establish which combination works for this product.
    `python -m app.consumer.preindex_legal` maintenance command. Runtime notice
    requests reuse the persisted document ID and fail fast when the matching
    index is absent; they never embed the complete statutory corpus inline.
+10. Generate vectors in checksummed, resumable shards. A manifest binds the
+    corpus/chunk hashes, exact model revision, vector dimension, normalization,
+    query/document formatter versions, instruction hash, package versions and
+    hardware. Import and activate only a completely validated generation.
+11. Bound online query embedding with timeout, concurrency, cache and circuit
+    breaker. Hybrid retrieval may fall back to PostgreSQL/adapter lexical search,
+    but must record degraded mode and retain the normal legal-support gates.
 
 ## Consequences
 

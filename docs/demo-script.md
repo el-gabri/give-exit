@@ -42,8 +42,9 @@ claim of lawyer-certified quality.
 
 - **Why hybrid retrieval?** Exact statute numbers, protocols, dates and amounts
   matter alongside semantic paraphrases from consumers.
-- **Where is the LLM?** Only in bounded semantic prompt-injection review. It
-  does not write the notice or invent citations.
+- **Where is the LLM?** It can perform bounded prompt-injection review. An
+  optional separate composer phrases five structured prose fields only after
+  sources, requests and values are fixed; it cannot invent citations.
 - **How are citations audited?** The backend reconstructs them from selected
   chunk IDs, page mappings, canonical source metadata and hashes.
 - **What blocks production?** Durable encrypted storage, user/tenant identity,

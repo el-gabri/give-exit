@@ -11,6 +11,7 @@ from app.rag.embeddings import MockEmbeddingClient
 from app.rag.pipeline import RagPipeline, RetrievalBatchError
 from app.rag.vector_store import ChromaVectorStore, InMemoryVectorStore, _cosine
 from app.schemas.document import DocumentPage, ExtractionMethod, ParsedDocument
+from app.schemas.rag import Chunk
 
 FACTS = (
     "A autora contratou os servicos do banco reu em janeiro de 2024. "
@@ -330,7 +331,10 @@ async def test_embedding_failure_creates_a_trace_for_every_query() -> None:
             raise RuntimeError("embedding provider unavailable")
 
     pipeline = RagPipeline(
-        embedder=BrokenEmbedder(), store=InMemoryVectorStore(), default_k=2
+        embedder=BrokenEmbedder(),
+        store=InMemoryVectorStore(),
+        default_k=2,
+        embedding_lexical_fallback=False,
     )
     queries = ["fatos", "pedidos"]
 
@@ -345,7 +349,7 @@ async def test_embedding_failure_creates_a_trace_for_every_query() -> None:
     assert all(trace.returned_count == 0 for trace in traces)
     assert all(trace.results == [] for trace in traces)
     assert all(
-        trace.error == "RuntimeError: embedding provider unavailable"
+        trace.error == "EmbeddingUnavailableError: query embedding failed: RuntimeError"
         for trace in traces
     )
 
@@ -356,7 +360,10 @@ async def test_embedding_cardinality_mismatch_fails_with_complete_audit() -> Non
             return await super().embed(texts[:-1])
 
     pipeline = RagPipeline(
-        embedder=ShortEmbedder(), store=InMemoryVectorStore(), default_k=2
+        embedder=ShortEmbedder(),
+        store=InMemoryVectorStore(),
+        default_k=2,
+        embedding_lexical_fallback=False,
     )
     queries = ["fatos", "pedidos"]
 
@@ -369,9 +376,45 @@ async def test_embedding_cardinality_mismatch_fails_with_complete_audit() -> Non
     assert [trace.query for trace in traces] == queries
     assert all(trace.returned_count == 0 for trace in traces)
     assert all(
-        trace.error == "ValueError: embedding provider returned 1 vectors for 2 queries"
+        trace.error == "EmbeddingUnavailableError: query embedding failed: ValueError"
         for trace in traces
     )
+
+
+async def test_hybrid_retrieval_falls_back_to_audited_lexical_search() -> None:
+    class BrokenEmbedder(MockEmbeddingClient):
+        async def embed(self, texts: list[str]) -> list[list[float]]:
+            raise RuntimeError("embedding provider unavailable")
+
+    store = InMemoryVectorStore()
+    chunk = Chunk(
+        chunk_id="doc-a:cdc-42",
+        doc_id="doc-a",
+        text="Artigo 42. Cobrança indevida e repetição do indébito.",
+        page_start=1,
+        page_end=1,
+    )
+    await store.upsert([chunk], [[1.0, 0.0]])
+    pipeline = RagPipeline(embedder=BrokenEmbedder(), store=store, default_k=2)
+
+    results, traces = await pipeline.retrieve_many_with_traces(
+        ["cobrança indevida", "artigo 42"],
+        doc_id="doc-a",
+        agent="legal_analysis",
+    )
+
+    assert [[item.chunk.chunk_id for item in batch] for batch in results] == [
+        [chunk.chunk_id],
+        [chunk.chunk_id],
+    ]
+    assert all(trace.degraded_mode == "lexical_only" for trace in traces)
+    assert all(
+        trace.degraded_reason
+        == "EmbeddingUnavailableError: query embedding failed: RuntimeError"
+        for trace in traces
+    )
+    assert all(trace.score_type == "bm25_score" for trace in traces)
+    assert all(trace.error is None for trace in traces)
 
 
 async def test_retrieval_is_isolated_per_document() -> None:

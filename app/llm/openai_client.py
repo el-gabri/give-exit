@@ -101,14 +101,18 @@ class OpenAIClient:
     ) -> ParsedResult[SchemaT]:
         """Use Responses for reasoning controls and strict JSON Schema output."""
         start = time.perf_counter()
-        response = await self._client.responses.create(
-            model=self._model,
-            instructions=system,
-            input=user,
-            reasoning={"effort": reasoning_effort},
-            max_output_tokens=max_output_tokens,
-            store=False,
-            text={
+        # The SDK's generated overload narrows ``effort`` to a Literal while
+        # the application validates the configuration dynamically. Keeping the
+        # assembled request provider-typed at the boundary avoids a false
+        # negative without weakening our public adapter types.
+        request: Any = {
+            "model": self._model,
+            "instructions": system,
+            "input": user,
+            "reasoning": {"effort": reasoning_effort},
+            "max_output_tokens": max_output_tokens,
+            "store": False,
+            "text": {
                 "format": {
                     "type": "json_schema",
                     "name": schema.__name__,
@@ -116,7 +120,8 @@ class OpenAIClient:
                     "strict": True,
                 }
             },
-        )
+        }
+        response = await self._client.responses.create(**request)
         raw_json = getattr(response, "output_text", None)
         if not raw_json:
             status = getattr(response, "status", "unknown")

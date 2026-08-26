@@ -45,10 +45,10 @@ FastAPI /consumer/cases API
         +--> bounded PDF/image upload --> extraction/OCR
         |                                --> prompt-injection gate
         |
-        +--> ChromaDB hybrid RAG
+        +--> PostgreSQL/Chroma hybrid RAG
         |      +--> accepted case evidence
         |      +--> versioned CDC + selected CF provisions
-        |      +--> dense retrieval + BM25 + reciprocal-rank fusion
+        |      +--> dense retrieval + lexical ranking + reciprocal-rank fusion
         |      +--> optional cross-encoder reranking
         |
         +--> deterministic legal-policy and settlement-scenario gates
@@ -56,10 +56,11 @@ FastAPI /consumer/cases API
         +--> auditable notice --> Markdown / PDF / DOCX
 ```
 
-The conversational LLM does **not** write the notice. A configured LLM is used
-only for bounded semantic review of suspicious document excerpts. Embeddings
-are independently configurable. The offline mock provider keeps tests and the
-demo deterministic and keyless.
+There is no conversational legal-advice LLM. A configured LLM may perform
+bounded semantic review of suspicious document excerpts. An optional,
+separately configured OpenAI composer may phrase five prose fields only after
+facts, evidence, legal grounds, requests, values and citations have been fixed
+deterministically; invalid output falls back safely. Embeddings are independent.
 
 ## Legal grounding and citations
 
@@ -75,8 +76,9 @@ demo deterministic and keyless.
   `requires_legal_review`.
 - Notice citations are reconstructed from retrieved evidence and canonical
   legal metadata; they are not trusted model-generated citation strings.
-- Retrieval traces record the query, hashes, model/revision, ranking mode,
-  scores, chunk IDs, source metadata and final inclusion decisions.
+- Retrieval traces record the query, hashes, model/revision, active generation
+  ID, ranking/degraded mode, cache hits, scores, chunk IDs, source metadata and
+  final inclusion decisions.
 
 The Consumer retrieval audit is available at:
 
@@ -164,14 +166,25 @@ python -m pip install -e ".[local-embeddings]"
 ```env
 LITIGATION_EMBEDDING_PROVIDER=sentence_transformers
 LITIGATION_EMBEDDING_MODEL=ufca-llms/jua-4B-mixed
+LITIGATION_EMBEDDING_MODEL_REVISION=57f491c1718171c0ad71d723c4f6b2030684c4eb
+LITIGATION_EMBEDDING_EXPECTED_DIMENSIONS=2560
+LITIGATION_EMBEDDING_REQUIRE_MODEL_REVISION=true
 LITIGATION_EMBEDDING_QUERY_INSTRUCTION=Instruct: Dada uma consulta jurídica brasileira, recupere os trechos ou dispositivos legais vigentes mais relevantes. Query:
 LITIGATION_EMBEDDING_DEVICE=cpu
 LITIGATION_EMBEDDING_BATCH_SIZE=2
+LITIGATION_EMBEDDING_INDEX_SHARD_SIZE=25
 ```
 
-Changing the corpus release, embedding model or pinned revision produces a new
-versioned namespace instead of mixing incompatible vectors. Chroma is the
-default backend. To move an existing local collection to PostgreSQL without
+The query formatter inserts the newline required by JUÁ after `Query:`; legal
+documents remain plain text. Changing the corpus release, model, exact revision,
+formatter or instruction hash produces a distinct generation. Offline indexing
+writes checksummed gzip shards and a manifest under
+`data/embedding_generations/<generation-id>/`, resumes only verified shards,
+validates full chunk coverage/dimension/L2 normalization and activates the
+destination namespace only after a successful import.
+
+Chroma is the default backend. PostgreSQL uses server-side Portuguese full-text
+search plus pgvector. To move an existing local collection to PostgreSQL without
 recomputing its embeddings, install the optional dependency, enable pgvector
 in the destination database and configure a DSN:
 
@@ -201,9 +214,27 @@ python -m app.consumer.preindex_legal --check
 ```
 
 The first JUÁ CPU run can take tens of minutes or hours, depending on the
-hardware and chunk sizes. The command reports progress in the terminal. Once
-complete, the API reuses the 460 persisted legal chunks instead of recomputing
-them inside a notice request. Use `--force` only for a deliberate reindex.
+hardware and chunk sizes. Each completed shard is durable, so an interrupted
+run can be restarted with the same command. Once complete, the API reuses the
+460 persisted legal chunks instead of recomputing them inside a notice request.
+Use `--force` only for a deliberate rebuild.
+
+For a legacy namespace whose exact cached model revision was independently
+verified by the operator, promotion can avoid another multi-hour embedding run:
+
+```powershell
+python -m app.consumer.preindex_legal `
+  --adopt-source-index <legacy-namespace> `
+  --attest-source-revision <exact-hugging-face-commit>
+```
+
+The manifest labels this provenance as `adopted_existing_vectors`; attestation
+does not retroactively prove metadata that the legacy run failed to record.
+
+At query time, embedding calls have a timeout, concurrency bound, short-lived
+query-hash cache and circuit breaker. Hybrid retrieval may degrade to audited
+lexical-only search (`degraded_mode=lexical_only`); deterministic legal-support
+and citation gates still apply and can abstain.
 
 ## API surface
 
@@ -237,7 +268,8 @@ subdivision precision, hard-negative rate, inactive-authority rate and
 out-of-scope abstention. It is an engineering-authored seed and still requires
 independent Brazilian legal review.
 
-To evaluate the configured embedding provider rather than the offline baseline:
+To evaluate the active configured embedding generation rather than the offline
+baseline (this command refuses to re-embed the corpus implicitly):
 
 ```bash
 python -m app.evaluation.consumer_runner \
@@ -277,7 +309,7 @@ app/
 ├── consumer/     Intake, legal corpus, policy, settlement and notice service
 ├── ingestion/    PDF/image extraction and Portuguese OCR
 ├── llm/          Provider-neutral bounded security-review clients
-├── rag/          Chunking, embeddings, Chroma, BM25/RRF and reranking
+├── rag/          Chunking, embeddings, vector stores, lexical/RRF and reranking
 ├── reporting/    PDF/DOCX export
 ├── security/     Prompt-injection scanning, sanitization and telemetry privacy
 └── evaluation/   Consumer legal retrieval and document-security benchmarks
