@@ -8,7 +8,7 @@ from app.consumer.embedding_generation import (
     EmbeddingGenerationManager,
     validated_vectors_for_chunks,
 )
-from app.consumer.legal_corpus import LEGAL_CHUNKING_VERSION, LegalCorpus
+from app.consumer.legal_corpus import LEGAL_CHUNKING_IDENTITY, LegalCorpus
 from app.rag.pipeline import RagPipeline
 from app.schemas.rag import Chunk
 
@@ -52,7 +52,7 @@ async def legal_corpus_is_indexed(rag: RagPipeline, corpus: LegalCorpus) -> bool
     if ready:
         rag.register_indexed_document(
             doc_id,
-            chunking_version=LEGAL_CHUNKING_VERSION,
+            chunking_version=LEGAL_CHUNKING_IDENTITY,
             embedding_generation_id=generation_id,
         )
     return ready

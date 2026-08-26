@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal
 
-from app.consumer.legal_corpus import LEGAL_CHUNKING_VERSION, LegalCorpus
+from app.consumer.legal_corpus import LEGAL_CHUNKING_IDENTITY, LegalCorpus
 from app.core.logging import get_logger
 from app.rag.embeddings import validate_embedding_vectors
 from app.rag.pipeline import RagPipeline
@@ -158,7 +158,7 @@ class EmbeddingGenerationManager:
             raise RuntimeError("persisted vectors do not match the validated generation")
         self._rag.register_indexed_document(
             self._document_id,
-            chunking_version=LEGAL_CHUNKING_VERSION,
+            chunking_version=LEGAL_CHUNKING_IDENTITY,
             embedding_generation_id=self._generation_id,
         )
         manifest.status = EmbeddingGenerationStatus.ACTIVE
@@ -221,7 +221,7 @@ class EmbeddingGenerationManager:
             raise RuntimeError("persisted vectors do not match the adopted generation")
         self._rag.register_indexed_document(
             self._document_id,
-            chunking_version=LEGAL_CHUNKING_VERSION,
+            chunking_version=LEGAL_CHUNKING_IDENTITY,
             embedding_generation_id=self._generation_id,
         )
         manifest.status = EmbeddingGenerationStatus.ACTIVE
@@ -250,7 +250,7 @@ class EmbeddingGenerationManager:
             corpus_release_id=self._corpus.release_id,
             corpus_sha256=self._corpus.corpus_sha256,
             document_id=self._document_id,
-            chunking_version=LEGAL_CHUNKING_VERSION,
+            chunking_version=LEGAL_CHUNKING_IDENTITY,
             expected_chunk_count=len(self._chunks),
             expected_chunk_ids_sha256=_chunk_ids_sha256(self._chunks),
             expected_chunks_sha256=_chunks_sha256(self._chunks),
@@ -484,7 +484,7 @@ def _generation_id(
         "corpus_release_id": corpus.release_id,
         "corpus_sha256": corpus.corpus_sha256,
         "document_id": corpus.as_parsed_document().doc_id,
-        "chunking_version": LEGAL_CHUNKING_VERSION,
+        "chunking_version": LEGAL_CHUNKING_IDENTITY,
         "chunks_sha256": _chunks_sha256(chunks),
         "contract": contract.model_dump(mode="json"),
         "shard_size": shard_size,

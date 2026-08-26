@@ -28,6 +28,7 @@ from app.consumer.schemas import (
     LegalProvision,
     LegalSource,
     LegalTextUnit,
+    LegalUnitKind,
     ProvisionStatus,
 )
 from app.schemas.document import DocumentPage, ExtractionMethod, ParsedDocument
@@ -41,7 +42,48 @@ CDC_URL = "https://www.planalto.gov.br/ccivil_03/leis/l8078compilado.htm"
 _SOURCE_NAME_CF = "Constituição da República Federativa do Brasil de 1988"
 _SOURCE_NAME_CDC = "Código de Defesa do Consumidor (Lei nº 8.078/1990)"
 _LEGACY_ID_ALIASES = {"br-cdc-art-3-p2": "br-cdc-art-3"}
-LEGAL_CHUNKING_VERSION = "legal-hierarchy-v1"
+LEGAL_CHUNKING_VERSION = "legal-hierarchy-v2"
+DEFAULT_LEGAL_CHUNK_TARGET_CHARS = 1_200
+
+
+def legal_chunking_version(target_chars: int) -> str:
+    """The exact chunking identity carried by chunks built with ``target_chars``.
+
+    Chunk metadata, retrieval traces and embedding-generation manifests must all
+    name the same configuration, so they derive it here instead of each
+    rebuilding a slightly different string.
+    """
+
+    return f"{LEGAL_CHUNKING_VERSION}:target={target_chars}"
+
+
+# The identity of the corpus as every production caller actually builds it.
+LEGAL_CHUNKING_IDENTITY = legal_chunking_version(DEFAULT_LEGAL_CHUNK_TARGET_CHARS)
+
+# A subdivision inherits its normative force from the unit above it, so an
+# inciso or alinea is indexed together with its ancestor chain.
+_LEAD_IN_KINDS = frozenset({LegalUnitKind.INCISO, LegalUnitKind.ALINEA})
+# The lead-in is retrieval context, never the citation: it is bounded so a long
+# caput cannot crowd out the subdivision the chunk actually addresses.
+LEAD_IN_MAX_CHARS = 600
+_MIN_BODY_BUDGET = 300
+# Articles built from many short subdivisions are unmatchable as a whole when
+# only their fragments are indexed, so they also get one article-level chunk.
+ARTICLE_LEVEL_MIN_SUBDIVISIONS = 5
+# Units that transcribe another statute (CDC arts. 110-117 amend Lei 7.347/85).
+# They are retained in the corpus for audit and excluded from retrieval: a hit
+# would cite "CDC, art. 114" while quoting art. 15 of a different law.
+_AMENDMENT_KINDS = frozenset({LegalUnitKind.QUOTED_AMENDMENT})
+_STRUCTURAL_KINDS = frozenset({LegalUnitKind.CAPUT, LegalUnitKind.NOTE})
+# An amending caput names both an instruction and the statute it acts on, in
+# either order ("Acrescente-se ... a Lei n 7.347", "O art. 15 da Lei n 7.347
+# ... passa a ter a seguinte redacao").
+_AMENDMENT_VERB_RE = re.compile(
+    r"acrescente(?:m)?-se|suprima-se|d[\u00eae]-se a seguinte reda[\u00e7c][\u00e3a]o"
+    r"|passa(?:m)? a (?:ter|vigorar)|fica(?:m)? (?:acrescid|revogad)",
+    re.IGNORECASE,
+)
+_OTHER_STATUTE_RE = re.compile(r"\bLei\s+n[.\u00ba\u00b0o]*\s*\d", re.IGNORECASE)
 
 
 def _cf_provision(
@@ -505,10 +547,22 @@ class LegalCorpus:
             ],
         )
 
+    def retrievable_provisions(self) -> tuple[LegalProvision, ...]:
+        """Provisions eligible for the retrieval index.
+
+        Amendment-only articles are excluded: their normative payload is the
+        text of another statute, so retrieving one would attach this law's
+        citation label to a different law's words.
+        """
+
+        return tuple(
+            provision for provision in self._provisions if not _is_amendment_only(provision)
+        )
+
     def as_chunks(
         self,
         *,
-        target_chars: int = 1_200,
+        target_chars: int = DEFAULT_LEGAL_CHUNK_TARGET_CHARS,
         include_inactive: bool = False,
     ) -> list[Chunk]:
         """Create hierarchy-aware chunks that never cross article boundaries."""
@@ -516,10 +570,15 @@ class LegalCorpus:
         if target_chars < 200:
             raise ValueError("target_chars must be at least 200")
         document = self.as_parsed_document()
+        chunking_version = legal_chunking_version(target_chars)
         chunks: list[Chunk] = []
         for page_number, provision in enumerate(self._provisions, start=1):
+            if _is_amendment_only(provision):
+                continue
             units: Sequence[LegalTextUnit | None] = provision.units or (None,)
             for unit in units:
+                if unit is not None and unit.kind in _AMENDMENT_KINDS:
+                    continue
                 if (
                     unit is not None
                     and not include_inactive
@@ -527,17 +586,18 @@ class LegalCorpus:
                 ):
                     continue
                 body = provision.official_text or provision.summary if unit is None else unit.text
-                context = self._chunk_context(provision, unit)
-                for piece_number, piece in enumerate(
-                    _split_text(body, target_chars - len(context) - 2), start=1
-                ):
+                lead_in = self._lead_in_text(provision, unit)
+                header = self._chunk_header(provision, unit)
+                prefix = f"{header}\n\n{lead_in}\n" if lead_in else f"{header}\n\n"
+                budget = max(_MIN_BODY_BUDGET, target_chars - len(prefix))
+                for piece_number, piece in enumerate(_split_text(body, budget), start=1):
                     unit_key = provision.provision_id if unit is None else unit.unit_id
                     chunk_id = f"{document.doc_id}:legal:{unit_key}:part-{piece_number:02d}"
                     chunks.append(
                         Chunk(
                             chunk_id=chunk_id,
                             doc_id=document.doc_id,
-                            text=f"{context}\n\n{piece}",
+                            text=f"{prefix}{piece}",
                             section=self._section_label(provision),
                             page_start=page_number,
                             page_end=page_number,
@@ -545,13 +605,108 @@ class LegalCorpus:
                                 provision,
                                 unit,
                                 page=page_number,
-                                chunking_version=(
-                                    f"{LEGAL_CHUNKING_VERSION}:target={target_chars}"
+                                chunking_version=chunking_version,
+                                chunk_level="unit" if unit is not None else "provision",
+                                lead_in_unit_ids=_joined_unit_ids(
+                                    self._lead_in_units(provision, unit)
+                                    if unit is not None
+                                    else ()
                                 ),
                             ),
                         )
                     )
+            chunks.extend(
+                self._article_level_chunks(
+                    provision,
+                    document_id=document.doc_id,
+                    page_number=page_number,
+                    target_chars=target_chars,
+                    chunking_version=chunking_version,
+                    include_inactive=include_inactive,
+                )
+            )
         return chunks
+
+    def _article_level_chunks(
+        self,
+        provision: LegalProvision,
+        *,
+        document_id: str,
+        page_number: int,
+        target_chars: int,
+        chunking_version: str,
+        include_inactive: bool,
+    ) -> list[Chunk]:
+        """Index heavily subdivided articles as a whole, alongside their units.
+
+        Art. 51 alone yields 22 subdivisions. A query phrased at the level of
+        the article ("cláusula abusiva que isenta o fornecedor") then has no
+        chunk to match that states the rule completely, only fragments.
+        """
+
+        subdivisions = sum(
+            1
+            for unit in provision.units
+            if unit.kind in _LEAD_IN_KINDS
+            and (include_inactive or unit.status is ProvisionStatus.ACTIVE)
+        )
+        if subdivisions < ARTICLE_LEVEL_MIN_SUBDIVISIONS:
+            return []
+        parts = self._article_text_parts(provision, include_inactive=include_inactive)
+        if not parts:
+            return []
+        header = self._chunk_header(provision, None)
+        budget = max(_MIN_BODY_BUDGET, target_chars - len(header) - 2)
+        return [
+            Chunk(
+                chunk_id=f"{document_id}:legal:{provision.provision_id}:article:part-{index:02d}",
+                doc_id=document_id,
+                text=f"{header}\n\n{piece}",
+                section=self._section_label(provision),
+                page_start=page_number,
+                page_end=page_number,
+                metadata=self._legal_metadata(
+                    provision,
+                    None,
+                    page=page_number,
+                    chunking_version=chunking_version,
+                    chunk_level="article",
+                    lead_in_unit_ids=None,
+                ),
+            )
+            for index, piece in enumerate(_pack_units(parts, budget), start=1)
+        ]
+
+    @staticmethod
+    def _article_text_parts(
+        provision: LegalProvision, *, include_inactive: bool
+    ) -> list[str]:
+        """The in-force units of one article, in official order."""
+
+        parts = [
+            unit.text
+            for unit in provision.units
+            if unit.kind not in _AMENDMENT_KINDS
+            and (include_inactive or unit.status is ProvisionStatus.ACTIVE)
+        ]
+        if parts:
+            return parts
+        body = provision.official_text or provision.summary
+        return [body] if body else []
+
+    @classmethod
+    def _lead_in_text(cls, provision: LegalProvision, unit: LegalTextUnit | None) -> str:
+        """Render the ancestor chain, dropping outer context to stay bounded."""
+
+        if unit is None:
+            return ""
+        ancestors = list(cls._lead_in_units(provision, unit))
+        while ancestors:
+            rendered = "\n".join(item.text for item in ancestors)
+            if len(rendered) <= LEAD_IN_MAX_CHARS:
+                return rendered
+            ancestors.pop(0)
+        return ""
 
     def provision_for_page(self, page: int) -> LegalProvision:
         if page < 1 or page > len(self._provisions):
@@ -599,7 +754,9 @@ class LegalCorpus:
         unit: LegalTextUnit | None,
         *,
         page: int,
-        chunking_version: str = LEGAL_CHUNKING_VERSION,
+        chunking_version: str = LEGAL_CHUNKING_IDENTITY,
+        chunk_level: str = "unit",
+        lead_in_unit_ids: str | None = None,
     ) -> dict[str, MetadataValue]:
         content_kind = "official" if provision.official_text is not None or unit else "editorial"
         return {
@@ -618,6 +775,8 @@ class LegalCorpus:
             "status": (unit.status if unit else provision.status).value,
             "content_kind": content_kind,
             "chunking_version": chunking_version,
+            "chunk_level": chunk_level,
+            "lead_in_unit_ids": lead_in_unit_ids,
             "official_url": provision.official_url,
             "corpus_release_id": provision.corpus_release_id,
             "verified_on": provision.verified_on.isoformat(),
@@ -690,22 +849,124 @@ class LegalCorpus:
         )
 
     @classmethod
-    def _chunk_context(cls, provision: LegalProvision, unit: LegalTextUnit | None) -> str:
-        fields = [
-            cls._section_label(provision),
-            f"Citação: {provision.citation_label}",
-            f"Status: {(unit.status if unit else provision.status).value}",
-            "Conteúdo: "
-            + (
-                "texto oficial"
-                if provision.official_text is not None or unit is not None
-                else "resumo editorial (não é transcrição oficial)"
-            ),
-            f"Fonte: {provision.official_url}",
-        ]
+    def _chunk_header(cls, provision: LegalProvision, unit: LegalTextUnit | None) -> str:
+        """Return the in-text provenance that actually earns its tokens.
+
+        Three of the old header fields were constant across the whole corpus -
+        the official URL, the status word and the "texto oficial" label - so
+        they contributed nothing to ranking while dominating short units. They
+        are dropped here; every one of them is still recorded in
+        ``Chunk.metadata``, traced, and used to build the citation.
+
+        The hierarchy breadcrumb stays. It looks like boilerplate but is not:
+        "SEÇÃO II Das Cláusulas Abusivas" and "CAPÍTULO IV Da Qualidade de
+        Produtos e Serviços" are topic labels a lay complaint matches against,
+        and removing them measurably lowered recall on the golden set.
+        """
+
+        fields = [cls._section_label(provision), f"Citação: {provision.citation_label}"]
         if unit is not None:
-            fields.insert(1, f"Unidade: {unit.label} ({unit.unit_id})")
+            fields.insert(1, f"Unidade: {unit.label}")
+        elif provision.official_text is None:
+            # The corpus is currently all-official, but an editorial summary
+            # must never be indexable as if it were a transcription.
+            fields.append("Conteúdo: resumo editorial (não é transcrição oficial)")
         return "\n".join(fields)
+
+    @staticmethod
+    def _lead_in_units(
+        provision: LegalProvision, unit: LegalTextUnit
+    ) -> tuple[LegalTextUnit, ...]:
+        """Return the ancestor chain an inciso/alínea is syntactically bound to.
+
+        ``I - impossibilitem, exonerem ou atenuem a responsabilidade...`` is
+        meaningless alone: the words that give it force (``São nulas de pleno
+        direito... as cláusulas contratuais que:``) live in the caput. Indexing
+        the subdivision without its lead-in hides the article's own vocabulary
+        from both dense and lexical retrieval.
+        """
+
+        if unit.kind not in _LEAD_IN_KINDS:
+            return ()
+        ancestors: list[LegalTextUnit] = []
+        for candidate in provision.units:
+            if candidate.unit_id == unit.unit_id:
+                continue
+            if candidate.status is not ProvisionStatus.ACTIVE:
+                continue
+            if candidate.kind is LegalUnitKind.CAPUT and candidate.paragraph is None:
+                ancestors.append(candidate)
+                continue
+            if (
+                unit.paragraph is not None
+                and candidate.paragraph == unit.paragraph
+                and candidate.inciso is None
+                and candidate.alinea is None
+            ):
+                ancestors.append(candidate)
+                continue
+            if (
+                unit.alinea is not None
+                and candidate.paragraph == unit.paragraph
+                and candidate.inciso == unit.inciso
+                and candidate.alinea is None
+            ):
+                ancestors.append(candidate)
+        # Outermost first, so a budget overrun drops the least specific context.
+        return tuple(ancestors)
+
+
+def _is_amendment_only(provision: LegalProvision) -> bool:
+    """Whether an article exists only to amend another statute.
+
+    Detection reads the caput's own instruction rather than trusting unit kinds
+    alone. In art. 113 the snapshot parser labelled the quoted new paragraphs of
+    Lei 7.347/85 as if they were paragraphs of the CDC, so a kind-only rule let
+    another law's text stay retrievable under a CDC citation label.
+    """
+
+    caput = next(
+        (unit.text for unit in provision.units if unit.kind is LegalUnitKind.CAPUT),
+        "",
+    )
+    if _AMENDMENT_VERB_RE.search(caput) and _OTHER_STATUTE_RE.search(caput):
+        return True
+    kinds = {unit.kind for unit in provision.units}
+    if not kinds & _AMENDMENT_KINDS:
+        return False
+    return not (kinds - _AMENDMENT_KINDS - _STRUCTURAL_KINDS)
+
+
+def _joined_unit_ids(units: Sequence[LegalTextUnit]) -> str | None:
+    return ",".join(unit.unit_id for unit in units) or None
+
+
+def _pack_units(parts: Sequence[str], max_chars: int) -> list[str]:
+    """Group whole normative units into chunks without cutting one in half.
+
+    An article-level chunk exists to state a rule completely, so splitting it
+    mid-inciso would defeat its purpose. Only a single unit that is itself
+    larger than the budget falls back to character splitting.
+    """
+
+    packed: list[str] = []
+    buffer: list[str] = []
+    size = 0
+    for part in parts:
+        if len(part) > max_chars:
+            if buffer:
+                packed.append("\n".join(buffer))
+                buffer, size = [], 0
+            packed.extend(_split_text(part, max_chars))
+            continue
+        if buffer and size + len(part) + 1 > max_chars:
+            packed.append("\n".join(buffer))
+            buffer, size = [], 0
+        buffer.append(part)
+        size += len(part) + 1
+    if buffer:
+        packed.append("\n".join(buffer))
+    return packed
 
 
 def _split_text(text: str, max_chars: int) -> list[str]:

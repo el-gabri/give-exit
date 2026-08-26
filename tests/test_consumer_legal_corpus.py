@@ -208,7 +208,9 @@ def test_legal_aware_chunks_never_cross_articles_and_expose_metadata() -> None:
         "alinea": None,
         "status": "active",
         "content_kind": "official",
-        "chunking_version": "legal-hierarchy-v1:target=1200",
+        "chunking_version": "legal-hierarchy-v2:target=1200",
+        "chunk_level": "unit",
+        "lead_in_unit_ids": None,
         "official_url": CDC_SOURCE_URL,
         "corpus_release_id": CONSUMER_LAW_CORPUS_RELEASE_ID,
         "verified_on": "2026-08-04",
@@ -375,3 +377,119 @@ def test_local_snapshot_refresh_requires_provenance_and_explicit_promotion(
     assert payload["review_status"] == "pending_review"
     with pytest.raises(ValueError, match="not been promoted"):
         load_manifest(manifest_path)
+
+
+def test_subdivisions_are_indexed_with_the_caput_they_depend_on() -> None:
+    """An inciso is meaningless without the rule it qualifies.
+
+    ``I - impossibilitem, exonerem ou atenuem a responsabilidade...`` never says
+    "cláusula", "abusiva" or "nula"; those words live in the caput. Indexing the
+    subdivision alone hid the article's own vocabulary from retrieval.
+    """
+
+    corpus = get_default_legal_corpus()
+    chunk = next(
+        item
+        for item in corpus.as_chunks()
+        if ":br-cdc-art-51-inciso-i:" in item.chunk_id
+    )
+
+    assert "São nulas de pleno direito" in chunk.text
+    assert "I - impossibilitem" in chunk.text
+    assert chunk.metadata["lead_in_unit_ids"] == "br-cdc-art-51-caput"
+    assert chunk.metadata["chunk_level"] == "unit"
+
+
+def test_lead_in_never_widens_the_cited_excerpt() -> None:
+    """The caput is retrieval context only; the citation stays the unit."""
+
+    corpus = get_default_legal_corpus()
+    chunk = next(
+        item
+        for item in corpus.as_chunks()
+        if ":br-cdc-art-51-inciso-i:" in item.chunk_id
+    )
+
+    citation = corpus.authority_for_chunk(RetrievedChunk(chunk=chunk, score=1.0))
+    unit = corpus.get("br-cdc-art-51").units[1]
+
+    assert citation.unit_id == "br-cdc-art-51-inciso-i"
+    assert citation.official_excerpt == unit.text
+    assert "São nulas de pleno direito" not in (citation.official_excerpt or "")
+
+
+def test_nested_subdivision_carries_its_whole_ancestor_chain() -> None:
+    corpus = get_default_legal_corpus()
+    chunk = next(
+        item
+        for item in corpus.as_chunks()
+        if ":br-cdc-art-12-paragrafo-1-inciso-i:" in item.chunk_id
+    )
+
+    assert chunk.metadata["lead_in_unit_ids"] == (
+        "br-cdc-art-12-caput,br-cdc-art-12-paragrafo-1"
+    )
+    assert "O produto é defeituoso quando" in chunk.text
+
+
+def test_heavily_subdivided_articles_also_get_an_article_level_chunk() -> None:
+    """A query pitched at the article needs a chunk that states the whole rule."""
+
+    corpus = get_default_legal_corpus()
+    chunks = corpus.as_chunks()
+    article_chunks = [
+        item for item in chunks if ":br-cdc-art-51:article:" in item.chunk_id
+    ]
+
+    assert article_chunks
+    assert all(item.metadata["chunk_level"] == "article" for item in article_chunks)
+    assert corpus.unit_for_chunk(article_chunks[0]) is None
+    citation = corpus.authority_for_chunk(RetrievedChunk(chunk=article_chunks[0], score=1.0))
+    assert citation.provision_id == "br-cdc-art-51"
+    assert citation.unit_id is None
+
+
+def test_article_level_chunks_are_only_built_for_subdivided_articles() -> None:
+    corpus = get_default_legal_corpus()
+    levels = {
+        chunk.metadata["provision_id"]
+        for chunk in corpus.as_chunks()
+        if chunk.metadata["chunk_level"] == "article"
+    }
+
+    assert "br-cdc-art-51" in levels
+    # art. 42 has a caput and one paragraph - its units already state the rule.
+    assert "br-cdc-art-42" not in levels
+
+
+def test_amendment_only_articles_are_audited_but_never_retrievable() -> None:
+    """CDC arts. 110-117 amend Lei 7.347/85; their payload is another law.
+
+    Retrieving one would print "CDC, art. 114" above the text of art. 15 of a
+    different statute, so they are excluded from the index while remaining in
+    the corpus for audit and hashing.
+    """
+
+    corpus = get_default_legal_corpus()
+    amendment_ids = {f"br-cdc-art-{number}" for number in range(110, 118)}
+    chunked = {chunk.metadata["provision_id"] for chunk in corpus.as_chunks()}
+    retrievable = {provision.provision_id for provision in corpus.retrievable_provisions()}
+    audited = {provision.provision_id for provision in corpus.provisions}
+
+    assert not (chunked & amendment_ids)
+    assert not (retrievable & amendment_ids)
+    assert amendment_ids <= audited
+
+
+def test_constant_provenance_fields_left_the_embedded_text_for_metadata() -> None:
+    """Dropped because every chunk shared them; still recorded and cited."""
+
+    corpus = get_default_legal_corpus()
+    chunks = corpus.as_chunks()
+
+    assert not any(CDC_SOURCE_URL in chunk.text for chunk in chunks)
+    assert not any("Status:" in chunk.text for chunk in chunks)
+    assert all(chunk.metadata["official_url"] for chunk in chunks)
+    assert all(chunk.metadata["status"] for chunk in chunks)
+    # The hierarchy breadcrumb stays: it is a topic label, not boilerplate.
+    assert any("SEÇÃO II Das Cláusulas Abusivas" in chunk.text for chunk in chunks)

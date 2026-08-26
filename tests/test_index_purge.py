@@ -2,7 +2,7 @@
 
 import pytest
 
-from app.consumer.legal_corpus import LEGAL_CHUNKING_VERSION, get_default_legal_corpus
+from app.consumer.legal_corpus import LEGAL_CHUNKING_IDENTITY, get_default_legal_corpus
 from app.consumer.service import (
     ConsumerCaseService,
     ConsumerLegalCorpusNotReadyError,
@@ -94,7 +94,7 @@ async def test_legal_index_is_reused_across_service_instances() -> None:
         requested_k=1,
         doc_id=corpus.as_parsed_document().doc_id,
     )
-    assert configuration["chunking_version"] == LEGAL_CHUNKING_VERSION
+    assert configuration["chunking_version"] == LEGAL_CHUNKING_IDENTITY
 
 
 async def test_notice_path_fails_fast_when_legal_index_is_missing() -> None:
