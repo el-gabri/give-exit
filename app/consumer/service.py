@@ -1012,10 +1012,9 @@ def _render_notice_markdown(
             "A ausência de acordo não altera direitos, defesas ou prazos legais de qualquer parte.",
         ]
     )
-    markdown = "\n".join(lines)
     # The private reservation value is intentionally unavailable to this
     # renderer, so it cannot leak into an exported notice by accident.
-    return markdown
+    return "\n".join(lines)
 
 
 def _brl(value: Decimal) -> str:

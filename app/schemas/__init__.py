@@ -12,8 +12,8 @@ from app.schemas.security import (
 __all__ = [
     "DocumentPage",
     "ExtractionMethod",
-    "ParsedDocument",
     "InjectionCategory",
+    "ParsedDocument",
     "PromptInjectionAssessment",
     "PromptInjectionFinding",
     "SecurityAction",

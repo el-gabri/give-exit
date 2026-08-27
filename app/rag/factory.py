@@ -109,12 +109,11 @@ def vector_store_index_name(
 ) -> str:
     """Return the stable namespace shared by compatible vector-store backends."""
 
-    collection_name = versioned_collection_name(
+    return versioned_collection_name(
         corpus_version or settings.rag_corpus_version,
         embedding_model or _embedding_model_for(settings, _embedding_provider_for(settings)),
         prefix="give-exit-consumer",
     )
-    return collection_name
 
 
 def configured_embedding_identity(settings: Settings, *, embedding_model: str | None = None) -> str:

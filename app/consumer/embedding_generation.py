@@ -537,7 +537,7 @@ def _atomic_write(path: Path, data: bytes) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
     temporary.write_bytes(data)
-    os.replace(temporary, path)
+    temporary.replace(path)
 
 
 def _package_versions() -> dict[str, str]:
