@@ -1,3 +1,6 @@
+import asyncio
+from typing import cast
+
 from app.consumer.retrieval import (
     MAX_QUERY_CHARS,
     build_evidence_queries,
@@ -6,6 +9,11 @@ from app.consumer.retrieval import (
     is_consumer_scope,
 )
 from app.consumer.schemas import ConsumerCaseFacts, ConsumerIssueCategory
+from app.consumer.service import ConsumerCaseService
+from app.ingestion.service import DocumentIngestionService
+from app.llm.mock_client import MockLLMClient
+from app.rag.pipeline import RagPipeline
+from app.security.prompt_injection import PromptInjectionDetector
 
 
 def _facts(**updates: object) -> ConsumerCaseFacts:
@@ -88,3 +96,37 @@ def test_evidence_queries_include_claim_and_requested_resolution() -> None:
     assert len(queries) == 2
     assert "cobrou duas vezes" in queries[0]
     assert "devolução" in queries[1]
+
+
+async def test_notice_source_retrieval_does_not_compete_for_one_embedding_slot() -> None:
+    class RetrievalProbe:
+        def __init__(self) -> None:
+            self.active_calls = 0
+            self.max_active_calls = 0
+            self.agents: list[str] = []
+
+        async def retrieve_many_with_traces(self, queries, *, agent, **kwargs):
+            self.active_calls += 1
+            self.max_active_calls = max(self.max_active_calls, self.active_calls)
+            self.agents.append(agent)
+            try:
+                await asyncio.sleep(0.01)
+                return [[] for _ in queries], []
+            finally:
+                self.active_calls -= 1
+
+    probe = RetrievalProbe()
+    service = ConsumerCaseService(
+        ingestion=DocumentIngestionService(),
+        detector=PromptInjectionDetector(MockLLMClient()),
+        rag=cast(RagPipeline, probe),
+    )
+
+    await service._retrieve_notice_support(
+        legal_queries=["consulta jurídica"],
+        evidence_queries=["consulta documental"],
+        evidence_doc_id="evidence-doc",
+    )
+
+    assert probe.max_active_calls == 1
+    assert probe.agents == ["consumer_legal_authorities", "consumer_case_evidence"]

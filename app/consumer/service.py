@@ -307,22 +307,11 @@ class ConsumerCaseService:
         evidence_queries = build_evidence_queries(record.facts)
         retrieval_started = perf_counter()
         try:
-            (legal_results, legal_traces), (evidence_results, evidence_traces) = (
-                await asyncio.gather(
-                    self._rag.retrieve_many_with_traces(
-                        legal_queries,
-                        doc_id=self._legal_corpus.as_parsed_document().doc_id,
-                        agent="consumer_legal_authorities",
-                        k=8,
-                        mode="hybrid",
-                    ),
-                    self._rag.retrieve_many_with_traces(
-                        evidence_queries,
-                        doc_id=evidence_document.doc_id,
-                        agent="consumer_case_evidence",
-                        k=6,
-                        mode="hybrid",
-                    ),
+            legal_results, legal_traces, evidence_results, evidence_traces = (
+                await self._retrieve_notice_support(
+                    legal_queries=legal_queries,
+                    evidence_queries=evidence_queries,
+                    evidence_doc_id=evidence_document.doc_id,
                 )
             )
         except Exception as exc:
@@ -338,8 +327,26 @@ class ConsumerCaseService:
         )
         evidence_references = self._evidence_references(evidence_results, page_sources)
         if not legal_grounds or not evidence_references:
+            missing_support: list[str] = []
+            if not legal_grounds:
+                missing_support.append("fundamentos jurídicos")
+            if not evidence_references:
+                missing_support.append("trechos dos documentos enviados")
+            logger.warning(
+                "consumer_grounding_insufficient",
+                case_id=record.case_id,
+                legal_grounds=len(legal_grounds),
+                evidence_references=len(evidence_references),
+                legal_retrieval_degraded=any(trace.degraded_mode for trace in legal_traces),
+                evidence_retrieval_degraded=any(
+                    trace.degraded_mode for trace in evidence_traces
+                ),
+            )
             raise ConsumerRetrievalError(
-                "retrieval returned insufficient grounded support for a notice"
+                "Não foi possível gerar o rascunho com segurança porque a recuperação "
+                f"não encontrou suporte verificável em {' e '.join(missing_support)}. "
+                "Tente novamente; se o problema persistir, revise a categoria e os "
+                "documentos enviados."
             )
         legal_merged = _merge_results(legal_results)
         evidence_merged = _merge_results(evidence_results)
@@ -445,6 +452,36 @@ class ConsumerCaseService:
             **notice.generation_timing.model_dump(),
         )
         return notice
+
+    async def _retrieve_notice_support(
+        self,
+        *,
+        legal_queries: list[str],
+        evidence_queries: list[str],
+        evidence_doc_id: str,
+    ) -> tuple[
+        list[list[RetrievedChunk]],
+        list[RetrievalTrace],
+        list[list[RetrievedChunk]],
+        list[RetrievalTrace],
+    ]:
+        """Retrieve both source sets without making them compete for one model slot."""
+
+        legal_results, legal_traces = await self._rag.retrieve_many_with_traces(
+            legal_queries,
+            doc_id=self._legal_corpus.as_parsed_document().doc_id,
+            agent="consumer_legal_authorities",
+            k=8,
+            mode="hybrid",
+        )
+        evidence_results, evidence_traces = await self._rag.retrieve_many_with_traces(
+            evidence_queries,
+            doc_id=evidence_doc_id,
+            agent="consumer_case_evidence",
+            k=6,
+            mode="hybrid",
+        )
+        return legal_results, legal_traces, evidence_results, evidence_traces
 
     async def _ensure_evidence_indexed(
         self, record: ConsumerCaseRecord, evidence_document: ParsedDocument
