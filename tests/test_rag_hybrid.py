@@ -321,7 +321,8 @@ def test_postgres_lexical_search_ranks_and_limits_inside_database(monkeypatch) -
     assert [item.chunk.chunk_id for item in results] == [chunk.chunk_id]
     assert results[0].score == 0.75
     [(statement, parameters)] = statements
-    assert "websearch_to_tsquery('portuguese'::regconfig" in statement
+    assert "tsvector_to_array(to_tsvector('portuguese'::regconfig" in statement
+    assert "string_agg(quote_literal(lexeme), ' | ')::tsquery" in statement
     assert "search_vector @@ parsed_query.value" in statement
     assert "LIMIT %s" in statement
     assert parameters == ("cobrança indevida", "legal-index", chunk.doc_id, 3)

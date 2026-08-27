@@ -464,7 +464,10 @@ class PostgresVectorStore:
             cursor.execute(
                 f"""
                 WITH parsed_query AS (
-                    SELECT websearch_to_tsquery('portuguese'::regconfig, %s) AS value
+                    SELECT string_agg(quote_literal(lexeme), ' | ')::tsquery AS value
+                    FROM unnest(
+                        tsvector_to_array(to_tsvector('portuguese'::regconfig, %s))
+                    ) AS lexeme
                 )
                 SELECT chunk_id, content, chunk_payload,
                        ts_rank_cd(search_vector, parsed_query.value) AS score
