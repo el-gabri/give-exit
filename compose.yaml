@@ -14,7 +14,7 @@ services:
       - "${LITIGATION_BIND_HOST:-127.0.0.1}:8000:8000"
     volumes:
       - consumer-data:/app/data   # ChromaDB and transient upload workspace
-
+      - ./data/embedding_generations:/app/data/embedding_generations:ro
   frontend:
     build:
       context: .
