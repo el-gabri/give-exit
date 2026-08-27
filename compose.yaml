@@ -10,10 +10,13 @@ services:
         required: false
     environment:
       LITIGATION_DATA_DIR: /app/data
+      # Keep downloaded local-model weights across image rebuilds. This path
+      # lives in the already writable and persistent consumer-data volume.
+      HF_HOME: /app/data/huggingface
     ports:
       - "${LITIGATION_BIND_HOST:-127.0.0.1}:8000:8000"
     volumes:
-      - consumer-data:/app/data   # ChromaDB and transient upload workspace
+      - consumer-data:/app/data   # ChromaDB, local-model cache and upload workspace
       - ./data/embedding_generations:/app/data/embedding_generations:ro
   frontend:
     build:
@@ -24,6 +27,8 @@ services:
       # Streamlit calls the API server-side, so it can forward the same shared
       # key when production mode enables the API guard.
       LITIGATION_API_AUTH_KEY: ${LITIGATION_API_AUTH_KEY:-}
+      # A JUÁ 4B cold start on CPU can legitimately exceed ten minutes.
+      LITIGATION_NOTICE_REQUEST_TIMEOUT_SECONDS: ${LITIGATION_NOTICE_REQUEST_TIMEOUT_SECONDS:-1200}
     ports:
       - "${LITIGATION_BIND_HOST:-127.0.0.1}:8501:8501"
     depends_on:

@@ -92,11 +92,59 @@ def test_consumer_client_forwards_configured_api_key(monkeypatch) -> None:
     assert captured["headers"]["X-API-Key"] == "shared-secret"
 
 
-def test_consumer_client_distinguishes_timeout_from_connection_failure(monkeypatch) -> None:
-    def request(*args, **kwargs):
-        raise requests.Timeout("deadline exceeded")
+def test_consumer_client_uses_configured_notice_read_timeout(monkeypatch) -> None:
+    captured: dict = {}
+
+    def request(method, url, **kwargs):
+        captured.update(method=method, url=url, **kwargs)
+        response = requests.Response()
+        response.status_code = 200
+        response._content = b"{}"
+        return response
 
     monkeypatch.setattr("frontend.api_client.requests.request", request)
 
-    with pytest.raises(ConsumerApiError, match="excedeu o tempo de espera"):
+    ConsumerApiClient(
+        "https://api.example",
+        notice_read_timeout_seconds=321,
+    ).generate_notice("case", "token")
+
+    assert captured["timeout"] == (10.0, 321.0)
+
+
+def test_consumer_client_reads_notice_timeout_from_environment(monkeypatch) -> None:
+    captured: dict = {}
+
+    def request(method, url, **kwargs):
+        captured.update(method=method, url=url, **kwargs)
+        response = requests.Response()
+        response.status_code = 200
+        response._content = b"{}"
+        return response
+
+    monkeypatch.setenv("LITIGATION_NOTICE_REQUEST_TIMEOUT_SECONDS", "456")
+    monkeypatch.setattr("frontend.api_client.requests.request", request)
+
+    ConsumerApiClient("https://api.example").generate_notice("case", "token")
+
+    assert captured["timeout"] == (10.0, 456.0)
+
+
+def test_consumer_client_explains_read_timeout_recovery(monkeypatch) -> None:
+    def request(*args, **kwargs):
+        raise requests.ReadTimeout("deadline exceeded")
+
+    monkeypatch.setattr("frontend.api_client.requests.request", request)
+
+    with pytest.raises(ConsumerApiError, match="use Atualizar"):
+        ConsumerApiClient("https://api.example").generate_notice("case", "token")
+
+
+def test_consumer_client_distinguishes_connect_timeout(monkeypatch) -> None:
+    def request(*args, **kwargs):
+        raise requests.ConnectTimeout("connection deadline exceeded")
+
+    monkeypatch.setattr("frontend.api_client.requests.request", request)
+
+    with pytest.raises(ConsumerApiError, match="iniciar a conexão"):
         ConsumerApiClient("https://api.example").generate_notice("case", "token")

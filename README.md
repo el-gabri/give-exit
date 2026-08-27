@@ -99,7 +99,11 @@ docker compose up --build
 - API docs: <http://localhost:8000/docs>
 
 Docker installs Portuguese Tesseract OCR by default. Raw uploads are deleted
-after ingestion.
+after ingestion. Downloaded Hugging Face model weights are cached inside the
+persistent `consumer-data` volume, so rebuilding the API image does not download
+JUÁ again. The first download still requires several gigabytes and can take many
+minutes; `LITIGATION_NOTICE_REQUEST_TIMEOUT_SECONDS` controls how long the local
+Streamlit client waits for that synchronous demo flow.
 
 ### Local Python
 
