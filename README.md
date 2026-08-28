@@ -105,6 +105,27 @@ JUÁ again. The first download still requires several gigabytes and can take man
 minutes; `LITIGATION_NOTICE_REQUEST_TIMEOUT_SECONDS` controls how long the local
 Streamlit client waits for that synchronous demo flow.
 
+To verify both Docker settings without downloading JUÁ, start Docker Desktop (or
+another Docker Engine) and run this exact command from the repository root:
+
+```powershell
+pwsh -NoProfile -File .\scripts\smoke_docker_runtime.ps1
+```
+
+The script creates an isolated Compose project, writes a lightweight sentinel to
+the API service's `HF_HOME`, rebuilds the API image with `--no-cache`, and checks
+that a new API container can still read the sentinel from `consumer-data`. It
+also injects a non-default timeout and reads it inside the frontend container.
+It removes the isolated containers and volume when done. Among the normal Docker
+build progress, a successful run prints:
+
+```text
+HF_HOME=/app/data/huggingface
+PASS HF_HOME=/app/data/huggingface persisted across the API image rebuild.
+PASS LITIGATION_NOTICE_REQUEST_TIMEOUT_SECONDS=4321 reached the frontend container.
+PASS Docker runtime configuration smoke test completed.
+```
+
 ### Local Python
 
 ```powershell
