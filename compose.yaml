@@ -10,6 +10,9 @@ services:
         required: false
     environment:
       LITIGATION_DATA_DIR: /app/data
+      # A local Python process reaches the host database through localhost;
+      # the API container needs Docker Desktop's host gateway instead.
+      LITIGATION_POSTGRES_DSN: ${LITIGATION_DOCKER_POSTGRES_DSN:-postgresql://postgres:giveexit@host.docker.internal:5432/postgres}
       # Keep downloaded local-model weights across image rebuilds. This path
       # lives in the already writable and persistent consumer-data volume.
       HF_HOME: /app/data/huggingface

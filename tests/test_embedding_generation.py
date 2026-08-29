@@ -16,7 +16,7 @@ from app.consumer.legal_index import (
 )
 from app.rag.embeddings import MockEmbeddingClient
 from app.rag.pipeline import RagPipeline
-from app.rag.vector_store import InMemoryVectorStore
+from app.rag.vector_store import ChromaVectorStore, InMemoryVectorStore
 from app.schemas.embedding import (
     EmbeddingGenerationManifest,
     EmbeddingGenerationStatus,
@@ -171,3 +171,25 @@ async def test_legacy_vectors_require_explicit_revision_attestation(
     assert payload["attested_source_model_revision"] == "mock-hashed-bow-v1"
     assert payload["status"] == "active"
     assert await legal_corpus_is_indexed(destination, corpus) is True
+
+
+async def test_chroma_float32_roundtrip_keeps_generation_ready(tmp_path: Path) -> None:
+    pytest.importorskip("chromadb")
+    corpus = get_default_legal_corpus()
+    pipeline = RagPipeline(
+        embedder=MockEmbeddingClient(),
+        store=ChromaVectorStore(
+            tmp_path / "chroma",
+            collection_name="legal-generation-chroma-roundtrip",
+        ),
+        corpus_version="generation-test",
+        embedding_expected_dimension=128,
+        embedding_artifacts_dir=tmp_path / "generations",
+        embedding_shard_size=200,
+        embedding_require_model_revision=True,
+    )
+
+    result = await preindex_legal_corpus(pipeline, corpus)
+
+    assert result.action == "indexed"
+    assert await legal_corpus_is_indexed(pipeline, corpus) is True

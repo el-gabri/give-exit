@@ -6,7 +6,7 @@ Accepted
 
 ## Context
 
-The Consumer legal corpus currently has 460 canonical chunks. Embedding all of
+The Consumer legal corpus currently has 472 canonical chunks. Embedding all of
 them with a 4B local model on CPU is a long batch operation. A single-process,
 all-or-nothing call loses work on interruption and a document-ID-only readiness
 check cannot prove that the active namespace contains the expected corpus or
@@ -27,6 +27,9 @@ without limit, and a fallback must not silently claim normal hybrid retrieval.
    validate. A failed generation remains resumable and records its last error.
 4. Import precomputed vectors only after all shards validate. Verify the active
    store against the complete canonical chunk set before marking it `active`.
+   Require exact checksums for generation artifacts; for a vector-store
+   round-trip, accept only tightly bounded IEEE-754 float32 serialization drift
+   after chunk coverage and dimensions have matched exactly.
 5. Permit promotion of legacy vectors only through an explicit CLI attestation
    of the exact model revision. Record provenance as
    `adopted_existing_vectors`; do not represent it as original run metadata.
@@ -41,7 +44,7 @@ without limit, and a fallback must not silently claim normal hybrid retrieval.
 ## Consequences
 
 - Interrupted CPU jobs resume from verified work rather than restarting all
-  460 chunks.
+  472 chunks.
 - Readiness is fail-closed on missing/corrupt artifacts, wrong chunks, wrong
   dimensions or an incomplete active namespace.
 - Every retrieval trace distinguishes normal hybrid results from degraded

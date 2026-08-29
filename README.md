@@ -220,6 +220,7 @@ python -m pip install -e ".[postgres]"
 
 ```env
 LITIGATION_POSTGRES_DSN=postgresql://postgres:YOUR_PASSWORD@localhost:5432/postgres
+LITIGATION_DOCKER_POSTGRES_DSN=postgresql://postgres:YOUR_PASSWORD@host.docker.internal:5432/postgres
 ```
 
 ```powershell
@@ -232,6 +233,10 @@ After success, switch the runtime backend:
 LITIGATION_VECTOR_STORE=postgres
 ```
 
+Local Python processes use `LITIGATION_POSTGRES_DSN`. Docker Compose overrides
+that value inside the API container with `LITIGATION_DOCKER_POSTGRES_DSN`, so
+local runs use `localhost` while Docker Desktop uses `host.docker.internal`.
+
 Then validate the normal runtime path:
 
 ```powershell
@@ -241,7 +246,7 @@ python -m app.consumer.preindex_legal --check
 The first JUÁ CPU run can take tens of minutes or hours, depending on the
 hardware and chunk sizes. Each completed shard is durable, so an interrupted
 run can be restarted with the same command. Once complete, the API reuses the
-460 persisted legal chunks instead of recomputing them inside a notice request.
+472 persisted legal chunks instead of recomputing them inside a notice request.
 Use `--force` only for a deliberate rebuild.
 
 For a legacy namespace whose exact cached model revision was independently

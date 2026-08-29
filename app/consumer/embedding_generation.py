@@ -29,6 +29,13 @@ from app.schemas.rag import Chunk
 
 logger = get_logger(__name__)
 
+# Vector databases may round-trip IEEE-754 float32 values through a second
+# float32 normalization/serialization step. Chroma's cosine collection, for
+# example, can move a component by one ULP while preserving the vector. Keep
+# the checksum as the fast, exact path and permit only float32-scale drift.
+_PERSISTED_VECTOR_REL_TOLERANCE = 2e-7
+_PERSISTED_VECTOR_ABS_TOLERANCE = 1e-8
+
 
 class EmbeddingGenerationManager:
     """Build, resume, validate and activate one legal embedding generation."""
@@ -73,7 +80,7 @@ class EmbeddingGenerationManager:
                 entries,
                 expected_dimension=manifest.contract.output_dimension,
             )
-            if _vectors_sha256(persisted_vectors) != _vectors_sha256(artifact_vectors):
+            if not _persisted_vectors_match(artifact_vectors, persisted_vectors):
                 raise ValueError("active vectors do not match the generation artifacts")
         except (OSError, RuntimeError, TypeError, ValueError):
             return False
@@ -154,7 +161,7 @@ class EmbeddingGenerationManager:
             persisted,
             expected_dimension=manifest.contract.output_dimension,
         )
-        if _vectors_sha256(persisted_vectors) != _vectors_sha256(vectors):
+        if not _persisted_vectors_match(vectors, persisted_vectors):
             raise RuntimeError("persisted vectors do not match the validated generation")
         self._rag.register_indexed_document(
             self._document_id,
@@ -217,7 +224,7 @@ class EmbeddingGenerationManager:
             persisted,
             expected_dimension=dimension,
         )
-        if _vectors_sha256(persisted_vectors) != _vectors_sha256(vectors):
+        if not _persisted_vectors_match(vectors, persisted_vectors):
             raise RuntimeError("persisted vectors do not match the adopted generation")
         self._rag.register_indexed_document(
             self._document_id,
@@ -511,6 +518,44 @@ def _chunks_sha256(chunks: list[Chunk]) -> str:
 def _vectors_sha256(vectors: list[list[float]]) -> str:
     canonical = [_float32_vector(vector) for vector in vectors]
     return hashlib.sha256(_canonical_json_bytes(canonical)).hexdigest()
+
+
+def _persisted_vectors_match(
+    expected: list[list[float]],
+    persisted: list[list[float]],
+) -> bool:
+    """Validate a store round-trip without requiring byte-identical decimals.
+
+    Artifact checksums remain exact. This bounded comparison applies only
+    after the store has returned the canonical chunks with the expected vector
+    count and dimensions, and accommodates at most float32-scale serialization
+    drift. Materially changed components still fail closed.
+    """
+
+    if len(expected) != len(persisted):
+        return False
+    if _vectors_sha256(expected) == _vectors_sha256(persisted):
+        return True
+    for expected_vector, persisted_vector in zip(expected, persisted, strict=True):
+        if len(expected_vector) != len(persisted_vector):
+            return False
+        expected_float32 = _float32_vector(expected_vector)
+        persisted_float32 = _float32_vector(persisted_vector)
+        if not all(
+            math.isclose(
+                expected_value,
+                persisted_value,
+                rel_tol=_PERSISTED_VECTOR_REL_TOLERANCE,
+                abs_tol=_PERSISTED_VECTOR_ABS_TOLERANCE,
+            )
+            for expected_value, persisted_value in zip(
+                expected_float32,
+                persisted_float32,
+                strict=True,
+            )
+        ):
+            return False
+    return True
 
 
 def _float32_vector(vector: list[float]) -> list[float]:
