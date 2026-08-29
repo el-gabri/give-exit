@@ -539,4 +539,8 @@ class ConsumerNotice(BaseModel):
     composition_metadata: LLMCallMetadata | None = None
     generation_timing: NoticeGenerationTiming
     retrievals: list[RetrievalTrace] = Field(default_factory=list)
+    # Degradation is a property of the notice, not only of its traces. A draft
+    # built without semantic retrieval must say so where a reader will look,
+    # instead of only inside the per-query audit records.
+    retrieval_degraded_modes: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)

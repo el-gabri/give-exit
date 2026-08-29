@@ -130,3 +130,26 @@ async def test_notice_source_retrieval_does_not_compete_for_one_embedding_slot()
 
     assert probe.max_active_calls == 1
     assert probe.agents == ["consumer_legal_authorities", "consumer_case_evidence"]
+
+
+def test_concrete_category_cannot_bypass_the_consumer_scope_gate() -> None:
+    """The narrative decides scope, not the inferred category.
+
+    The intake taxonomy is keyword-inferred from the same free text, so a
+    labour dispute easily lands in a concrete consumer category. Letting the
+    category short-circuit the check made this gate unreachable for every value
+    except "other".
+    """
+    assert not is_consumer_scope(
+        category="service_failure",
+        complaint="Meu empregador não pagou meu salário nem registrou a hora extra.",
+    )
+    assert not is_consumer_scope(
+        category="unauthorized_charge",
+        complaint="Meu empregador descontou o vale-transporte do meu salário.",
+    )
+    # A genuine consumer narrative in the same category still passes.
+    assert is_consumer_scope(
+        category="service_failure",
+        complaint="A operadora cobrou pelo serviço de internet que nunca funcionou.",
+    )

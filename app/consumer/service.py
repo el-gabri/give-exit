@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import re
 import uuid
 from decimal import Decimal
 from pathlib import Path
@@ -65,7 +66,11 @@ from app.consumer.schemas import (
     SettlementInputs,
 )
 from app.consumer.settlement import SettlementCalculator
-from app.consumer.store import ConsumerCaseRecord, ConsumerCaseStore, StoredEvidence
+from app.consumer.store import (
+    ConsumerCaseRecord,
+    ConsumerCaseStore,
+    StoredEvidence,
+)
 from app.core.logging import get_logger
 from app.ingestion.service import DocumentIngestionService
 from app.rag.pipeline import RagPipeline
@@ -73,7 +78,7 @@ from app.schemas.document import DocumentPage, ExtractionMethod, ParsedDocument
 from app.schemas.rag import RetrievedChunk
 from app.schemas.security import SecurityAction
 from app.schemas.trace import AgentStatus, RetrievalTrace
-from app.security.prompt_injection import PromptInjectionDetector
+from app.security.prompt_injection import PromptInjectionDetector, failed_scan_assessment
 from app.security.sanitization import sanitized_document
 
 logger = get_logger(__name__)
@@ -87,6 +92,20 @@ logger = get_logger(__name__)
 MAX_GROUND_CANDIDATES = 8
 MIN_GROUND_SCORE_RATIO = 0.5
 MAX_LEGAL_GROUNDS = 8
+DEFAULT_MAX_DOCUMENTS_PER_CASE = 20
+
+# Scaffolding this service injects between evidence pages so the generic
+# chunker keeps them in separate sections. It identifies the case, so it must
+# never survive into a citation, and it is matched here in upper case because
+# that is the only form ``_combined_evidence`` emits.
+_EVIDENCE_PAGE_MARKER_RE = re.compile(
+    r"\[?\s*CASO\s+[0-9A-F]{8}\s+EVIDENCIA\s+[0-9A-F]{8}\s+PAGINA\s+\d+\s*\]?",
+    re.IGNORECASE,
+)
+# Characters that turn untrusted excerpt text into markdown structure. An
+# uploaded PDF is attacker-controlled input in the common fraud scenario, and
+# the notice is rendered as markdown for the consumer and exported from it.
+_MARKDOWN_INLINE_ESCAPE_RE = re.compile(r"([\\`*_\[\]<>])")
 
 _CATEGORY_LABEL = {
     "unauthorized_charge": "cobrança não reconhecida ou indevida",
@@ -114,6 +133,14 @@ class ConsumerLegalCorpusNotReadyError(ConsumerRetrievalError):
     """Notice generation requires a pre-indexed versioned legal corpus."""
 
 
+class ConsumerEvidenceLimitError(ValueError):
+    """The case already holds as many evidence documents as it may."""
+
+    def __init__(self, limit: int) -> None:
+        self.limit = limit
+        super().__init__(f"a consumer case accepts at most {limit} evidence documents")
+
+
 class ConsumerCaseService:
     def __init__(
         self,
@@ -125,6 +152,8 @@ class ConsumerCaseService:
         legal_corpus: LegalCorpus | None = None,
         settlement_calculator: SettlementCalculator | None = None,
         notice_composer: NoticeDraftComposer | None = None,
+        max_documents_per_case: int = DEFAULT_MAX_DOCUMENTS_PER_CASE,
+        purge_orphaned_evidence: bool = True,
     ) -> None:
         self._ingestion = ingestion
         self._detector = detector
@@ -133,6 +162,8 @@ class ConsumerCaseService:
         self._legal_corpus = legal_corpus or get_default_legal_corpus()
         self._settlement = settlement_calculator or SettlementCalculator()
         self._notice_composer = notice_composer or DeterministicNoticeComposer()
+        self._max_documents_per_case = max_documents_per_case
+        self._purge_orphaned_evidence = purge_orphaned_evidence
         self._legal_index_lock = asyncio.Lock()
         self._legal_indexed = False
 
@@ -143,8 +174,9 @@ class ConsumerCaseService:
             "datas, valores e tentativas anteriores de solução. Suas mensagens serão "
             "tratadas como alegações até você confirmar os fatos e enviar documentos."
         )
-        record.messages.append(
-            ConsumerMessage(role=ConsumerMessageRole.ASSISTANT, content=greeting)
+        record.append_message(
+            ConsumerMessage(role=ConsumerMessageRole.ASSISTANT, content=greeting),
+            max_messages=self._store.max_messages_per_case,
         )
         record.touch()
         return self._snapshot(record), token, greeting
@@ -165,7 +197,7 @@ class ConsumerCaseService:
             return self._snapshot(record), record.idempotent_messages[client_message_id]
 
         user_message = ConsumerMessage(role=ConsumerMessageRole.USER, content=text.strip())
-        record.messages.append(user_message)
+        record.append_message(user_message, max_messages=self._store.max_messages_per_case)
         extraction = extract_explicit_facts(user_message.content, record.facts)
         merged = merge_explicit_facts(record.facts, extraction)
         if merged != record.facts:
@@ -178,11 +210,16 @@ class ConsumerCaseService:
         assistant = next_assistant_message(
             record.facts, has_evidence=self._has_accepted_evidence(record)
         )
-        record.messages.append(
-            ConsumerMessage(role=ConsumerMessageRole.ASSISTANT, content=assistant)
+        record.append_message(
+            ConsumerMessage(role=ConsumerMessageRole.ASSISTANT, content=assistant),
+            max_messages=self._store.max_messages_per_case,
         )
         if client_message_id:
-            record.idempotent_messages[client_message_id] = assistant
+            record.remember_assistant_reply(
+                client_message_id,
+                assistant,
+                max_keys=self._store.max_idempotency_keys_per_case,
+            )
         record.touch()
         return self._snapshot(record), assistant
 
@@ -229,7 +266,28 @@ class ConsumerCaseService:
         self, case_id: str, token: str, *, filename: str, path: Path, media_type: str
     ) -> tuple[ConsumerCaseSnapshot, ConsumerEvidence]:
         record = self._store.get_authorized(case_id, token)
-        source_sha256 = _sha256_file(path)
+        source_sha256 = await asyncio.to_thread(_sha256_file, path)
+        # Deduplication, the per-case ceiling and the append are one critical
+        # section: checking them outside the lock let two concurrent uploads of
+        # the same file both pass and be indexed twice.
+        async with record.mutation_lock:
+            return await self._ingest_document(
+                record,
+                filename=filename,
+                path=path,
+                media_type=media_type,
+                source_sha256=source_sha256,
+            )
+
+    async def _ingest_document(
+        self,
+        record: ConsumerCaseRecord,
+        *,
+        filename: str,
+        path: Path,
+        media_type: str,
+        source_sha256: str,
+    ) -> tuple[ConsumerCaseSnapshot, ConsumerEvidence]:
         duplicate = next(
             (
                 item.public
@@ -240,9 +298,26 @@ class ConsumerCaseService:
         )
         if duplicate is not None:
             return self._snapshot(record), duplicate
+        if len(record.documents) >= self._max_documents_per_case:
+            raise ConsumerEvidenceLimitError(self._max_documents_per_case)
         document = await self._ingestion.ingest(path, require_text=True)
         content_sha256 = hashlib.sha256(document.full_text.encode()).hexdigest()
-        assessment, _ = await self._detector.scan(document)
+        try:
+            assessment, _ = await self._detector.scan(document)
+        except Exception as exc:
+            # The deterministic scan is mandatory: evidence that could not be
+            # screened must not become RAG context just because the screening
+            # itself broke. Fail closed with an assessment that says so.
+            logger.warning(
+                "consumer_document_scan_failed",
+                case_id=record.case_id,
+                error_type=type(exc).__name__,
+            )
+            assessment = failed_scan_assessment(
+                document=document,
+                scan_mode=self._detector.mode,
+                error=exc,
+            )
         status = _evidence_status(assessment.recommended_action)
         safe = (
             sanitized_document(document, assessment)
@@ -285,14 +360,22 @@ class ConsumerCaseService:
             if safe is not None
             else f"Documento {public.filename} requer revisão e não será usado automaticamente."
         )
-        record.messages.append(
-            ConsumerMessage(role=ConsumerMessageRole.ASSISTANT, content=assistant)
+        record.append_message(
+            ConsumerMessage(role=ConsumerMessageRole.ASSISTANT, content=assistant),
+            max_messages=self._store.max_messages_per_case,
         )
         return self._snapshot(record), public
 
     async def generate_notice(self, case_id: str, token: str) -> ConsumerNotice:
-        generation_started = perf_counter()
         record = self._store.get_authorized(case_id, token)
+        # One notice per case at a time. Without this, two concurrent requests
+        # interleave readiness checks, evidence indexing and the final write, so
+        # the stored notice can mix one run's grounds with another's evidence.
+        async with record.mutation_lock:
+            return await self._generate_notice(record)
+
+    async def _generate_notice(self, record: ConsumerCaseRecord) -> ConsumerNotice:
+        generation_started = perf_counter()
         snapshot = self._snapshot(record)
         if not snapshot.ready_for_notice:
             raise ConsumerCaseNotReadyError(self._readiness_missing(record))
@@ -319,6 +402,13 @@ class ConsumerCaseService:
                 "required retrieval failed; no unsupported notice was generated"
             ) from exc
         retrieval_ms = (perf_counter() - retrieval_started) * 1000
+        degraded_modes = sorted(
+            {
+                trace.degraded_mode
+                for trace in (*legal_traces, *evidence_traces)
+                if trace.degraded_mode
+            }
+        )
 
         legal_grounds = self._legal_grounds(
             legal_results,
@@ -442,7 +532,8 @@ class ConsumerCaseService:
                 total_ms=(perf_counter() - generation_started) * 1000,
             ),
             retrievals=[*legal_traces, *evidence_traces],
-            warnings=composition_warnings,
+            retrieval_degraded_modes=degraded_modes,
+            warnings=[*composition_warnings, *_degraded_retrieval_warnings(degraded_modes)],
         )
         record.notice = notice
         record.touch()
@@ -565,12 +656,34 @@ class ConsumerCaseService:
         for doc_id in record.indexed_document_ids:
             await self._rag.delete_document(doc_id)
 
+    async def purge_expired_cases(self) -> int:
+        """Drop idle cases and release the evidence vectors they still own.
+
+        Cases are in-process, so nothing else reclaims their memory or their
+        rows in the shared vector store once a consumer walks away.
+        """
+        expired = self._store.expire_idle_cases()
+        for record in expired:
+            for doc_id in record.indexed_document_ids:
+                await self._rag.delete_document(doc_id)
+        if expired:
+            logger.info("consumer_expired_cases_purged", cases=len(expired))
+        return len(expired)
+
     async def purge_orphaned_documents(self) -> int:
         """Delete evidence vectors whose owning case no longer exists.
 
         Case records live in process memory while the vector store persists,
         so a restart strands previously indexed evidence. Run at startup.
+
+        This is only correct when this process owns the vector-store namespace
+        outright. With several workers, replicas or a shared PostgreSQL
+        namespace, every startup would delete the other processes' live case
+        evidence, so those deployments disable it through settings.
         """
+        if not self._purge_orphaned_evidence:
+            logger.info("consumer_orphan_purge_disabled")
+            return 0
         try:
             indexed = await self._rag.list_document_ids()
         except TypeError:
@@ -680,9 +793,17 @@ class ConsumerCaseService:
             assert evidence.safe_document is not None
             for original in evidence.safe_document.pages:
                 global_page = len(pages) + 1
+                # The marker must satisfy SectionAwareChunker.is_heading, which
+                # requires ~all letters to be upper case. uuid4 hex carries
+                # lower-case a-f, so an unmodified id made this a heading only
+                # ~3% of the time; the rest of the time every evidence page fell
+                # into one section and chunks packed text across two different
+                # uploaded files under a single page number. Upper case makes
+                # detection deterministic, and _evidence_references still
+                # refuses to cite any chunk that spans pages.
                 heading = (
-                    f"CASO {record.case_id[:8]} EVIDENCIA "
-                    f"{evidence.public.evidence_id[:8]} PAGINA {original.number}"
+                    f"CASO {record.case_id[:8].upper()} EVIDENCIA "
+                    f"{evidence.public.evidence_id[:8].upper()} PAGINA {original.number}"
                 )
                 pages.append(DocumentPage(number=global_page, text=f"{heading}\n\n{original.text}"))
                 sources[global_page] = (evidence, original.number)
@@ -768,11 +889,25 @@ class ConsumerCaseService:
     ) -> list[EvidenceCitation]:
         citations: list[EvidenceCitation] = []
         for result in _merge_results(result_sets):
-            source = page_sources.get(result.chunk.page_start)
+            chunk = result.chunk
+            # A citation names exactly one file and one page. A chunk that packed
+            # text from several evidence pages cannot be attributed truthfully to
+            # any of them, so it is dropped rather than quoted under the first
+            # page's filename. A shorter notice is recoverable; a notice that
+            # puts one document's words under another document's name is not.
+            if chunk.page_start != chunk.page_end:
+                logger.warning(
+                    "consumer_evidence_citation_spans_pages",
+                    chunk_id=chunk.chunk_id,
+                    page_start=chunk.page_start,
+                    page_end=chunk.page_end,
+                )
+                continue
+            source = page_sources.get(chunk.page_start)
             if source is None:
                 continue
             evidence, original_page = source
-            quote = _clean_chunk_quote(result.chunk.text)
+            quote = _clean_chunk_quote(chunk.text)
             if not quote:
                 continue
             citations.append(
@@ -781,8 +916,8 @@ class ConsumerCaseService:
                     filename=evidence.public.filename,
                     page=original_page,
                     quote=quote,
-                    chunk_id=result.chunk.chunk_id,
-                    content_sha256=hashlib.sha256(result.chunk.text.encode("utf-8")).hexdigest(),
+                    chunk_id=chunk.chunk_id,
+                    content_sha256=hashlib.sha256(chunk.text.encode("utf-8")).hexdigest(),
                 )
             )
             if len(citations) >= 8:
@@ -942,10 +1077,41 @@ def _annotate_composer_selection(
 
 
 def _clean_chunk_quote(text: str) -> str:
-    lines = text.splitlines()
-    if lines and lines[0].startswith("[") and lines[0].endswith("]"):
+    """Return the document's own words, without this service's page marker.
+
+    The ``CASO ... EVIDENCIA ... PAGINA n`` marker is scaffolding injected to
+    keep evidence pages in separate chunker sections. It names the case, so it
+    must never reach an exported notice, and it is removed wherever it appears
+    rather than only as a leading section title.
+    """
+    without_marker = _EVIDENCE_PAGE_MARKER_RE.sub(" ", text)
+    lines = without_marker.splitlines()
+    first = lines[0].strip() if lines else ""
+    if first.startswith("[") and first.endswith("]"):
         lines = lines[1:]
     return " ".join(" ".join(lines).split())[:700]
+
+
+def _markdown_inline(text: str) -> str:
+    """Escape untrusted text before it is embedded in the notice markdown.
+
+    Evidence excerpts and filenames come from files someone else sent the
+    consumer. Left raw, ``[clique aqui](https://...)`` inside a PDF becomes a
+    live hyperlink in the notice the consumer reads, exports and forwards.
+    """
+    return _MARKDOWN_INLINE_ESCAPE_RE.sub(r"\\\1", text)
+
+
+def _degraded_retrieval_warnings(degraded_modes: list[str]) -> list[str]:
+    """Tell the reader when a draft was built without semantic retrieval."""
+    if not degraded_modes:
+        return []
+    return [
+        "A busca semântica não estava disponível e a recuperação usou apenas "
+        f"correspondência léxica ({', '.join(degraded_modes)}). Os mesmos filtros "
+        "determinísticos de fundamentos e citações continuam valendo, mas revise "
+        "este rascunho com atenção redobrada ou gere novamente mais tarde."
+    ]
 
 
 def _requests(facts: ConsumerCaseFacts) -> list[str]:
@@ -1000,7 +1166,8 @@ def _render_notice_markdown(
     ]
     for item in evidence:
         lines.append(
-            f"- **{item.filename}, p. {item.page}** — {item.quote} (chunk `{item.chunk_id}`)"
+            f"- **{_markdown_inline(item.filename)}, p. {item.page}** — "
+            f"{_markdown_inline(item.quote)} (chunk `{item.chunk_id}`)"
         )
     lines.extend(["", "## 4. Fundamentos jurídicos", ""])
     if prose is not None:
