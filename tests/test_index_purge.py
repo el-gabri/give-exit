@@ -108,3 +108,47 @@ async def test_notice_path_fails_fast_when_legal_index_is_missing() -> None:
     assert await service.legal_corpus_ready() is False
     with pytest.raises(ConsumerLegalCorpusNotReadyError, match="indexada"):
         await service._ensure_legal_corpus_indexed()
+
+
+async def test_orphan_purge_can_be_disabled_for_shared_namespaces() -> None:
+    """With several processes on one namespace, purging deletes live evidence."""
+    corpus = get_default_legal_corpus()
+    rag = RagPipeline(MockEmbeddingClient(), InMemoryVectorStore())
+    service = ConsumerCaseService(
+        ingestion=DocumentIngestionService(),
+        detector=PromptInjectionDetector(MockLLMClient()),
+        rag=rag,
+        legal_corpus=corpus,
+        purge_orphaned_evidence=False,
+    )
+    await rag.index_chunks(corpus.as_chunks())
+    stray = _stray_document()
+    await rag.index_document(stray)
+
+    assert await service.purge_orphaned_documents() == 0
+    assert stray.doc_id in await rag.list_document_ids()
+
+
+async def test_expired_cases_release_their_evidence_vectors() -> None:
+    from app.consumer.store import ConsumerCaseStore
+
+    now = [0.0]
+    rag = RagPipeline(MockEmbeddingClient(), InMemoryVectorStore())
+    store = ConsumerCaseStore(idle_ttl_seconds=10.0, clock=lambda: now[0])
+    service = ConsumerCaseService(
+        ingestion=DocumentIngestionService(),
+        detector=PromptInjectionDetector(MockLLMClient()),
+        rag=rag,
+        store=store,
+        legal_corpus=get_default_legal_corpus(),
+    )
+    record, _ = store.create()
+    stray = _stray_document()
+    await rag.index_document(stray)
+    record.indexed_document_ids.add(stray.doc_id)
+
+    now[0] = 100.0
+    purged = await service.purge_expired_cases()
+
+    assert purged == 1
+    assert stray.doc_id not in await rag.list_document_ids()
