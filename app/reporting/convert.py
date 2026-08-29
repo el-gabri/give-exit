@@ -12,11 +12,10 @@ from typing import Any
 
 BOLD_RE = re.compile(r"\*\*(.+?)\*\*")
 # Untrusted excerpts are backslash-escaped in the canonical Markdown so an
-# uploaded file cannot inject a link, raw HTML or a code span. PDF and DOCX are
-# not Markdown, so the escapes are resolved back to the literal characters here
-# instead of being printed to the reader. Kept in sync with
-# ``app.consumer.service._MARKDOWN_INLINE_ESCAPE_RE``.
-MARKDOWN_ESCAPE_RE = re.compile(r"\\([\\`\[\]<>])")
+# uploaded file cannot inject links or emphasis. PDF and DOCX are not Markdown,
+# so the escapes are resolved back to the literal characters here instead of
+# being printed to the reader.
+MARKDOWN_ESCAPE_RE = re.compile(r"\\([\\`*_\[\]<>])")
 
 
 @dataclass(frozen=True)
