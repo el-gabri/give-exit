@@ -785,19 +785,30 @@ def _obfuscated_finding(
 def _semantic_candidates(
     document: ParsedDocument, findings: list[PromptInjectionFinding]
 ) -> list[tuple[int, str]]:
+    """Select the bounded set of passages the semantic reviewer will see.
+
+    Rule findings are always included. The remaining budget is then shared
+    round-robin across pages instead of first-come-first-served: filling it in
+    document order let an attacker pad an early page with innocuous decoys that
+    merely look suspicious, pushing a real payload on a later page out of the
+    review entirely.
+    """
     candidates: list[tuple[int, str]] = []
     seen: set[tuple[int, str]] = set()
 
-    def add(page: int, passage: str) -> None:
+    def add(page: int, passage: str) -> bool:
         clipped = passage.strip()[:MAX_CANDIDATE_CHARS]
         key = (page, _canonical(clipped))
-        if clipped and key not in seen and len(candidates) < MAX_CANDIDATES:
-            candidates.append((page, clipped))
-            seen.add(key)
+        if not clipped or key in seen or len(candidates) >= MAX_CANDIDATES:
+            return False
+        candidates.append((page, clipped))
+        seen.add(key)
+        return True
 
     for finding in findings:
         add(finding.page, finding.quote)
 
+    by_page: dict[int, list[str]] = {}
     for page in document.pages:
         passages = [
             match.group(0).strip()
@@ -825,12 +836,19 @@ def _semantic_candidates(
                 focus_end = max(match.end() for match in focus_matches)
                 source_start = positions[focus_start]
                 source_end = positions[focus_end - 1] + 1
-                add(
-                    page.number,
-                    _focused_passage(passage, source_start, source_end),
+                by_page.setdefault(page.number, []).append(
+                    _focused_passage(passage, source_start, source_end)
                 )
-            if len(candidates) >= MAX_CANDIDATES:
-                return candidates
+
+    # Round-robin: every page contributes its first candidate before any page
+    # contributes its second, so no single page can consume the whole budget.
+    for index in range(max((len(items) for items in by_page.values()), default=0)):
+        for page_number in sorted(by_page):
+            page_candidates = by_page[page_number]
+            if index < len(page_candidates):
+                add(page_number, page_candidates[index])
+        if len(candidates) >= MAX_CANDIDATES:
+            break
     return candidates
 
 

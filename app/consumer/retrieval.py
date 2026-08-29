@@ -166,14 +166,21 @@ def is_consumer_scope(*, category: str | None, complaint: str) -> bool:
     normalized_category = _clean(category).casefold()
     if normalized_category in _OUT_OF_SCOPE_CATEGORIES:
         return False
-    if normalized_category in _CATEGORY_EXPANSIONS and normalized_category != "other":
-        return True
 
     normalized_complaint = _clean(complaint).casefold()
     has_consumer_signal = any(signal in normalized_complaint for signal in _CONSUMER_SIGNALS)
     has_non_consumer_signal = any(
         signal in normalized_complaint for signal in _NON_CONSUMER_SIGNALS
     )
+    # The narrative is checked before the category, not after it. The intake
+    # taxonomy is inferred from the same free text by keyword, so a labour or
+    # inheritance dispute easily lands in a concrete consumer category; letting
+    # the category short-circuit the check made this gate unreachable for every
+    # value except "other".
+    if has_non_consumer_signal and not has_consumer_signal:
+        return False
+    if normalized_category in _CATEGORY_EXPANSIONS and normalized_category != "other":
+        return True
     return has_consumer_signal or not has_non_consumer_signal
 
 
