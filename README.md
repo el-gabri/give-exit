@@ -62,6 +62,87 @@ separately configured OpenAI composer may phrase five prose fields only after
 facts, evidence, legal grounds, requests, values and citations have been fixed
 deterministically; invalid output falls back safely. Embeddings are independent.
 
+## Dependencies and requirements
+
+### Minimum runtime
+
+| Requirement | Notes |
+|---|---|
+| Python | 3.10+ (Docker image uses 3.12) |
+| Docker Compose v2 | Optional; recommended for local demo |
+| Disk | `data/` holds Chroma, embedding artifacts and Hugging Face cache |
+
+`docker compose` ships **only** `api` and `frontend`. There is **no bundled
+database container** — PostgreSQL, when used, runs on the host or elsewhere.
+
+### Python extras (`pyproject.toml`)
+
+| Extra | Purpose |
+|---|---|
+| `ocr` | PDF/image OCR via Tesseract (default API Docker build) |
+| `frontend` | Streamlit UI |
+| `local-embeddings` | Local models such as JUÁ (`sentence-transformers`) |
+| `postgres` | `pgvector` backend via `psycopg` |
+| `dev` | Tests, Ruff, MyPy, httpx |
+
+```powershell
+# Quick demo (mock + Chroma)
+python -m pip install -e ".[dev,frontend,ocr]"
+
+# JUÁ + PostgreSQL
+python -m pip install -e ".[ocr,local-embeddings,postgres,frontend]"
+```
+
+Docker API extras: `LITIGATION_API_EXTRAS` (default `ocr`). For JUÁ + Postgres:
+
+```env
+LITIGATION_API_EXTRAS=ocr,postgres,local-embeddings
+```
+
+### Vector stores
+
+| Backend | Config | External service |
+|---|---|---|
+| **Chroma** (default) | `LITIGATION_VECTOR_STORE=chroma` | None; files under `data/chroma/` |
+| **PostgreSQL** | `LITIGATION_VECTOR_STORE=postgres` | Postgres with `CREATE EXTENSION vector;` |
+
+DSN variables:
+
+- `LITIGATION_POSTGRES_DSN` — host Python (`localhost`)
+- `LITIGATION_DOCKER_POSTGRES_DSN` — API container (`host.docker.internal`)
+
+### Legal pre-indexing (required)
+
+```powershell
+python -m app.consumer.preindex_legal
+python -m app.consumer.preindex_legal --check
+```
+
+Without this, `GET /health` reports `legal_corpus_ready: false` and
+`POST /consumer/cases/{id}/notice` returns **503**.
+
+Artifacts: `data/embedding_generations/` + Chroma or Postgres vectors.
+
+### System dependencies
+
+| Component | Docker API image | Local Python |
+|---|---|---|
+| Tesseract OCR (Portuguese) | Pre-installed | Install on host + `ocr` extra |
+| Hugging Face models (JUÁ) | Cached under `./data/huggingface` | Same via `HF_HOME` |
+
+### Docker checklist
+
+1. Copy `.env.example` → `.env` and set extras for your profile.
+2. Run `python -m app.consumer.preindex_legal` on the host.
+3. If using Postgres: enable `pgvector`, configure both DSNs.
+4. `docker compose up --build`.
+5. Verify `http://localhost:8000/health` → `legal_corpus_ready: true`.
+
+Compose bind-mounts `./data:/app/data` so host pre-indexing is visible inside
+the API container.
+
+See [README-pt.md](README-pt.md) for the full Portuguese dependency reference.
+
 ## Legal grounding and citations
 
 - The CDC is ingested from a pinned Planalto snapshot with a manifest and
@@ -91,18 +172,34 @@ X-Consumer-Case-Token: <opaque case token>
 
 ### Docker
 
+Before the first `docker compose up`, pre-index the legal corpus on the host.
+Compose bind-mounts `./data` into the container; without this step,
+`GET /health` returns `legal_corpus_ready: false` and **Generate draft**
+responds with HTTP 503.
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -e ".[dev,frontend,ocr]"
+python -m app.consumer.preindex_legal
+python -m app.consumer.preindex_legal --check   # must exit 0
+
+docker compose up --build
+```
+
 ```bash
 docker compose up --build
 ```
 
 - UI: <http://localhost:8501>
 - API docs: <http://localhost:8000/docs>
+- Legal index readiness: <http://localhost:8000/health> (`legal_corpus_ready`)
 
 Docker installs Portuguese Tesseract OCR by default. Raw uploads are deleted
-after ingestion. Downloaded Hugging Face model weights are cached inside the
-persistent `consumer-data` volume, so rebuilding the API image does not download
-JUÁ again. The first download still requires several gigabytes and can take many
-minutes; `LITIGATION_NOTICE_REQUEST_TIMEOUT_SECONDS` controls how long the local
+after ingestion. Downloaded Hugging Face model weights are cached under
+`./data/huggingface` when using local embeddings. The first JUÁ download still
+requires several gigabytes and can take many minutes;
+`LITIGATION_NOTICE_REQUEST_TIMEOUT_SECONDS` controls how long the local
 Streamlit client waits for that synchronous demo flow.
 
 To verify both Docker settings without downloading JUÁ, start Docker Desktop (or
@@ -114,10 +211,10 @@ pwsh -NoProfile -File .\scripts\smoke_docker_runtime.ps1
 
 The script creates an isolated Compose project, writes a lightweight sentinel to
 the API service's `HF_HOME`, rebuilds the API image with `--no-cache`, and checks
-that a new API container can still read the sentinel from `consumer-data`. It
-also injects a non-default timeout and reads it inside the frontend container.
-It removes the isolated containers and volume when done. Among the normal Docker
-build progress, a successful run prints:
+that a new API container can still read the sentinel from the bind-mounted
+`./data` directory. It also injects a non-default timeout and reads it inside
+the frontend container. It removes the isolated containers when done. Among the
+normal Docker build progress, a successful run prints:
 
 ```text
 HF_HOME=/app/data/huggingface
@@ -268,6 +365,11 @@ and citation gates still apply and can abstain.
 
 ## API surface
 
+Step-by-step integration guide (payloads, curl, PowerShell):
+**[docs/api-consumer.md](docs/api-consumer.md)** (Portuguese)
+
+Interactive docs: <http://localhost:8000/docs>
+
 | Method | Route | Purpose |
 |---|---|---|
 | `GET` | `/health` | API liveness and legal-corpus readiness |
@@ -328,8 +430,9 @@ retrieval regression gates, the prompt-injection benchmark and container builds.
 - Legal sources, policy labels and evaluation judgments require independent
   legal review before public production use.
 
-See [SECURITY.md](SECURITY.md), [architecture.md](docs/architecture.md) and the
-[ADRs](docs/adr) for the accepted security boundary and design rationale.
+See [SECURITY.md](SECURITY.md), [architecture.md](docs/architecture.md),
+[api-consumer.md](docs/api-consumer.md) and the [ADRs](docs/adr) for the
+accepted security boundary and design rationale.
 
 ## Repository map
 

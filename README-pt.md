@@ -50,6 +50,196 @@ OpenAI opcional e separado pode redigir somente cinco campos de prosa depois
 que fatos, evidências, fundamentos, pedidos, valores e citações já foram fixados
 de forma determinística; saída inválida aciona o compositor determinístico.
 
+## Dependências e requisitos
+
+### Runtime mínimo
+
+| Requisito | Versão / nota |
+|---|---|
+| Python | 3.10 ou superior (imagem Docker: 3.12) |
+| Docker + Compose v2 | Opcional, recomendado para demo local |
+| Espaço em disco | `data/` cresce com Chroma, artefatos de embedding e cache Hugging Face |
+
+O `docker compose` deste repositório sobe **apenas** `api` e `frontend`. Não há
+container de banco embutido: PostgreSQL, quando usado, roda **fora** do Compose
+(no host ou em outro serviço).
+
+### Pacotes Python (`pyproject.toml`)
+
+Instalação base:
+
+```powershell
+python -m pip install -e .
+```
+
+| Extra | Conteúdo | Quando instalar |
+|---|---|---|
+| `ocr` | `pytesseract`, `Pillow` | Sempre que houver upload de PDF/imagem (padrão da API Docker) |
+| `frontend` | `streamlit`, `requests` | Interface Streamlit |
+| `local-embeddings` | `sentence-transformers`, `transformers` | Modelos locais (ex.: JUÁ 4B) |
+| `postgres` | `psycopg[binary]` | Backend `LITIGATION_VECTOR_STORE=postgres` |
+| `dev` | `pytest`, `ruff`, `mypy`, `httpx`, … | Desenvolvimento e CI |
+
+Combinações típicas:
+
+```powershell
+# Demo local / integração rápida (mock + Chroma)
+python -m pip install -e ".[dev,frontend,ocr]"
+
+# Produção com JUÁ + PostgreSQL
+python -m pip install -e ".[ocr,local-embeddings,postgres,frontend]"
+```
+
+No Docker, o extra da API é controlado por `LITIGATION_API_EXTRAS` (padrão
+`ocr`). Para JUÁ + Postgres na imagem:
+
+```env
+LITIGATION_API_EXTRAS=ocr,postgres,local-embeddings
+```
+
+### Perfis de configuração
+
+| Perfil | Vector store | Embeddings | LLM | Banco externo |
+|---|---|---|---|---|
+| **Demo** (clone padrão) | Chroma (`data/chroma/`) | Mock | Mock | Não |
+| **OpenAI** | Chroma ou Postgres | OpenAI API | OpenAI API | Opcional (Postgres) |
+| **JUÁ local** | Chroma ou Postgres | `sentence_transformers` (CPU/GPU) | OpenAI ou mock | Recomendado Postgres em produção |
+
+Variáveis principais: copie [`.env.example`](.env.example) para `.env`.
+
+### Vector store
+
+#### Chroma (padrão)
+
+- Backend embutido, sem serviço externo.
+- Persistência em `data/chroma/`.
+- Adequado para demo e desenvolvimento.
+
+```env
+LITIGATION_VECTOR_STORE=chroma
+```
+
+#### PostgreSQL + pgvector
+
+- Busca **densa** via `pgvector`.
+- Busca **lexical** via full-text search em português no próprio Postgres.
+- Exige extensão `vector` no banco de destino.
+
+```sql
+CREATE EXTENSION IF NOT EXISTS vector;
+```
+
+```env
+LITIGATION_VECTOR_STORE=postgres
+LITIGATION_POSTGRES_DSN=postgresql://usuario:senha@localhost:5432/postgres
+LITIGATION_DOCKER_POSTGRES_DSN=postgresql://usuario:senha@host.docker.internal:5432/postgres
+```
+
+- **Python no host** usa `LITIGATION_POSTGRES_DSN` (`localhost`).
+- **API no Docker** recebe `LITIGATION_DOCKER_POSTGRES_DSN` via `compose.yaml`
+  (`host.docker.internal` aponta para o Postgres do host no Docker Desktop).
+
+Migração Chroma → Postgres sem re-embedding:
+
+```powershell
+python -m app.consumer.migrate_legal_index_to_postgres
+```
+
+### Pré-indexação legal (obrigatória)
+
+Antes de gerar qualquer rascunho, o corpus jurídico (CDC + dispositivos
+selecionados da CF) deve estar materializado:
+
+```powershell
+python -m app.consumer.preindex_legal
+python -m app.consumer.preindex_legal --check
+```
+
+Artefatos gerados:
+
+| Caminho | Conteúdo |
+|---|---|
+| `data/embedding_generations/<id>/` | Shards gzip, manifesto, checksums |
+| `data/chroma/` ou Postgres | Vetores do corpus legal versionado |
+
+`GET /health` expõe `legal_corpus_ready`. Sem isso, `POST .../notice` retorna
+**503**.
+
+Com JUÁ em CPU, a primeira indexação pode levar horas; shards concluídos são
+retomáveis. O cache de modelos Hugging Face fica em `data/huggingface/` quando
+`HF_HOME` aponta para lá (configurado no Compose).
+
+### OCR (Tesseract)
+
+Necessário para imagens (PNG/JPG) e PDFs digitalizados sem texto nativo.
+
+| Ambiente | Como obter |
+|---|---|
+| Docker (API) | Já instalado na imagem: `tesseract-ocr` + `tesseract-ocr-por` |
+| Python local | Instalar Tesseract no SO + pacote de idioma português + extra `ocr` |
+
+Sem Tesseract, uploads de imagem ou PDF só-OCR falham com **422**.
+
+### Provedores de IA (opcionais)
+
+| Componente | Variável | Padrão | Função |
+|---|---|---|---|
+| LLM de segurança | `LITIGATION_LLM_PROVIDER` | `mock` | Varredura de prompt injection (`balanced`/`strict`) |
+| Embeddings | `LITIGATION_EMBEDDING_PROVIDER` | `auto` (segue LLM) | Indexação e recuperação RAG |
+| Compositor de prosa | `LITIGATION_NOTICE_COMPOSER` | `deterministic` | Redação final opcional via OpenAI |
+
+Chaves de API (quando aplicável):
+
+- `LITIGATION_OPENAI_API_KEY` — LLM OpenAI e/ou compositor OpenAI
+- `LITIGATION_ANTHROPIC_API_KEY`, `LITIGATION_GEMINI_API_KEY` — alternativas de LLM
+
+### Autenticação e limites
+
+| Modo | Comportamento |
+|---|---|
+| Local (padrão) | Sem `X-API-Key`; token do caso (`X-Consumer-Case-Token`) nas rotas `/consumer/cases/*` |
+| `LITIGATION_API_AUTH_KEY` definida | Todas as rotas exceto `/health` exigem header `X-API-Key` |
+| `LITIGATION_DEPLOYMENT_MODE=production` | Exige `LITIGATION_API_AUTH_KEY` na inicialização |
+
+Outros limites:
+
+- Upload: **20 MB** por arquivo; formatos PDF/PNG/JPG/JPEG.
+- PDF: até `LITIGATION_MAX_DOCUMENT_PAGES` páginas (padrão 250).
+- Rate limit de upload: `LITIGATION_UPLOAD_RATE_LIMIT_PER_MINUTE` (padrão 20/min).
+- Timeout de geração no frontend: `LITIGATION_NOTICE_REQUEST_TIMEOUT_SECONDS`
+  (padrão 1200 s no Compose).
+
+### Docker — o que a imagem inclui
+
+| Serviço | Imagem | Pacotes / SO | Porta |
+|---|---|---|---|
+| `api` | `give-exit-api` | Python 3.12-slim, Tesseract PT, extras de `LITIGATION_API_EXTRAS` | 8000 |
+| `frontend` | `give-exit-frontend` | Streamlit, cliente HTTP | 8501 |
+
+Volumes e dados (`compose.yaml`):
+
+- `./data:/app/data` — Chroma, `embedding_generations`, uploads temporários,
+  cache Hugging Face (`HF_HOME=/app/data/huggingface`).
+- A pré-indexação deve rodar **no host** (ou gerar `data/` antes do `compose up`).
+
+Checklist Docker para funcionamento completo:
+
+1. Copiar `.env.example` → `.env` e ajustar extras conforme o perfil.
+2. Executar `python -m app.consumer.preindex_legal` no host.
+3. Se usar Postgres: banco acessível, extensão `vector`, DSN correto para host
+   e para `host.docker.internal`.
+4. `docker compose up --build`.
+5. Confirmar `http://localhost:8000/health` → `legal_corpus_ready: true`.
+
+### Estado e persistência
+
+| Dado | Onde fica | Persiste após restart? |
+|---|---|---|
+| Casos e rascunhos | Memória do processo API | **Não** |
+| Índice legal | Chroma / Postgres + `embedding_generations` | **Sim** |
+| Vetores de evidência do caso | Chroma / Postgres | Até `DELETE /consumer/cases/{id}` ou purge no startup |
+| Upload bruto | Temporário; apagado após ingestão | Não |
+
 ## Fontes e citações
 
 - O CDC vem de snapshot fixado do Planalto, acompanhado de manifesto e hashes.
@@ -76,12 +266,32 @@ X-Consumer-Case-Token: <token opaco do caso>
 
 ### Docker
 
+Antes do primeiro `docker compose up`, pré-indexe o corpus jurídico no host.
+O compose monta `./data` no container; sem essa etapa, `GET /health` retorna
+`legal_corpus_ready: false` e **Gerar rascunho** responde 503.
+
+```powershell
+# 1. Configuração mínima (demo com embeddings mock + Chroma)
+Copy-Item .env.example .env
+# Para demo rápido, use mock/rules/chroma em vez de JUÁ/Postgres/OpenAI.
+
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -e ".[dev,frontend,ocr]"
+python -m app.consumer.preindex_legal
+python -m app.consumer.preindex_legal --check   # deve sair com código 0
+
+# 2. Subir os serviços
+docker compose up --build
+```
+
 ```bash
 docker compose up --build
 ```
 
 - Interface: <http://localhost:8501>
 - OpenAPI: <http://localhost:8000/docs>
+- Prontidão do índice legal: <http://localhost:8000/health> (`legal_corpus_ready`)
 
 O container instala Tesseract em português. O arquivo bruto enviado é apagado
 depois da ingestão.
@@ -196,6 +406,11 @@ ou de citação.
 
 ## API
 
+Tutorial completo de integração (fluxo passo a passo, payloads, curl e
+PowerShell): **[docs/api-consumer.md](docs/api-consumer.md)**
+
+Documentação interativa: <http://localhost:8000/docs>
+
 | Método | Rota | Finalidade |
 |---|---|---|
 | `GET` | `/health` | Vida da API e prontidão do corpus legal |
@@ -252,4 +467,5 @@ python -m app.evaluation.consumer_runner `
   antes de uso público em produção.
 
 Consulte [SECURITY.md](SECURITY.md),
-[docs/architecture.md](docs/architecture.md) e os [ADRs](docs/adr).
+[docs/architecture.md](docs/architecture.md), [docs/api-consumer.md](docs/api-consumer.md)
+e os [ADRs](docs/adr).

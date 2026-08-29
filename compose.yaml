@@ -19,8 +19,9 @@ services:
     ports:
       - "${LITIGATION_BIND_HOST:-127.0.0.1}:8000:8000"
     volumes:
-      - consumer-data:/app/data   # ChromaDB, local-model cache and upload workspace
-      - ./data/embedding_generations:/app/data/embedding_generations:ro
+      # Bind mount keeps Chroma and embedding_generations on the host so
+      # `python -m app.consumer.preindex_legal` can run before compose up.
+      - ./data:/app/data
   frontend:
     build:
       context: .
@@ -36,6 +37,3 @@ services:
       - "${LITIGATION_BIND_HOST:-127.0.0.1}:8501:8501"
     depends_on:
       - api
-
-volumes:
-  consumer-data:
