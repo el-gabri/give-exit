@@ -178,6 +178,9 @@ def create_rag_pipeline(
         embedding_require_model_revision=settings.embedding_require_model_revision,
         embedding_query_timeout_seconds=settings.embedding_query_timeout_seconds,
         embedding_query_max_concurrency=settings.embedding_query_max_concurrency,
+        embedding_query_queue_timeout_seconds=(
+            settings.embedding_query_queue_timeout_seconds
+        ),
         embedding_circuit_breaker_failures=settings.embedding_circuit_breaker_failures,
         embedding_circuit_breaker_reset_seconds=(
             settings.embedding_circuit_breaker_reset_seconds

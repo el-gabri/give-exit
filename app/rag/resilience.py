@@ -38,6 +38,7 @@ class QueryEmbeddingGuard:
         *,
         timeout_seconds: float,
         max_concurrency: int,
+        queue_timeout_seconds: float,
         circuit_breaker_failures: int,
         circuit_breaker_reset_seconds: float,
         cache_ttl_seconds: float,
@@ -47,6 +48,7 @@ class QueryEmbeddingGuard:
         self._embedder = embedder
         self._timeout_seconds = timeout_seconds
         self._slots = asyncio.Semaphore(max_concurrency)
+        self._queue_timeout_seconds = queue_timeout_seconds
         self._failure_threshold = circuit_breaker_failures
         self._reset_seconds = circuit_breaker_reset_seconds
         self._cache_ttl_seconds = cache_ttl_seconds
@@ -78,11 +80,18 @@ class QueryEmbeddingGuard:
         if missing_queries:
             if now < self._circuit_open_until:
                 raise EmbeddingUnavailableError("embedding circuit breaker is open")
+            # Wait for a slot instead of rejecting immediately. A single slow
+            # local model makes overlapping requests the normal case, and an
+            # instant rejection would silently downgrade an ordinary concurrent
+            # notice to lexical-only retrieval.
             try:
-                await asyncio.wait_for(self._slots.acquire(), timeout=0.01)
+                await asyncio.wait_for(
+                    self._slots.acquire(), timeout=self._queue_timeout_seconds
+                )
             except TimeoutError as exc:
                 raise EmbeddingUnavailableError(
-                    "embedding concurrency limit is currently exhausted"
+                    "embedding concurrency limit is currently exhausted after "
+                    f"{self._queue_timeout_seconds:g}s"
                 ) from exc
 
             task = asyncio.create_task(embed_query_texts(self._embedder, missing_queries))
