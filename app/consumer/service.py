@@ -44,7 +44,6 @@ from app.consumer.monetary import extract_brl_mentions
 from app.consumer.retrieval import (
     build_evidence_queries,
     build_legal_queries,
-    infer_retrieval_category,
     is_consumer_scope,
 )
 from app.consumer.schemas import (
@@ -840,10 +839,11 @@ class ConsumerCaseService:
             complaint=facts.complaint_summary or "",
         ):
             return []
-        inferred_category = infer_retrieval_category(
-            category,
-            facts.complaint_summary or "",
-        )
+        # The issue category shapes the retrieval queries (see
+        # build_legal_queries) but no longer decides which articles may be
+        # cited: a consumer who picks the wrong type, or the catch-all
+        # "other", must still be able to reach the authorities their own
+        # report supports.
         strongly_supported = strongly_supported_chunk_ids(traces or [])
         if not strongly_supported:
             return []
@@ -865,7 +865,7 @@ class ConsumerCaseService:
                     continue
                 if result.chunk.chunk_id not in strongly_supported:
                     continue
-                if not provision_is_eligible(inferred_category, provision.provision_id):
+                if not provision_is_eligible(provision):
                     continue
                 unit = self._legal_corpus.unit_for_chunk(result)
                 if unit is not None and unit.status is not ProvisionStatus.ACTIVE:

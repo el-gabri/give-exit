@@ -1,111 +1,105 @@
-"""Conservative, deterministic eligibility policy for cited consumer law.
+"""Deterministic eligibility policy for cited consumer law.
 
-Retrieval is a candidate generator, not a legal merits decision.  A chunk may
-be highly ranked because it shares generic words such as ``consumidor`` or
-``reparação`` while addressing a different issue.  Before a retrieved chunk
-can become a legal ground, this module requires its article to be among a
-small category-specific set.
+Retrieval is a candidate generator, not a legal merits decision, so something
+must stand between "this chunk ranked well" and "this article is an authority
+in a notice". That gate used to be a per-category allowlist keyed on the
+consumer's chosen issue type.
 
-The mapping is an engineering safety control derived from the repository's
-versioned query taxonomy and legal-evaluation seed.  It is deliberately
-narrow and is still marked as requiring Brazilian-lawyer review; absence from
-the mapping means abstention, never permission to improvise an authority.
+It no longer is. The issue type is a lay self-classification collected at the
+top of a form: a consumer can pick the wrong one by accident, several problems
+routinely share one report, and the catch-all ``other`` had no entry at all,
+which made a notice impossible for exactly the people least able to categorise
+their own case. Filtering authorities by that field turned a UI mistake into a
+dead end.
+
+What remains is a property of the *document*, not a guess about the problem:
+an extrajudicial notice sent by one consumer to one supplier can rest on the
+substantive rights in the CDC, but not on the chapters that address criminal
+liability, administrative sanctions by public bodies, collective litigation or
+the organisation of the consumer-protection system. That boundary comes from
+the statute's own structure, so it stays stable as the corpus grows and does
+not depend on anyone predicting which article a given complaint needs.
+
+Eligibility is still not a merits decision, and the result is still marked
+``requires_legal_review``.
 """
 
 from __future__ import annotations
 
-from types import MappingProxyType
+import re
+import unicodedata
 
+from app.consumer.schemas import LegalProvision, LegalSource
 from app.schemas.trace import RetrievalTrace
 
-LEGAL_GROUND_POLICY_VERSION = "consumer-ground-eligibility-v1"
+LEGAL_GROUND_POLICY_VERSION = "consumer-notice-scope-eligibility-v2"
 LEGAL_GROUND_POLICY_REVIEW_STATUS = "requires_legal_review"
 
-
-_ELIGIBLE_PROVISIONS = MappingProxyType(
+# CDC divisions whose subject matter cannot support an individual consumer's
+# extrajudicial notice. Expressed as (title, chapter) roman numerals so the
+# rule reads against the statute's structure rather than article numbers.
+# ``None`` as a chapter excludes the whole title.
+_EXCLUDED_CDC_DIVISIONS: frozenset[tuple[str, str | None]] = frozenset(
     {
-        "unauthorized_charge": frozenset({"br-cdc-art-42", "br-cdc-art-42-a"}),
-        "fraud": frozenset({"br-cdc-art-6", "br-cdc-art-14"}),
-        "account_block": frozenset(
-            {"br-cdc-art-6", "br-cdc-art-14", "br-cdc-art-20", "br-cdc-art-22"}
-        ),
-        "negative_credit_record": frozenset({"br-cdc-art-42-a", "br-cdc-art-43"}),
-        "loan_or_interest": frozenset(
-            {
-                "br-cdc-art-6",
-                "br-cdc-art-46",
-                "br-cdc-art-51",
-                "br-cdc-art-52",
-                "br-cdc-art-54-a",
-                "br-cdc-art-54-b",
-                "br-cdc-art-54-c",
-                "br-cdc-art-54-d",
-                "br-cdc-art-54-f",
-                "br-cdc-art-54-g",
-            }
-        ),
-        "service_failure": frozenset({"br-cdc-art-14", "br-cdc-art-20"}),
-        "product_defect": frozenset({"br-cdc-art-18", "br-cdc-art-26"}),
-        "non_delivery": frozenset({"br-cdc-art-30", "br-cdc-art-35"}),
-        "right_of_withdrawal": frozenset({"br-cdc-art-49"}),
-        "misleading_advertising": frozenset(
-            {"br-cdc-art-30", "br-cdc-art-36", "br-cdc-art-37", "br-cdc-art-38"}
-        ),
-        "abusive_practice": frozenset({"br-cdc-art-39"}),
-        "abusive_collection": frozenset({"br-cdc-art-42", "br-cdc-art-42-a"}),
-        "public_utility": frozenset({"br-cdc-art-22"}),
-        "consumer_safety": frozenset(
-            {
-                "br-cdc-art-8",
-                "br-cdc-art-9",
-                "br-cdc-art-10",
-                "br-cdc-art-12",
-                "br-cdc-art-14",
-            }
-        ),
-        "contract_terms": frozenset(
-            {
-                "br-cdc-art-46",
-                "br-cdc-art-47",
-                "br-cdc-art-51",
-                "br-cdc-art-54",
-                "br-cdc-art-54-a",
-                "br-cdc-art-54-b",
-                "br-cdc-art-54-c",
-                "br-cdc-art-54-d",
-                "br-cdc-art-54-f",
-                "br-cdc-art-54-g",
-            }
-        ),
-        "over_indebtedness": frozenset(
-            {
-                "br-cdc-art-54-a",
-                "br-cdc-art-54-b",
-                "br-cdc-art-54-c",
-                "br-cdc-art-54-d",
-                "br-cdc-art-54-f",
-                "br-cdc-art-54-g",
-                "br-cdc-art-104-a",
-                "br-cdc-art-104-b",
-                "br-cdc-art-104-c",
-            }
-        ),
-        # ``other`` is intentionally absent.  A broad catch-all category does
-        # not provide enough information to select a legal authority safely.
+        # Título I, Cap. VII - administrative sanctions imposed by public
+        # bodies. A private notice does not apply them.
+        ("i", "vii"),
+        # Título II - criminal offences. Alleging a crime is not the purpose
+        # of a settlement proposal and is not a consumer's to charge.
+        ("ii", None),
+        # Título III - defence in court: procedure, collective actions and
+        # res judicata. Título III, Cap. V is the exception, because
+        # over-indebtedness conciliation is a substantive consumer right.
+        ("iii", "i"),
+        ("iii", "ii"),
+        ("iii", "iii"),
+        ("iii", "iv"),
+        # Título IV/V/VI - the national consumer-protection system, collective
+        # bargaining between associations, and the statute's own commencement.
+        ("iv", None),
+        ("v", None),
+        ("vi", None),
     }
 )
 
 
-def eligible_provision_ids(category: str) -> frozenset[str]:
-    """Return the reviewed-policy candidates for one inferred category."""
+def provision_is_eligible(provision: LegalProvision) -> bool:
+    """Whether this provision may be cited as a ground in a consumer notice.
 
-    return _ELIGIBLE_PROVISIONS.get(category, frozenset())
+    The consumer's issue category is deliberately not an input: it does not
+    determine whether an article can lawfully appear in a notice, only how
+    likely retrieval is to surface it, which the query expansion already
+    handles.
+    """
+    if provision.source is not LegalSource.CONSUMER_DEFENSE_CODE:
+        # The constitutional corpus is a small, hand-reviewed selection of
+        # consumer-relevant provisions; every entry is already in scope.
+        return True
+    title = _division_numeral(provision.title, "titulo")
+    chapter = _division_numeral(provision.chapter, "capitulo")
+    if not title:
+        # An article the snapshot could not place in the hierarchy is not
+        # silently promoted; abstaining is the safe direction here.
+        return False
+    return (title, None) not in _EXCLUDED_CDC_DIVISIONS and (
+        title,
+        chapter,
+    ) not in _EXCLUDED_CDC_DIVISIONS
 
 
-def provision_is_eligible(category: str, provision_id: str) -> bool:
-    """Whether a retrieved article may be considered for this category."""
+def eligible_provisions(provisions: tuple[LegalProvision, ...]) -> tuple[LegalProvision, ...]:
+    """Filter a corpus slice to what a notice may cite; used by diagnostics."""
+    return tuple(provision for provision in provisions if provision_is_eligible(provision))
 
-    return provision_id in eligible_provision_ids(category)
+
+def _division_numeral(label: str | None, keyword: str) -> str:
+    """Extract ``vi-a`` from ``CAPÍTULO VI-A DA PREVENÇÃO ...``."""
+    if not label:
+        return ""
+    normalized = unicodedata.normalize("NFKD", label).casefold()
+    normalized = "".join(char for char in normalized if not unicodedata.combining(char))
+    match = re.search(rf"\b{keyword}\s+([ivx]+(?:-[a-z])?)\b", normalized)
+    return match.group(1) if match else ""
 
 
 def strongly_supported_chunk_ids(traces: list[RetrievalTrace]) -> frozenset[str]:
@@ -113,9 +107,13 @@ def strongly_supported_chunk_ids(traces: list[RetrievalTrace]) -> frozenset[str]
 
     For reciprocal-rank fusion, a score above the best possible contribution
     from either single channel proves that both dense and lexical retrieval
-    contributed.  Reranker and other score scales have no portable absolute
+    contributed. Reranker and other score scales have no portable absolute
     threshold, so they require the same chunk to rank in the top three for at
     least two independently constructed queries.
+
+    With the category allowlist gone this is the load-bearing precision
+    control: an article reaches a notice because two independent retrieval
+    channels agreed on it, not because one channel matched a shared word.
     """
 
     supported: set[str] = set()

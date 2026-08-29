@@ -167,19 +167,30 @@ async def test_full_consumer_notice_lifecycle(
     assert notice["evidence_references"][0]["filename"] == "extrato.pdf"
     assert notice["legal_grounds"]
     assert len(notice["corpus_sha256"]) == 64
-    assert notice["legal_ground_policy_version"] == "consumer-ground-eligibility-v1"
+    assert notice["legal_ground_policy_version"] == "consumer-notice-scope-eligibility-v2"
     assert notice["legal_ground_policy_review_status"] == "requires_legal_review"
     assert all(
         ground["authority"]["official_url"].startswith("https://www.planalto.gov.br/")
         for ground in notice["legal_grounds"]
     )
     assert all(ground["authority"]["status"] == "active" for ground in notice["legal_grounds"])
-    assert all(
-        ground["authority"]["official_excerpt"]
-        and len(ground["authority"]["official_excerpt_sha256"]) == 64
-        for ground in notice["legal_grounds"]
-        if ground["authority"]["law_id"] == "br-cdc"
-    )
+    # Every CDC ground quotes official text under a verifiable hash. An
+    # article-level chunk covers a whole heavily subdivided article, so it
+    # carries official_text rather than a per-unit excerpt; both are official
+    # and both are hashed, and the renderer prefers whichever is present.
+    for ground in notice["legal_grounds"]:
+        authority = ground["authority"]
+        if authority["law_id"] != "br-cdc":
+            continue
+        quoted = authority["official_excerpt"] or authority["official_text"]
+        quoted_sha = (
+            authority["official_excerpt_sha256"]
+            if authority["official_excerpt"]
+            else authority["official_text_sha256"]
+        )
+        assert quoted, authority["citation_label"]
+        assert len(quoted_sha) == 64, authority["citation_label"]
+        assert authority["content_kind"] == "official", authority["citation_label"]
     legal_traces = [
         trace for trace in notice["retrievals"] if trace["agent"] == "consumer_legal_authorities"
     ]

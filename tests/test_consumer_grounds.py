@@ -4,7 +4,6 @@ import hashlib
 
 from app.consumer.legal_corpus import get_default_legal_corpus
 from app.consumer.legal_policy import provision_is_eligible
-from app.consumer.retrieval import infer_retrieval_category
 from app.consumer.schemas import ConsumerCaseFacts, ConsumerIssueCategory
 from app.consumer.service import (
     MAX_GROUND_CANDIDATES,
@@ -48,16 +47,11 @@ def _corpus_chunks(count: int, facts: ConsumerCaseFacts | None = None) -> list:
     """Chunks that resolve to real provisions, so grounds can be built."""
     corpus = get_default_legal_corpus()
     service = _service()
-    selected_facts = facts or _facts()
-    category = infer_retrieval_category(
-        selected_facts.issue_category.value if selected_facts.issue_category else "other",
-        selected_facts.complaint_summary or "",
-    )
     resolved = [
         chunk
         for chunk in corpus.as_chunks()
         if any(
-            provision_is_eligible(category, provision.provision_id)
+            provision_is_eligible(provision)
             for provision in service._legal_corpus.provisions_for_chunk(
                 RetrievedChunk(chunk=chunk, score=1.0)
             )
@@ -165,13 +159,50 @@ def test_no_results_yield_no_grounds() -> None:
     assert _service()._legal_grounds([], _facts(), []) == []
 
 
-def test_retrieved_but_category_ineligible_article_is_not_cited() -> None:
-    service = _service()
-    ineligible = next(
+def _chunk_for(provision_id: str):
+    return next(
         chunk
         for chunk in get_default_legal_corpus().as_chunks()
-        if chunk.metadata.get("provision_id") == "br-cdc-art-49"
+        if chunk.metadata.get("provision_id") == provision_id
     )
-    results = [[RetrievedChunk(chunk=ineligible, score=0.03)]]
 
-    assert service._legal_grounds(results, _facts(), _traces(results)) == []
+
+def test_article_outside_the_notice_scope_is_not_cited() -> None:
+    """Eligibility is about what an individual notice can rest on.
+
+    Criminal offences, administrative sanctions and collective-action
+    procedure stay out however well they rank.
+    """
+    service = _service()
+    for provision_id in ("br-cdc-art-71", "br-cdc-art-95", "br-cdc-art-56"):
+        results = [[RetrievedChunk(chunk=_chunk_for(provision_id), score=0.03)]]
+        assert service._legal_grounds(results, _facts(), _traces(results)) == [], provision_id
+
+
+def test_issue_category_does_not_filter_the_authorities() -> None:
+    """A mistyped category, or the catch-all, must not block a ground.
+
+    The issue type is a lay self-classification: it steers the retrieval
+    queries, but it cannot decide which articles a consumer is allowed to
+    invoke. Art. 49 used to be citable only under right_of_withdrawal.
+    """
+    service = _service()
+    results = [[RetrievedChunk(chunk=_chunk_for("br-cdc-art-49"), score=0.03)]]
+
+    for category in (
+        ConsumerIssueCategory.UNAUTHORIZED_CHARGE,
+        ConsumerIssueCategory.OTHER,
+    ):
+        facts = _facts().model_copy(update={"issue_category": category})
+        grounds = service._legal_grounds(results, facts, _traces(results))
+        assert [g.authority.provision_id for g in grounds] == ["br-cdc-art-49"], category
+
+
+def test_catch_all_category_can_still_produce_a_notice() -> None:
+    """'other' used to have an empty allowlist, so it always failed."""
+    service = _service()
+    chunks = _corpus_chunks(3)
+    results = [[RetrievedChunk(chunk=chunk, score=0.03) for chunk in chunks]]
+    facts = _facts().model_copy(update={"issue_category": ConsumerIssueCategory.OTHER})
+
+    assert service._legal_grounds(results, facts, _traces(results))

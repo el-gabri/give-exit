@@ -74,6 +74,18 @@ deterministically; invalid output falls back safely. Embeddings are independent.
 - Retrieved chunks are candidates, not automatically accepted authorities. A
   deterministic policy controls eligibility and remains marked
   `requires_legal_review`.
+- Eligibility is a property of the document, not of the consumer's answers.
+  The issue category shapes the retrieval queries but never restricts which
+  articles may be cited: it is a lay self-classification, one report often
+  spans several problems, and a wrong pick must not deny somebody a notice.
+  What an individual extrajudicial notice cannot rest on is excluded by the
+  statute's own structure — the CDC chapters on criminal offences,
+  administrative sanctions, collective litigation and the national
+  consumer-protection system.
+- The load-bearing precision control is retrieval agreement, not the category:
+  an article becomes a ground only when dense and lexical retrieval both
+  ranked it (or, in degraded mode, when two independent queries corroborate
+  it in their top three).
 - Notice citations are reconstructed from retrieved evidence and canonical
   legal metadata; they are not trusted model-generated citation strings.
 - An evidence citation names exactly one file and one page. A retrieved chunk
