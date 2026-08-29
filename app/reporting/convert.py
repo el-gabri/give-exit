@@ -11,6 +11,12 @@ from dataclasses import dataclass
 from typing import Any
 
 BOLD_RE = re.compile(r"\*\*(.+?)\*\*")
+# Untrusted excerpts are backslash-escaped in the canonical Markdown so an
+# uploaded file cannot inject a link, raw HTML or a code span. PDF and DOCX are
+# not Markdown, so the escapes are resolved back to the literal characters here
+# instead of being printed to the reader. Kept in sync with
+# ``app.consumer.service._MARKDOWN_INLINE_ESCAPE_RE``.
+MARKDOWN_ESCAPE_RE = re.compile(r"\\([\\`\[\]<>])")
 
 
 @dataclass(frozen=True)
@@ -19,10 +25,15 @@ class Block:
     text: str
 
 
+def strip_markdown_escapes(text: str) -> str:
+    """Resolve ``\\x`` escapes to ``x`` for the non-Markdown renderers."""
+    return MARKDOWN_ESCAPE_RE.sub(r"\1", text)
+
+
 def parse_blocks(markdown: str) -> list[Block]:
     blocks: list[Block] = []
     for raw in markdown.splitlines():
-        line = raw.rstrip()
+        line = strip_markdown_escapes(raw.rstrip())
         if not line.strip():
             continue
         if line.startswith("### "):

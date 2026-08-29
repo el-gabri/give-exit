@@ -80,6 +80,7 @@ from app.schemas.security import SecurityAction
 from app.schemas.trace import AgentStatus, RetrievalTrace
 from app.security.prompt_injection import PromptInjectionDetector, failed_scan_assessment
 from app.security.sanitization import sanitized_document
+from app.security.telemetry import redact_sensitive_text
 
 logger = get_logger(__name__)
 
@@ -102,10 +103,13 @@ _EVIDENCE_PAGE_MARKER_RE = re.compile(
     r"\[?\s*CASO\s+[0-9A-F]{8}\s+EVIDENCIA\s+[0-9A-F]{8}\s+PAGINA\s+\d+\s*\]?",
     re.IGNORECASE,
 )
-# Characters that turn untrusted excerpt text into markdown structure. An
-# uploaded PDF is attacker-controlled input in the common fraud scenario, and
-# the notice is rendered as markdown for the consumer and exported from it.
-_MARKDOWN_INLINE_ESCAPE_RE = re.compile(r"([\\`*_\[\]<>])")
+# Characters through which untrusted excerpt text could inject a link, raw
+# HTML or a code span. An uploaded PDF is attacker-controlled input in the
+# common fraud scenario, and the notice is rendered as markdown and exported
+# from it. Emphasis markers (* and _) are deliberately NOT escaped: they cannot
+# create a link, and escaping them turned every masked "CPF 12.***.***/0001-00"
+# in real evidence into "12.\*\*\*.\*\*\*/0001-00" in the delivered document.
+_MARKDOWN_INLINE_ESCAPE_RE = re.compile(r"([\\`\[\]<>])")
 
 _CATEGORY_LABEL = {
     "unauthorized_charge": "cobrança não reconhecida ou indevida",
@@ -629,9 +633,15 @@ class ConsumerCaseService:
             )
             return composition, []
         except Exception as exc:
+            # The type alone cannot distinguish a rejected schema from an
+            # unavailable model or an output-token ceiling consumed by
+            # reasoning, and all three surface to the consumer as the same
+            # sentence. Keep the provider's message, redacted, so a
+            # misconfiguration is diagnosable without reproducing it.
             logger.warning(
                 "consumer_notice_composer_fallback",
                 error_type=type(exc).__name__,
+                error=redact_sensitive_text(exc)[:500],
             )
             fallback = await DeterministicNoticeComposer().compose(
                 facts=facts,
@@ -1102,6 +1112,11 @@ def _markdown_inline(text: str) -> str:
     return _MARKDOWN_INLINE_ESCAPE_RE.sub(r"\\\1", text)
 
 
+def _single_line(text: str) -> str:
+    """Collapse whitespace so a value can safely become one Markdown line."""
+    return " ".join(text.split())
+
+
 def _degraded_retrieval_warnings(degraded_modes: list[str]) -> list[str]:
     """Tell the reader when a draft was built without semantic retrieval."""
     if not degraded_modes:
@@ -1136,12 +1151,21 @@ def _render_notice_markdown(
     name = facts.consumer_name or "[PREENCHER NOME DO(A) CONSUMIDOR(A)]"
     supplier = facts.bank_name or "[PREENCHER EMPRESA, FORNECEDOR OU INSTITUIÇÃO]"
     subject = _CATEGORY_LABEL[facts.issue_category.value if facts.issue_category else "other"]
-    protocols = ", ".join(facts.prior_protocols) or "nenhum protocolo informado"
+    protocols = (
+        ", ".join(_single_line(item) for item in facts.prior_protocols)
+        or "nenhum protocolo informado"
+    )
     lines = [
         "# NOTIFICAÇÃO EXTRAJUDICIAL COM PROPOSTA DE ACORDO",
         "",
-        f"**Notificante:** {name}",
-        f"**Notificada:** {supplier}",
+        "**À**",
+        "",
+        f"{_single_line(supplier)}",
+        "[PREENCHER ENDEREÇO DA NOTIFICADA]",
+        "",
+        f"**Notificante:** {_single_line(name)}",
+        "[PREENCHER CPF E ENDEREÇO DO(A) NOTIFICANTE]",
+        "",
         f"**Assunto:** {subject}",
         "",
         "## 1. Finalidade",
@@ -1164,35 +1188,40 @@ def _render_notice_markdown(
         "## 3. Documentos de suporte",
         "",
     ]
+    # Retrieval identifiers (chunk id, corpus release, content hashes) stay out
+    # of the delivered document. They are provenance for the consumer's own
+    # review and for /consumer/cases/{id}/notice/retrievals, and every one of
+    # them survives unchanged on EvidenceCitation and LegalAuthorityCitation.
     for item in evidence:
         lines.append(
             f"- **{_markdown_inline(item.filename)}, p. {item.page}** — "
-            f"{_markdown_inline(item.quote)} (chunk `{item.chunk_id}`)"
+            f"{_markdown_inline(item.quote)}"
         )
     lines.extend(["", "## 4. Fundamentos jurídicos", ""])
     if prose is not None:
         lines.extend([prose.legal_transition, ""])
     for ground in legal_grounds:
         authority = ground.authority
+        # The official text is quoted verbatim, including its own legislative
+        # annotations: trimming a statute to look tidier would make the quote
+        # something other than what the source says.
         official_excerpt = _bounded_legal_excerpt(
             authority.official_excerpt or authority.official_text
         )
         unit_suffix = f", {authority.unit_label}" if authority.unit_label else ""
-        source_hash = (
-            authority.official_excerpt_sha256
-            or authority.official_text_sha256
-            or authority.content_sha256
-        )
+        # ``application_to_facts`` explains how the retrieval policy selected
+        # this provision. That is reviewer-facing commentary about our own
+        # software; addressed to the supplier it only undercuts the notice.
         lines.append(
             f"- **[{authority.citation_label}{unit_suffix}]({authority.official_url})** — "
-            f"{official_excerpt or authority.summary} Aplicação: "
-            f"{ground.application_to_facts} "
-            f"(corpus `{authority.corpus_release_id}`, SHA-256 `{source_hash}`)"
+            f"{official_excerpt or authority.summary}"
         )
     lines.extend(["", "## 5. Providências solicitadas", ""])
     if prose is not None:
         lines.extend([prose.requests_transition, ""])
-    lines.extend(f"- {request}" for request in requests)
+    # A confirmed fact may span several lines; a raw newline inside a list item
+    # silently drops the bullet for every line after the first.
+    lines.extend(f"- {_single_line(request)}" for request in requests)
     lines.extend(["", "## 6. Proposta para composição", ""])
     if public_proposal is None:
         lines.append(
@@ -1214,6 +1243,23 @@ def _render_notice_markdown(
             "Solicita-se resposta escrita em até "
             f"**{facts.response_deadline_business_days} dias úteis**. "
             "A ausência de acordo não altera direitos, defesas ou prazos legais de qualquer parte.",
+        ]
+    )
+    # Place, date and signature are left as fields to fill rather than
+    # generated: the notice is sent on a day the renderer cannot know, and a
+    # plausible-looking wrong date on an extrajudicial notice is worse than a
+    # blank one.
+    lines.extend(
+        [
+            "",
+            "---",
+            "",
+            "[PREENCHER LOCAL], [PREENCHER DATA].",
+            "",
+            "___________________________________________",
+            "",
+            f"{_single_line(name)}",
+            "[PREENCHER CPF DO(A) NOTIFICANTE]",
         ]
     )
     # The private reservation value is intentionally unavailable to this

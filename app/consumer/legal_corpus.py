@@ -398,6 +398,11 @@ class LegalCorpus:
             {provision.provision_id: provision for provision in self._provisions}
         )
         self._corpus_sha256 = self._calculate_corpus_sha256()
+        # The corpus is immutable, but ``as_parsed_document`` renders every
+        # article and hashes the whole text to derive the doc_id. Notice
+        # generation resolves that document once per candidate chunk, so
+        # memoizing it removes tens of full re-renders per request.
+        self._parsed_document: ParsedDocument | None = None
 
     @property
     def release_id(self) -> str:
@@ -531,11 +536,13 @@ class LegalCorpus:
     def as_parsed_document(self) -> ParsedDocument:
         """Return one synthetic page per article, safe for the generic chunker."""
 
+        if self._parsed_document is not None:
+            return self._parsed_document
         pages = [
             DocumentPage(number=index, text=self._page_text(provision))
             for index, provision in enumerate(self._provisions, start=1)
         ]
-        return ParsedDocument(
+        self._parsed_document = ParsedDocument(
             filename=f"{self.release_id}.txt",
             pages=pages,
             language="pt",
@@ -546,6 +553,7 @@ class LegalCorpus:
                 "Unidades vetadas ou revogadas são mantidas para auditoria e marcadas.",
             ],
         )
+        return self._parsed_document
 
     def retrievable_provisions(self) -> tuple[LegalProvision, ...]:
         """Provisions eligible for the retrieval index.

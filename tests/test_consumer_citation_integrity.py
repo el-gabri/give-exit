@@ -227,3 +227,84 @@ async def test_lexical_only_retrieval_is_declared_in_the_notice(
 
     assert notice["retrieval_degraded_modes"] == ["lexical_only"]
     assert any("busca semântica" in warning for warning in notice["warnings"])
+
+
+async def test_delivered_notice_carries_no_retrieval_identifiers(
+    notice_client: httpx.AsyncClient,
+) -> None:
+    """Chunk ids, corpus release and hashes are provenance, not letter content.
+
+    They belong to the consumer's audit surface. Addressed to the supplier they
+    are noise, and the per-ground policy commentary actively undercuts the
+    notice by explaining that software picked the article.
+    """
+    case_id, headers = await _case_with_documents(notice_client, [("fatura.pdf", FATURA)])
+
+    notice = (await notice_client.post(f"/consumer/cases/{case_id}/notice", headers=headers)).json()
+    markdown = notice["full_text"]
+
+    assert "chunk `" not in markdown
+    assert "SHA-256" not in markdown
+    assert "corpus `" not in markdown
+    assert "política de recuperação" not in markdown
+    assert "não foi decidida pelo sistema" not in markdown
+    # The same provenance stays available where auditors look for it.
+    assert all(item["chunk_id"] for item in notice["evidence_references"])
+    assert all(len(item["content_sha256"]) == 64 for item in notice["evidence_references"])
+    assert notice["corpus_sha256"]
+    assert all(
+        ground["authority"]["corpus_release_id"] for ground in notice["legal_grounds"]
+    )
+    assert all(
+        ground["application_to_facts"] for ground in notice["legal_grounds"]
+    )
+
+
+async def test_notice_has_addressing_and_signature_blocks(
+    notice_client: httpx.AsyncClient,
+) -> None:
+    case_id, headers = await _case_with_documents(notice_client, [("fatura.pdf", FATURA)])
+
+    markdown = (
+        await notice_client.post(f"/consumer/cases/{case_id}/notice", headers=headers)
+    ).json()["full_text"]
+
+    assert "**À**" in markdown
+    assert "[PREENCHER ENDEREÇO DA NOTIFICADA]" in markdown
+    assert "[PREENCHER LOCAL], [PREENCHER DATA]." in markdown
+    assert "[PREENCHER CPF DO(A) NOTIFICANTE]" in markdown
+
+
+def test_multiline_request_stays_one_list_item() -> None:
+    """A newline inside a bullet silently drops the marker for the rest."""
+    from app.consumer.schemas import ConsumerCaseFacts, ConsumerIssueCategory
+    from app.consumer.service import _render_notice_markdown, _requests
+
+    facts = ConsumerCaseFacts(
+        consumer_name="Gabriel",
+        bank_name="Bradesco",
+        issue_category=ConsumerIssueCategory.UNAUTHORIZED_CHARGE,
+        complaint_summary="Cobrancas indevidas.",
+        incident_date_or_period="09/06/2026",
+        desired_resolution="ressarcimento do valor cobrado\nretirada de negativacao",
+    )
+
+    markdown = _render_notice_markdown(
+        facts=facts,
+        evidence=[],
+        legal_grounds=[],
+        requests=_requests(facts),
+        public_proposal=None,
+    )
+    section = markdown[markdown.index("## 5.") : markdown.index("## 6.")]
+    items = [line for line in section.splitlines() if line.strip()][1:]
+
+    assert all(line.startswith("- ") for line in items)
+    assert "- ressarcimento do valor cobrado retirada de negativacao" in items
+
+
+def test_masked_identifiers_survive_untouched_in_the_delivered_text() -> None:
+    """Escaping emphasis mangled every masked CPF/CNPJ in real evidence."""
+    masked = "CPF/CNPJ: 18.*** ***/8000-43"
+
+    assert _markdown_inline(masked) == masked

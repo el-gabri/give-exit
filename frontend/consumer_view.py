@@ -54,6 +54,11 @@ OFFICIAL_LEGAL_HOSTS = {
     "www.camara.leg.br",
     "www2.camara.leg.br",
 }
+# Inline Markdown links, and the characters that create Markdown structure.
+# Both exist so text that reached the UI from an uploaded document is shown
+# rather than obeyed.
+_MARKDOWN_LINK_RE = re.compile(r"(\[[^\]\n]*\])\(([^)\s]+)\)")
+_MARKDOWN_LITERAL_RE = re.compile(r"([\\`*_\[\]])")
 
 CONSUMER_STATE_KEYS = (
     "consumer_case_id",
@@ -689,7 +694,7 @@ def _render_document(document: dict[str, Any]) -> None:
     filename = document.get("filename") or document.get("name") or "Documento"
     pages = document.get("pages") or document.get("page_count")
     with st.container(border=True):
-        st.markdown(f"**{filename}**")
+        st.markdown(f"**{_markdown_literal(filename)}**")
         details = [f"status: {status}", f"segurança: {risk}"]
         if pages:
             details.append(f"{pages} página(s)")
@@ -993,7 +998,7 @@ def _render_evidence_references(references: Iterable[Any]) -> None:
         page = reference.get("page") or reference.get("page_start")
         page_label = f" · página {page}" if page is not None else ""
         with st.container(border=True):
-            st.markdown(f"**{filename}{page_label}**")
+            st.markdown(f"**{_markdown_literal(filename)}{page_label}**")
             quote = reference.get("quote") or reference.get("text_preview")
             if quote:
                 st.code(str(quote), language=None, wrap_lines=True)
@@ -1320,9 +1325,28 @@ def _as_text_list(value: Any) -> list[str]:
 
 
 def _safe_generated_markdown(value: str) -> str:
-    """Keep useful formatting while neutralizing HTML and remote image embeds."""
+    """Keep useful formatting while neutralizing HTML, embeds and foreign links.
+
+    The notice legitimately links to Planalto for every cited provision, so
+    links are filtered rather than removed wholesale: anything pointing
+    elsewhere originated in an uploaded document and must not be clickable
+    inside the consumer's own draft.
+    """
     escaped = html.escape(value, quote=False)
-    return escaped.replace("![", "\\![")
+    escaped = escaped.replace("![", "\\![")
+    return _MARKDOWN_LINK_RE.sub(_neutralize_foreign_link, escaped)
+
+
+def _neutralize_foreign_link(match: re.Match[str]) -> str:
+    label, target = match.group(1), match.group(2)
+    if _is_official_legal_url(target):
+        return match.group(0)
+    return f"{label} ({target})"
+
+
+def _markdown_literal(value: object) -> str:
+    """Render caller-supplied text as literal characters inside st.markdown."""
+    return _MARKDOWN_LITERAL_RE.sub(r"\\\1", str(value))
 
 
 def _is_official_legal_url(value: str) -> bool:
