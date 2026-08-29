@@ -9,6 +9,7 @@ offline instead of asserting against arbitrary vectors.
 import asyncio
 import hashlib
 import math
+import re
 import time
 from typing import Any, Protocol, runtime_checkable
 
@@ -288,7 +289,7 @@ class SentenceTransformerEmbeddingClient:
     """
 
     document_format_version = "plain-document-v1"
-    query_format_version = "instruction-prefix-v2"
+    query_format_version = "instruct-query-v3"
     normalization = "l2"
 
     def __init__(
@@ -326,7 +327,7 @@ class SentenceTransformerEmbeddingClient:
         return (await self.embed_queries([text]))[0]
 
     async def embed_queries(self, texts: list[str]) -> list[list[float]]:
-        prepared = [_with_instruction(text, self._query_instruction) for text in texts]
+        prepared = [instruct_query(text, self._query_instruction) for text in texts]
         async with self._encode_lock:
             return await asyncio.to_thread(self._encode, prepared)
 
@@ -367,12 +368,57 @@ class SentenceTransformerEmbeddingClient:
         return [[float(value) for value in row] for row in encoded]
 
 
+_INSTRUCT_PREFIX_RE = re.compile(r"^\s*instruct\s*:\s*", re.IGNORECASE)
+_QUERY_SUFFIX_RE = re.compile(r"\s*query\s*:\s*$", re.IGNORECASE)
+
+
+def query_task_description(instruction: str | None) -> str:
+    """Reduce a configured instruction to its bare task description.
+
+    The setting now holds only the task, but earlier configurations spelled out
+    the whole template (``Instruct: ... Query:``). Stripping that scaffolding
+    keeps those values working instead of silently doubling the prefix.
+    """
+    if not instruction or not instruction.strip():
+        return ""
+    task = _INSTRUCT_PREFIX_RE.sub("", instruction.strip())
+    return _QUERY_SUFFIX_RE.sub("", task).strip()
+
+
 def _with_instruction(text: str, instruction: str | None) -> str:
+    """Prefix a query for providers with no declared instruction template.
+
+    OpenAI and Gemini embeddings are not instruction-tuned on any particular
+    template, so an operator-supplied instruction is joined as plain text.
+    Wrapping it in another model's scaffolding would only add tokens the
+    provider was never trained to read.
+    """
     if not instruction or not instruction.strip():
         return text
     prefix = instruction.strip()
     separator = "\n" if prefix.casefold().endswith("query:") else " "
     return f"{prefix}{separator}{text.lstrip()}"
+
+
+def instruct_query(text: str, instruction: str | None) -> str:
+    """Render a query in the ``Instruct:``/``Query:`` template.
+
+    ``Instruct: {task}\\nQuery: {query}``: the newline separates the task from
+    the query, and the query itself follows ``Query:`` on the same line. The
+    previous formatter put that newline *after* ``Query:``, matching neither
+    the JUA model card nor the prompt the model registers in its own
+    ``config_sentence_transformers.json``. Documents are never instructed,
+    because that model declares an empty ``document`` prompt.
+
+    This is the convention of instruction-tuned retrieval models (E5-instruct,
+    Qwen3-Embedding, JUA). A local model that uses a different convention -
+    ``BAAI/bge-m3``, for instance - needs its own formatter here rather than
+    this one.
+    """
+    task = query_task_description(instruction)
+    if not task:
+        return text
+    return f"Instruct: {task}\nQuery: {text.lstrip()}"
 
 
 def validate_embedding_vectors(

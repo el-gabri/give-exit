@@ -219,8 +219,12 @@ LITIGATION_EMBEDDING_BATCH_SIZE=2
 LITIGATION_EMBEDDING_INDEX_SHARD_SIZE=25
 ```
 
-The query formatter inserts the newline required by JUÁ after `Query:`; legal
-documents remain plain text. Changing the corpus release, model, exact revision,
+The setting holds only the task description; the client renders the template
+JUÁ declares in its own `config_sentence_transformers.json` —
+`Instruct: {task}
+Query: {query}` — so the newline separates the task from
+`Query:`, not `Query:` from the text. Legal documents stay plain, because the
+model registers an empty `document` prompt. Changing the corpus release, model, exact revision,
 formatter or instruction hash produces a distinct generation. Offline indexing
 writes checksummed gzip shards and a manifest under
 `data/embedding_generations/<generation-id>/`, resumes only verified shards,
