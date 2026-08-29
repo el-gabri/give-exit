@@ -295,7 +295,10 @@ class EmbeddingGenerationManager:
         expected_contract = expected.contract.model_copy(
             update={"output_dimension": manifest.contract.output_dimension}
         )
-        if manifest.contract != expected_contract:
+        # Compared on the document-side identity only, for the same reason the
+        # generation id is: a manifest built under a different query
+        # instruction still describes exactly these vectors.
+        if manifest.contract.document_identity() != expected_contract.document_identity():
             mismatched.append("contract")
         if mismatched:
             raise ValueError(
@@ -486,6 +489,10 @@ def _generation_id(
     contract: EmbeddingContract,
     shard_size: int,
 ) -> str:
+    # Only what determines the stored vectors. The query formatter and
+    # instruction are recorded in the manifest but excluded here: documents are
+    # never framed with a query instruction, so rewording one leaves every
+    # vector bit-identical and must not force a re-embed of the whole corpus.
     payload = {
         "index_name": index_name,
         "corpus_release_id": corpus.release_id,
@@ -493,7 +500,7 @@ def _generation_id(
         "document_id": corpus.as_parsed_document().doc_id,
         "chunking_version": LEGAL_CHUNKING_IDENTITY,
         "chunks_sha256": _chunks_sha256(chunks),
-        "contract": contract.model_dump(mode="json"),
+        "contract": contract.document_identity(),
         "shard_size": shard_size,
     }
     return hashlib.sha256(_canonical_json_bytes(payload)).hexdigest()[:16]

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Literal
+from typing import ClassVar, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -19,10 +19,20 @@ class EmbeddingGenerationStatus(str, Enum):
 
 
 class EmbeddingContract(BaseModel):
-    """Everything that can change the meaning or shape of an embedding."""
+    """Everything that can change the meaning or shape of an embedding.
+
+    The fields split into two groups that were once conflated. Most of them
+    determine the stored vectors themselves. The two ``query_*`` fields do not:
+    documents are never framed with a query instruction, so changing one leaves
+    every persisted vector bit-identical. They are recorded here as a
+    build-time note, and the authoritative per-search record lives on
+    ``RetrievalTrace``, which already carries the instruction and its hash for
+    every query actually issued.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
+    # Changing any of these invalidates the persisted vectors.
     schema_version: Literal["embedding-contract-v1"] = "embedding-contract-v1"
     model_repository: str = Field(min_length=1)
     model_revision: str = Field(min_length=1)
@@ -30,8 +40,26 @@ class EmbeddingContract(BaseModel):
     vector_dtype: Literal["float32"] = "float32"
     normalization: Literal["l2"] = "l2"
     document_formatter_version: str = Field(min_length=1)
+    # Query-side only: recorded, but never part of the artifact's identity.
     query_formatter_version: str = Field(min_length=1)
     query_instruction_sha256: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
+
+    QUERY_ONLY_FIELDS: ClassVar[frozenset[str]] = frozenset(
+        {"query_formatter_version", "query_instruction_sha256"}
+    )
+
+    def document_identity(self) -> dict[str, object]:
+        """The subset that decides whether stored vectors are still valid.
+
+        Used for the generation id and for compatibility checks, so that
+        rewording a query instruction no longer forces re-embedding a corpus
+        whose vectors did not move.
+        """
+        return {
+            name: value
+            for name, value in self.model_dump(mode="json").items()
+            if name not in self.QUERY_ONLY_FIELDS
+        }
 
 
 class EmbeddingShardManifest(BaseModel):

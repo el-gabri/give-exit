@@ -18,6 +18,7 @@ from app.rag.embeddings import MockEmbeddingClient
 from app.rag.pipeline import RagPipeline
 from app.rag.vector_store import ChromaVectorStore, InMemoryVectorStore
 from app.schemas.embedding import (
+    EmbeddingContract,
     EmbeddingGenerationManifest,
     EmbeddingGenerationStatus,
 )
@@ -193,3 +194,53 @@ async def test_chroma_float32_roundtrip_keeps_generation_ready(tmp_path: Path) -
 
     assert result.action == "indexed"
     assert await legal_corpus_is_indexed(pipeline, corpus) is True
+
+
+def test_query_instruction_does_not_change_the_generation_identity() -> None:
+    """Rewording a query instruction must not invalidate document vectors.
+
+    Documents are never framed with a query instruction, so every persisted
+    vector is bit-identical across the two configurations. Including the
+    query fields in the identity turned a two-line wording change into a
+    full re-embed of the corpus.
+    """
+    base = {
+        "model_repository": "ufca-llms/jua-4B-mixed",
+        "model_revision": "57f491c1718171c0ad71d723c4f6b2030684c4eb",
+        "output_dimension": 2560,
+        "document_formatter_version": "plain-document-v1",
+    }
+    old = EmbeddingContract(
+        **base,
+        query_formatter_version="instruction-prefix-v2",
+        query_instruction_sha256="a" * 64,
+    )
+    new = EmbeddingContract(
+        **base,
+        query_formatter_version="instruct-query-v3",
+        query_instruction_sha256="b" * 64,
+    )
+
+    assert old.document_identity() == new.document_identity()
+    assert old != new
+
+
+def test_document_side_changes_still_change_the_identity() -> None:
+    """The guard must keep firing for anything that does move the vectors."""
+    base = {
+        "model_repository": "ufca-llms/jua-4B-mixed",
+        "model_revision": "57f491c1718171c0ad71d723c4f6b2030684c4eb",
+        "output_dimension": 2560,
+        "document_formatter_version": "plain-document-v1",
+        "query_formatter_version": "instruct-query-v3",
+    }
+    reference = EmbeddingContract(**base)
+
+    for field, value in (
+        ("model_repository", "other/model"),
+        ("model_revision", "0" * 40),
+        ("output_dimension", 1024),
+        ("document_formatter_version", "prefixed-document-v2"),
+    ):
+        altered = EmbeddingContract(**{**base, field: value})
+        assert altered.document_identity() != reference.document_identity(), field
