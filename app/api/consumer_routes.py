@@ -13,7 +13,12 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request, UploadFi
 from fastapi.responses import PlainTextResponse, Response
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.api.security import enforce_upload_rate_limit
+from app.api.security import (
+    enforce_case_rate_limit,
+    enforce_message_rate_limit,
+    enforce_notice_rate_limit,
+    enforce_upload_rate_limit,
+)
 from app.api.uploads import UploadTooLargeError, write_upload_in_chunks
 from app.consumer.schemas import (
     ConsumerCaseSnapshot,
@@ -24,10 +29,11 @@ from app.consumer.schemas import (
 from app.consumer.service import (
     ConsumerCaseNotReadyError,
     ConsumerCaseService,
+    ConsumerEvidenceLimitError,
     ConsumerLegalCorpusNotReadyError,
     ConsumerRetrievalError,
 )
-from app.consumer.store import ConsumerCaseNotFoundError
+from app.consumer.store import ConsumerCaseCapacityError, ConsumerCaseNotFoundError
 from app.ingestion.service import DocumentTextUnavailableError
 from app.reporting.convert import render_docx, render_pdf
 from app.schemas.trace import RetrievalTrace
@@ -35,7 +41,6 @@ from app.schemas.trace import RetrievalTrace
 router = APIRouter(prefix="/consumer", tags=["consumer"])
 ResultT = TypeVar("ResultT")
 
-MAX_UPLOAD_BYTES = 20 * 1024 * 1024
 EVIDENCE_MEDIA_TYPES = {
     ".pdf": "application/pdf",
     ".png": "image/png",
@@ -103,8 +108,14 @@ def get_uploads_dir(request: Request) -> Path:
     return uploads_dir
 
 
+def get_max_upload_bytes(request: Request) -> int:
+    max_upload_bytes: int = request.app.state.max_upload_bytes
+    return max_upload_bytes
+
+
 ConsumerServiceDep = Annotated[ConsumerCaseService, Depends(get_consumer_service)]
 UploadsDirDep = Annotated[Path, Depends(get_uploads_dir)]
+MaxUploadBytesDep = Annotated[int, Depends(get_max_upload_bytes)]
 CaseToken = Annotated[
     str,
     Header(
@@ -115,9 +126,23 @@ CaseToken = Annotated[
 ]
 
 
-@router.post("/cases", response_model=ConsumerCaseCreated, status_code=201)
+@router.post(
+    "/cases",
+    response_model=ConsumerCaseCreated,
+    status_code=201,
+    dependencies=[Depends(enforce_case_rate_limit)],
+)
 async def create_consumer_case(service: ConsumerServiceDep) -> ConsumerCaseCreated:
-    snapshot, token, assistant = service.create_case()
+    try:
+        snapshot, token, assistant = service.create_case()
+    except ConsumerCaseCapacityError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "O serviço está com a capacidade de atendimentos simultâneos esgotada. "
+                "Tente novamente em alguns minutos."
+            ),
+        ) from exc
     return ConsumerCaseCreated(
         case_id=snapshot.case_id,
         case_token=token,
@@ -133,7 +158,11 @@ async def get_consumer_case(
     return _authorized(lambda: service.get_case(case_id, token))
 
 
-@router.post("/cases/{case_id}/messages", response_model=ConsumerChatTurn)
+@router.post(
+    "/cases/{case_id}/messages",
+    response_model=ConsumerChatTurn,
+    dependencies=[Depends(enforce_message_rate_limit)],
+)
 async def add_consumer_message(
     case_id: str,
     payload: ConsumerMessageRequest,
@@ -180,6 +209,7 @@ async def add_consumer_document(
     token: CaseToken,
     service: ConsumerServiceDep,
     uploads_dir: UploadsDirDep,
+    max_upload_bytes: MaxUploadBytesDep,
 ) -> ConsumerDocumentAdded:
     filename = Path(file.filename or "evidencia").name
     suffix = Path(filename).suffix.casefold()
@@ -191,13 +221,13 @@ async def add_consumer_document(
         )
 
     _authorized(lambda: service.get_case(case_id, token))
-    uploads_dir.mkdir(parents=True, exist_ok=True)
+    await asyncio.to_thread(uploads_dir.mkdir, parents=True, exist_ok=True)
     upload_path = uploads_dir / f"{uuid.uuid4().hex}{suffix}"
     try:
         header = await write_upload_in_chunks(
             file=file,
             path=upload_path,
-            max_upload_bytes=MAX_UPLOAD_BYTES,
+            max_upload_bytes=max_upload_bytes,
         )
         if not _has_expected_signature(suffix, header):
             raise HTTPException(
@@ -216,7 +246,15 @@ async def add_consumer_document(
     except UploadTooLargeError as exc:
         raise HTTPException(
             status_code=413,
-            detail="O arquivo excede o limite de 20 MB.",
+            detail=f"O arquivo excede o limite de {max_upload_bytes // (1024 * 1024)} MB.",
+        ) from exc
+    except ConsumerEvidenceLimitError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Este atendimento já contém o número máximo de {exc.limit} documentos. "
+                "Inicie um novo atendimento para enviar outras evidências."
+            ),
         ) from exc
     except DocumentTextUnavailableError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -231,7 +269,11 @@ async def add_consumer_document(
     return ConsumerDocumentAdded(case=snapshot, document=document)
 
 
-@router.post("/cases/{case_id}/notice", response_model=ConsumerNotice)
+@router.post(
+    "/cases/{case_id}/notice",
+    response_model=ConsumerNotice,
+    dependencies=[Depends(enforce_notice_rate_limit)],
+)
 async def generate_consumer_notice(
     case_id: str, token: CaseToken, service: ConsumerServiceDep
 ) -> ConsumerNotice:
@@ -282,7 +324,7 @@ async def get_consumer_notice_pdf(
 ) -> Response:
     notice = await get_consumer_notice(case_id, token, service)
     return Response(
-        content=render_pdf(notice.full_text),
+        content=await asyncio.to_thread(render_pdf, notice.full_text),
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="notificacao_{case_id}.pdf"'},
     )
@@ -294,7 +336,7 @@ async def get_consumer_notice_docx(
 ) -> Response:
     notice = await get_consumer_notice(case_id, token, service)
     return Response(
-        content=render_docx(notice.full_text),
+        content=await asyncio.to_thread(render_docx, notice.full_text),
         media_type=("application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
         headers={"Content-Disposition": f'attachment; filename="notificacao_{case_id}.docx"'},
     )
