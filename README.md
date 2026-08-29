@@ -118,9 +118,10 @@ docker compose up --build
 - API docs: <http://localhost:8000/docs>
 
 Docker installs Portuguese Tesseract OCR by default. Raw uploads are deleted
-after ingestion. Downloaded Hugging Face model weights are cached inside the
-persistent `consumer-data` volume, so rebuilding the API image does not download
-JUÁ again. The first download still requires several gigabytes and can take many
+after ingestion. Downloaded Hugging Face model weights are cached in a dedicated `model-cache`
+volume, separate from the application state in `consumer-data`, so rebuilding
+the API image does not download JUÁ again and pruning case data never discards
+the weights. The first download still requires several gigabytes and can take many
 minutes; `LITIGATION_NOTICE_REQUEST_TIMEOUT_SECONDS` controls how long the local
 Streamlit client waits for that synchronous demo flow.
 
@@ -139,8 +140,8 @@ It removes the isolated containers and volume when done. Among the normal Docker
 build progress, a successful run prints:
 
 ```text
-HF_HOME=/app/data/huggingface
-PASS HF_HOME=/app/data/huggingface persisted across the API image rebuild.
+HF_HOME=/models/huggingface
+PASS HF_HOME=/models/huggingface persisted across the API image rebuild.
 PASS LITIGATION_NOTICE_REQUEST_TIMEOUT_SECONDS=4321 reached the frontend container.
 PASS Docker runtime configuration smoke test completed.
 ```

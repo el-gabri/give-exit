@@ -81,7 +81,7 @@ import os
 from pathlib import Path
 
 home = Path(os.environ["HF_HOME"])
-assert str(home) == "/app/data/huggingface", home
+assert str(home) == "/models/huggingface", home
 value = (home / ".jua-cache-smoke").read_text(encoding="utf-8")
 assert value == "persisted-across-api-image-rebuild", value
 print(f"PASS HF_HOME={home} persisted across the API image rebuild.")

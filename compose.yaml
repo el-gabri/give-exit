@@ -13,14 +13,45 @@ services:
       # A local Python process reaches the host database through localhost;
       # the API container needs Docker Desktop's host gateway instead.
       LITIGATION_POSTGRES_DSN: ${LITIGATION_DOCKER_POSTGRES_DSN:-postgresql://postgres:giveexit@host.docker.internal:5432/postgres}
-      # Keep downloaded local-model weights across image rebuilds. This path
-      # lives in the already writable and persistent consumer-data volume.
-      HF_HOME: /app/data/huggingface
+      # Model weights live in their own volume, not beside application data.
+      # They are immutable, re-downloadable and pinned by repo@revision, while
+      # consumer-data holds the state that cannot be recovered; mixing them made
+      # a 200 KB data volume impossible to prune, back up or move without
+      # dragging 7.5 GB of weights along.
+      HF_HOME: /models/huggingface
+      # Once the cache is warm and the revision is pinned, production should
+      # forbid runtime calls to the Hub so start-up is deterministic.
+      HF_HUB_OFFLINE: ${LITIGATION_HF_HUB_OFFLINE:-0}
     ports:
       - "${LITIGATION_BIND_HOST:-127.0.0.1}:8000:8000"
     volumes:
-      - consumer-data:/app/data   # ChromaDB, local-model cache and upload workspace
+      - consumer-data:/app/data   # ChromaDB and upload workspace
+      - model-cache:/models       # Hugging Face weights, shared, never mutated here
       - ./data/embedding_generations:/app/data/embedding_generations:ro
+
+  # Building a generation writes shards and a manifest, which the API must never
+  # do - hence its read-only mount above. This service exists so indexing runs in
+  # Docker like everything else, instead of depending on a developer's own
+  # ~/.cache and locally installed CUDA/torch.
+  indexer:
+    profiles: ["tools"]
+    build:
+      context: .
+      target: api
+      args:
+        API_EXTRAS: ${LITIGATION_API_EXTRAS:-ocr}
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      LITIGATION_DATA_DIR: /app/data
+      LITIGATION_POSTGRES_DSN: ${LITIGATION_DOCKER_POSTGRES_DSN:-postgresql://postgres:giveexit@host.docker.internal:5432/postgres}
+      HF_HOME: /models/huggingface
+    volumes:
+      - consumer-data:/app/data
+      - model-cache:/models
+      - ./data/embedding_generations:/app/data/embedding_generations
+    command: ["python", "-m", "app.consumer.preindex_legal"]
   frontend:
     build:
       context: .
@@ -39,3 +70,4 @@ services:
 
 volumes:
   consumer-data:
+  model-cache:
