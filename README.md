@@ -76,6 +76,13 @@ deterministically; invalid output falls back safely. Embeddings are independent.
   `requires_legal_review`.
 - Notice citations are reconstructed from retrieved evidence and canonical
   legal metadata; they are not trusted model-generated citation strings.
+- An evidence citation names exactly one file and one page. A retrieved chunk
+  whose text spans more than one evidence page is dropped rather than quoted
+  under the first page's filename: a shorter notice is recoverable, one that
+  attributes another document's words to this file is not.
+- Excerpts taken from uploaded files are escaped before they enter the notice
+  Markdown, so a document cannot inject links or emphasis into the draft the
+  consumer reads and exports.
 - Retrieval traces record the query, hashes, model/revision, active generation
   ID, ranking/degraded mode, cache hits, scores, chunk IDs, source metadata and
   final inclusion decisions.
@@ -262,9 +269,15 @@ The manifest labels this provenance as `adopted_existing_vectors`; attestation
 does not retroactively prove metadata that the legacy run failed to record.
 
 At query time, embedding calls have a timeout, concurrency bound, short-lived
-query-hash cache and circuit breaker. Hybrid retrieval may degrade to audited
-lexical-only search (`degraded_mode=lexical_only`); deterministic legal-support
-and citation gates still apply and can abstain.
+query-hash cache and circuit breaker. The concurrency bound is a queue, not a
+rejection: an overlapping request waits up to
+`LITIGATION_EMBEDDING_QUERY_QUEUE_TIMEOUT_SECONDS` for a free slot, because a
+single slow local model makes concurrent users the normal case rather than an
+overload. Hybrid retrieval may still degrade to audited lexical-only search;
+deterministic legal-support and citation gates continue to apply and can
+abstain. A degraded draft is labelled as such: the notice carries
+`retrieval_degraded_modes` and a reader-facing warning, not only a
+`degraded_mode` field inside the per-query retrieval traces.
 
 ## API surface
 
@@ -284,6 +297,39 @@ and citation gates still apply and can abstain.
 
 Every case operation requires the opaque possession token returned at case
 creation. Production mode also requires a configured API key.
+
+### Resource bounds
+
+Case state lives in process memory and every write path allocates on the
+caller's behalf, so each of these is a denial-of-service control as much as a
+product limit:
+
+| Bound | Setting | Default |
+|---|---|---|
+| Request body, refused before buffering | `LITIGATION_MAX_UPLOAD_BYTES` | 20 MB |
+| Evidence documents per case | `LITIGATION_MAX_DOCUMENTS_PER_CASE` | 20 |
+| Retained chat turns per case | `LITIGATION_MAX_MESSAGES_PER_CASE` | 200 |
+| Idempotency keys per case | `LITIGATION_MAX_IDEMPOTENCY_KEYS_PER_CASE` | 50 |
+| Live cases before `503` | `LITIGATION_MAX_ACTIVE_CASES` | 500 |
+| Idle case expiry | `LITIGATION_CASE_IDLE_TTL_SECONDS` | 24 h |
+| Case creation / minute | `LITIGATION_CASE_RATE_LIMIT_PER_MINUTE` | 30 |
+| Messages / minute | `LITIGATION_MESSAGE_RATE_LIMIT_PER_MINUTE` | 60 |
+| Uploads / minute | `LITIGATION_UPLOAD_RATE_LIMIT_PER_MINUTE` | 20 |
+| Notice generation / minute | `LITIGATION_NOTICE_RATE_LIMIT_PER_MINUTE` | 10 |
+
+A full store refuses new cases rather than evicting a live one. Idle cases and
+their evidence vectors are reclaimed by a background sweeper.
+
+Rate limiting is keyed on the socket peer. Behind a reverse proxy that address
+is the proxy itself, which would put every caller in one bucket, so set
+`LITIGATION_TRUSTED_PROXY_HOPS` to the real number of proxies; only that many
+`X-Forwarded-For` entries are trusted.
+
+`LITIGATION_PURGE_ORPHANED_EVIDENCE_ON_STARTUP` deletes evidence vectors with
+no live case. It is correct only when the process owns the vector-store
+namespace outright. **Set it to `false` for multiple workers, replicas or any
+deployment sharing one PostgreSQL/Chroma namespace**, otherwise each start
+deletes the other processes' live case evidence.
 
 ## Evaluation and verification
 
@@ -314,9 +360,10 @@ retrieval regression gates, the prompt-injection benchmark and container builds.
 
 - Raw uploads are deleted after ingestion, but safe extracted text and chunks
   remain sensitive personal data.
-- Cases and notices are currently in process memory. The legal index persists;
-  case evidence vectors are removed on case deletion and orphaned evidence is
-  purged at startup.
+- Cases and notices are currently in process memory, bounded by count, size and
+  an idle TTL, and lost on restart. The legal index persists; case evidence
+  vectors are removed on case deletion, on case expiry, and — when this process
+  owns the namespace — for orphans at startup.
 - The possession token and optional shared API key are appropriate only for a
   single-user demonstration, not multi-tenant production authentication.
 - Rate limiting is in-process and not horizontally coordinated.
