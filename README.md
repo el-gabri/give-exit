@@ -352,6 +352,9 @@ deletes the other processes' live case evidence.
 
 ```bash
 pytest -q
+pytest --cov --cov-report=term-missing  # coverage, scoped to modules with dedicated tests
+lint-imports                            # import architecture (app.core has no upward deps)
+vulture app --min-confidence 90         # dead code
 python -m app.evaluation.consumer_runner
 python -m app.evaluation.security_benchmark
 ```
@@ -370,8 +373,12 @@ python -m app.evaluation.consumer_runner \
   --output consumer-retrieval-results.json
 ```
 
-CI runs Ruff, strict MyPy, Python 3.10/3.12 tests, dependency auditing, Consumer
+CI runs Ruff, strict MyPy, Python 3.10/3.12 tests, scoped coverage, import-linter
+architecture checks, dead-code detection (vulture), dependency auditing, Consumer
 retrieval regression gates, the prompt-injection benchmark and container builds.
+Mutation testing (`mutmut`, scoped to `app/consumer`, `app/rag` and
+`app/security`) is configured in `pyproject.toml` and runs incrementally on the
+diff rather than as a full-repo CI step.
 
 ## Privacy and current limitations
 

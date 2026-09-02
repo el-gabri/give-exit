@@ -51,6 +51,15 @@ jobs:
         run: mypy app
       - name: Tests (offline - mock LLM provider)
         run: pytest -q
+      - name: Coverage (scoped to modules with dedicated tests)
+        # [tool.coverage.run] source in pyproject.toml lists the modules held
+        # to 100%; it grows module by module as follow-up work adds tests
+        # elsewhere, instead of gating the whole repo at once.
+        run: pytest --cov --cov-report=term-missing
+      - name: Import architecture (no upward dependencies from app.core)
+        run: lint-imports
+      - name: Dead code
+        run: vulture app --min-confidence 90
       - name: Consumer legal-retrieval regression gates
         # This is an engineering-authored seed, not a lawyer-certified legal
         # golden set.  The gates still prevent the measured offline baseline
