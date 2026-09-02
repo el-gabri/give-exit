@@ -3,10 +3,14 @@
 The wrapper's own logic (score-based ordering, tie-breaking, top-k
 truncation, and the empty-candidates fast path) had no dedicated coverage:
 ``tests/test_rag_hybrid.py`` only exercises the ``Reranker`` protocol via a
-fake stand-in. ``CrossEncoder`` is monkeypatched so these stay offline unit
-tests with no model download, consistent with the rest of the suite.
+fake stand-in. ``sentence_transformers`` itself is faked via ``sys.modules``
+rather than imported for real: it lives behind the optional
+``local-embeddings`` extra, which CI does not install for every job, and
+these tests must not depend on it being present.
 """
 
+import sys
+import types
 from typing import Any
 
 import pytest
@@ -42,10 +46,14 @@ def _chunk(chunk_id: str, text: str) -> Chunk:
 def _install_fake_cross_encoder(
     monkeypatch: pytest.MonkeyPatch, scores_by_text: dict[str, float]
 ) -> _FakeCrossEncoder:
-    import sentence_transformers
-
     fake = _FakeCrossEncoder(scores_by_text)
-    monkeypatch.setattr(sentence_transformers, "CrossEncoder", lambda *args, **kwargs: fake)
+    fake_module = types.ModuleType("sentence_transformers")
+    fake_module.CrossEncoder = lambda *args, **kwargs: fake  # type: ignore[attr-defined]
+    # Inject into sys.modules rather than `import sentence_transformers` for real:
+    # the reranker's own `import sentence_transformers` (inside __init__) resolves
+    # against sys.modules first, so this works whether or not the real package
+    # (the optional `local-embeddings` extra) is actually installed.
+    monkeypatch.setitem(sys.modules, "sentence_transformers", fake_module)
     return fake
 
 

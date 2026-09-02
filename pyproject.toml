@@ -151,3 +151,10 @@ ignore_missing_imports = true
 module = ["numpy", "numpy.*"]
 follow_imports = "skip"
 ignore_missing_imports = true
+
+# psycopg ships behind the optional `postgres` extra, which CI does not
+# install (Chroma is the only vector store exercised there) - a stub-parse
+# error here would otherwise abort the entire strict-mode run.
+[[tool.mypy.overrides]]
+module = ["psycopg", "psycopg.*"]
+ignore_missing_imports = true
