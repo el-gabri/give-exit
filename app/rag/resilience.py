@@ -84,11 +84,15 @@ class QueryEmbeddingGuard:
             # local model makes overlapping requests the normal case, and an
             # instant rejection would silently downgrade an ordinary concurrent
             # notice to lexical-only retrieval.
+            # `except asyncio.TimeoutError`, not the builtin: before Python 3.11
+            # asyncio.wait_for raises its own asyncio.exceptions.TimeoutError,
+            # which is NOT a subclass of the builtin TimeoutError (they were
+            # only unified into one class in 3.11+). requires-python allows
+            # 3.10, and `except TimeoutError` here silently falls through to
+            # the generic `except Exception` below on that version.
             try:
-                await asyncio.wait_for(
-                    self._slots.acquire(), timeout=self._queue_timeout_seconds
-                )
-            except TimeoutError as exc:
+                await asyncio.wait_for(self._slots.acquire(), timeout=self._queue_timeout_seconds)
+            except asyncio.TimeoutError as exc:
                 raise EmbeddingUnavailableError(
                     "embedding concurrency limit is currently exhausted after "
                     f"{self._queue_timeout_seconds:g}s"
@@ -108,7 +112,7 @@ class QueryEmbeddingGuard:
                 )
                 if self._expected_dimension is None:
                     self._expected_dimension = dimension
-            except TimeoutError as exc:
+            except asyncio.TimeoutError as exc:  # not builtin TimeoutError - see note above
                 release_in_callback = True
                 self._track_background_task(task)
                 self._record_failure()
