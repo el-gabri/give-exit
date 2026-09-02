@@ -17,3 +17,8 @@ data/runs.jsonl
 .idea/
 .vscode/
 plan.md
+
+# Claude Code: personal/runtime, not shared tooling (skills under .claude/
+# are versioned deliberately - see .claude/skills/).
+.claude/settings.local.json
+.claude/scheduled_tasks.lock
