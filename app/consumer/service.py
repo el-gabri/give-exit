@@ -418,7 +418,11 @@ class ConsumerCaseService:
             record.facts,
             legal_traces,
         )
-        evidence_references = self._evidence_references(evidence_results, page_sources)
+        evidence_references = self._evidence_references(
+            evidence_results,
+            page_sources,
+            evidence_traces,
+        )
         if not legal_grounds or not evidence_references:
             missing_support: list[str] = []
             if not legal_grounds:
@@ -851,55 +855,86 @@ class ConsumerCaseService:
         if not merged:
             return []
         score_floor = merged[0].score * MIN_GROUND_SCORE_RATIO
-        candidates = [
-            item
-            for item in merged[:MAX_GROUND_CANDIDATES]
-            if item.score >= score_floor
-        ]
-        grounds: list[LegalGround] = []
-        seen: set[str] = set()
-        issue = _CATEGORY_LABEL[facts.issue_category.value if facts.issue_category else "other"]
-        for rank, result in enumerate(candidates, start=1):
+        query_occurrences = _chunk_query_occurrences(traces or [])
+        candidates_by_provision: dict[str, list[tuple[int, RetrievedChunk]]] = {}
+        for rank, result in enumerate(merged, start=1):
+            if result.chunk.chunk_id not in strongly_supported:
+                continue
             for provision in self._legal_corpus.provisions_for_chunk(result):
                 if provision.status is not ProvisionStatus.ACTIVE:
-                    continue
-                if result.chunk.chunk_id not in strongly_supported:
                     continue
                 if not provision_is_eligible(provision):
                     continue
                 unit = self._legal_corpus.unit_for_chunk(result)
                 if unit is not None and unit.status is not ProvisionStatus.ACTIVE:
                     continue
-                if provision.provision_id in seen:
-                    continue
-                seen.add(provision.provision_id)
-                authority = self._legal_corpus.authority_for_chunk(
-                    result,
-                    retrieval_rank=rank,
+                if provision.provision_id not in candidates_by_provision:
+                    candidates_by_provision[provision.provision_id] = []
+                candidates_by_provision[provision.provision_id].append((rank, result))
+
+        provision_candidates: list[tuple[int, float, int, RetrievedChunk]] = []
+        for ranked_candidates in candidates_by_provision.values():
+            selected_rank, selected = min(
+                ranked_candidates,
+                key=lambda item: (
+                    -query_occurrences.get(item[1].chunk.chunk_id, 0),
+                    -int(self._legal_corpus.unit_for_chunk(item[1]) is not None),
+                    -item[1].score,
+                    item[1].chunk.chunk_id,
+                ),
+            )
+            # A provision keeps the strongest position earned by any sibling,
+            # while the quoted unit is the one corroborated across the most
+            # independent formulations of the confirmed facts.
+            provision_candidates.append(
+                (
+                    min(rank for rank, _ in ranked_candidates),
+                    max(item.score for _, item in ranked_candidates),
+                    selected_rank,
+                    selected,
                 )
-                grounds.append(
-                    LegalGround(
-                        authority=authority,
-                        application_to_facts=(
-                            f"O texto oficial em {provision.citation_label} foi localizado "
-                            f"pela política de recuperação para {issue}. Sua aplicabilidade "
-                            "ao caso não foi decidida pelo sistema e deve ser validada por "
-                            "profissional habilitado contra os fatos e documentos citados."
-                        ),
-                    )
+            )
+
+        grounds: list[LegalGround] = []
+        issue = _CATEGORY_LABEL[facts.issue_category.value if facts.issue_category else "other"]
+        provision_candidates.sort(key=lambda item: (item[0], item[3].chunk.chunk_id))
+        for _, provision_score, rank, result in provision_candidates[:MAX_GROUND_CANDIDATES]:
+            if provision_score < score_floor:
+                continue
+            provision = self._legal_corpus.provision_for_chunk(result)
+            authority = self._legal_corpus.authority_for_chunk(
+                result,
+                retrieval_rank=rank,
+            )
+            grounds.append(
+                LegalGround(
+                    authority=authority,
+                    application_to_facts=(
+                        f"O texto oficial em {provision.citation_label} foi localizado "
+                        f"pela política de recuperação para {issue}. Sua aplicabilidade "
+                        "ao caso não foi decidida pelo sistema e deve ser validada por "
+                        "profissional habilitado contra os fatos e documentos citados."
+                    ),
                 )
-                if len(grounds) >= MAX_LEGAL_GROUNDS:
-                    return grounds
+            )
+            if len(grounds) >= MAX_LEGAL_GROUNDS:
+                return grounds
         return grounds
 
     @staticmethod
     def _evidence_references(
         result_sets: list[list[RetrievedChunk]],
         page_sources: dict[int, tuple[StoredEvidence, int]],
+        traces: list[RetrievalTrace],
     ) -> list[EvidenceCitation]:
+        strongly_supported = strongly_supported_chunk_ids(traces)
+        if not strongly_supported:
+            return []
         citations: list[EvidenceCitation] = []
         for result in _merge_results(result_sets):
             chunk = result.chunk
+            if chunk.chunk_id not in strongly_supported:
+                continue
             # A citation names exactly one file and one page. A chunk that packed
             # text from several evidence pages cannot be attributed truthfully to
             # any of them, so it is dropped rather than quoted under the first
@@ -1041,6 +1076,24 @@ def _merge_results(result_sets: list[list[RetrievedChunk]]) -> list[RetrievedChu
             if current is None or result.score > current.score:
                 best[result.chunk.chunk_id] = result
     return sorted(best.values(), key=lambda item: (-item.score, item.chunk.chunk_id))
+
+
+def _chunk_query_occurrences(traces: list[RetrievalTrace]) -> dict[str, int]:
+    """Count independent queries that returned each chunk.
+
+    Scores from separate RRF calls share a scale, but taking only their maximum
+    erases the stronger signal that a statutory unit survived several distinct
+    formulations of the confirmed facts.
+    """
+
+    occurrences: dict[str, set[tuple[str, int]]] = {}
+    for trace in traces:
+        if trace.error is not None:
+            continue
+        query_key = (trace.batch_id, trace.query_index)
+        for item in trace.results:
+            occurrences.setdefault(item.chunk_id, set()).add(query_key)
+    return {chunk_id: len(queries) for chunk_id, queries in occurrences.items()}
 
 
 def _annotate_composer_selection(

@@ -1,6 +1,6 @@
 {
   "dataset_id": "consumer-legal-retrieval-seed",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Developer-authored seed for offline retrieval evaluation from lay Brazilian consumer complaints to CDC provisions. It is not a production legal golden until specialist review.",
   "source_url": "https://www.planalto.gov.br/ccivil_03/leis/l8078compilado.htm",
   "authoring": "developer_authored_seed",
@@ -11,6 +11,7 @@
     {
       "case_id": "produto_duravel_com_vicio",
       "category": "product_defect",
+      "intake_category": "service_failure",
       "slices": ["supplier:retail", "remedy:refund", "wording:lay"],
       "complaint": "Comprei uma geladeira nova e, depois de dez dias, ela parou de gelar. A assistência ficou mais de trinta dias com o aparelho e não resolveu.",
       "desired_resolution": "Quero devolver a geladeira e receber de volta tudo o que paguei.",
@@ -33,6 +34,7 @@
     {
       "case_id": "servico_de_reparo_malfeito",
       "category": "service_failure",
+      "intake_category": "service_failure",
       "slices": ["supplier:service", "remedy:refund", "wording:lay"],
       "complaint": "Paguei uma assistência para consertar meu notebook, mas ele voltou com o mesmo problema e agora nem liga. A loja diz que o serviço já foi feito.",
       "desired_resolution": "Quero cancelar o serviço e recuperar o valor pago.",
@@ -55,6 +57,7 @@
     {
       "case_id": "oferta_nao_entregue",
       "category": "non_delivery",
+      "intake_category": "service_failure",
       "slices": ["supplier:ecommerce", "remedy:performance", "wording:lay"],
       "complaint": "Comprei um celular numa promoção do site, o pagamento foi aprovado, mas a loja cancelou alegando falta de estoque enquanto continua anunciando o aparelho mais caro.",
       "desired_resolution": "Quero receber o celular pelo preço anunciado.",
@@ -76,6 +79,7 @@
     {
       "case_id": "arrependimento_compra_online",
       "category": "right_of_withdrawal",
+      "intake_category": "other",
       "slices": ["supplier:ecommerce", "remedy:withdrawal", "wording:lay"],
       "complaint": "Recebi há cinco dias um tênis que comprei pela internet. Ele serviu, mas não gostei do modelo, e a loja diz que só troca se houver defeito.",
       "desired_resolution": "Quero desistir da compra e receber o dinheiro de volta.",
@@ -98,6 +102,7 @@
     {
       "case_id": "publicidade_enganosa_por_omissao",
       "category": "misleading_advertising",
+      "intake_category": "other",
       "slices": ["supplier:education", "issue:omission", "wording:lay"],
       "complaint": "A propaganda do curso dizia acesso ilimitado e certificado incluído, mas depois da matrícula descobri que o certificado custa à parte e o acesso termina em três meses.",
       "desired_resolution": "Quero as condições anunciadas ou cancelar sem multa.",
@@ -119,6 +124,7 @@
     {
       "case_id": "venda_casada_seguro",
       "category": "abusive_practice",
+      "intake_category": "loan_or_interest",
       "slices": ["supplier:retail", "issue:tied_sale", "wording:lay"],
       "complaint": "Na compra do carro, a concessionária falou que só aprovaria o financiamento se eu contratasse também o seguro indicado por ela.",
       "desired_resolution": "Quero retirar o seguro que fui obrigado a contratar e recuperar o valor.",
@@ -135,6 +141,7 @@
     {
       "case_id": "cobranca_indevida_ja_paga",
       "category": "unauthorized_charge",
+      "intake_category": "unauthorized_charge",
       "slices": ["supplier:telecom", "issue:paid_charge", "wording:lay"],
       "complaint": "A operadora colocou na minha fatura um pacote que nunca pedi. Eu paguei a conta para não cortarem a linha e só depois percebi a cobrança extra.",
       "desired_resolution": "Quero receber de volta o que paguei indevidamente.",
@@ -151,6 +158,7 @@
     {
       "case_id": "cobranca_com_ameacas",
       "category": "abusive_collection",
+      "intake_category": "unauthorized_charge",
       "slices": ["supplier:collection", "issue:harassment", "wording:lay"],
       "complaint": "Estou atrasado com uma parcela e a empresa de cobrança liga várias vezes para o meu trabalho, fala da dívida com colegas e ameaça me expor nas redes sociais.",
       "desired_resolution": "Quero que parem as ameaças e só entrem em contato diretamente comigo.",
@@ -167,6 +175,7 @@
     {
       "case_id": "negativacao_sem_aviso",
       "category": "negative_credit_record",
+      "intake_category": "negative_credit_record",
       "slices": ["supplier:credit_bureau", "issue:no_notice", "wording:lay"],
       "complaint": "Descobri que meu nome foi colocado no cadastro de inadimplentes quando tentei alugar um apartamento. Nunca recebi carta, e-mail ou qualquer aviso antes disso.",
       "desired_resolution": "Quero a retirada do registro e esclarecimentos sobre a dívida.",
@@ -183,6 +192,7 @@
     {
       "case_id": "contrato_ilegivel_e_limitacao_oculta",
       "category": "contract_terms",
+      "intake_category": "other",
       "slices": ["supplier:gym", "issue:adhesion_contract", "wording:lay"],
       "complaint": "A academia me deu um contrato pronto com letras minúsculas. A cláusula que impede cancelamento por doze meses estava no meio do texto e ninguém explicou.",
       "desired_resolution": "Quero cancelar sem a multa escondida no contrato.",
@@ -210,6 +220,7 @@
     {
       "case_id": "interrupcao_servico_essencial",
       "category": "public_utility",
+      "intake_category": "service_failure",
       "slices": ["supplier:utility", "issue:continuity", "wording:lay"],
       "complaint": "A concessionária deixou minha rua sem água por quatro dias, sem aviso nem carro-pipa. As contas estão todas pagas e os protocolos não tiveram resposta.",
       "desired_resolution": "Quero o restabelecimento imediato e reparação dos prejuízos.",
@@ -232,6 +243,7 @@
     {
       "case_id": "alergeno_omitido_no_rotulo",
       "category": "consumer_safety",
+      "intake_category": "service_failure",
       "slices": ["supplier:food", "issue:safety", "wording:lay"],
       "complaint": "Comi um produto que não informava amendoim no rótulo e tive uma reação alérgica forte, com atendimento no pronto-socorro.",
       "desired_resolution": "Quero ressarcimento das despesas médicas e uma resposta do fabricante.",
@@ -260,6 +272,7 @@
     {
       "case_id": "superendividamento_e_minimo_existencial",
       "category": "over_indebtedness",
+      "intake_category": "over_indebtedness",
       "slices": ["supplier:multiple_creditors", "issue:minimum_living", "wording:lay"],
       "complaint": "Tenho empréstimos, cartão e crediário em várias empresas. Mesmo agindo de boa-fé, as parcelas agora consomem quase toda a renda e falta dinheiro para aluguel e comida.",
       "desired_resolution": "Quero negociar todas as dívidas em um plano que preserve minhas despesas básicas.",
@@ -282,6 +295,7 @@
     {
       "case_id": "conflito_entre_vizinhos",
       "category": "no_consumer_relationship",
+      "intake_category": "other",
       "slices": ["ground:none", "domain:civil_neighbor", "wording:lay"],
       "complaint": "Meu vizinho faz festas com som alto de madrugada e estaciona o carro bloqueando a entrada da minha garagem.",
       "desired_resolution": "Quero que ele pare com o barulho e deixe a garagem livre.",
@@ -292,6 +306,7 @@
     {
       "case_id": "salario_atrasado",
       "category": "no_consumer_relationship",
+      "intake_category": "other",
       "slices": ["ground:none", "domain:labor", "wording:lay"],
       "complaint": "A empresa onde trabalho está há dois meses sem pagar meu salário e também não depositou o vale-transporte combinado.",
       "desired_resolution": "Quero receber os salários e benefícios atrasados.",

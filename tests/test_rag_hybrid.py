@@ -96,6 +96,65 @@ async def test_dependency_free_bm25_ranks_exact_legal_terms() -> None:
     assert results[0].score > results[1].score
 
 
+async def test_dependency_free_bm25_ignores_portuguese_stopword_only_overlap() -> None:
+    store = InMemoryVectorStore()
+    relevant = _chunk(
+        "evidence:invoice",
+        "Comprovante de pagamento da compra cobrada na fatura.",
+    )
+    unrelated = _chunk(
+        "evidence:menu",
+        "Cardápio do restaurante e horário de atendimento.",
+    )
+    await store.upsert([relevant, unrelated], [[1.0], [1.0]])
+
+    results = await store.lexical_query(
+        "comprovante do pagamento", doc_id=relevant.doc_id, k=2
+    )
+    stopword_results = await store.lexical_query("do e da", doc_id=relevant.doc_id, k=2)
+
+    assert [item.chunk.chunk_id for item in results] == [relevant.chunk_id]
+    assert stopword_results == []
+
+
+async def test_hybrid_rrf_does_not_treat_stopword_overlap_as_lexical_support() -> None:
+    class MenuBiasedEmbedder:
+        model_name = "menu-biased-test"
+
+        async def embed_documents(self, texts: list[str]) -> list[list[float]]:
+            return [[0.0, 1.0] for _ in texts]
+
+        async def embed_query(self, text: str) -> list[float]:
+            return [1.0, 0.0]
+
+    store = InMemoryVectorStore()
+    relevant = _chunk(
+        "evidence:invoice",
+        "Comprovante de pagamento da compra cobrada na fatura.",
+    )
+    unrelated = _chunk(
+        "evidence:menu",
+        "Cardápio do restaurante e horário de atendimento.",
+    )
+    await store.upsert([relevant, unrelated], [[0.0, 1.0], [1.0, 0.0]])
+    pipeline = RagPipeline(
+        embedder=MenuBiasedEmbedder(),
+        store=store,
+        default_k=2,
+    )
+
+    results, trace = await pipeline.retrieve_with_trace(
+        "comprovante do pagamento",
+        doc_id=relevant.doc_id,
+        agent="consumer_evidence",
+    )
+
+    scores = {item.chunk.chunk_id: item.score for item in results}
+    assert trace.rrf_constant is not None
+    assert scores[relevant.chunk_id] > scores[unrelated.chunk_id]
+    assert scores[unrelated.chunk_id] == pytest.approx(1 / (trace.rrf_constant + 1))
+
+
 def test_rrf_is_weighted_and_deterministic() -> None:
     article_18 = RetrievedChunk(chunk=_chunk("cdc:18", "vicio"), score=0.99)
     article_42 = RetrievedChunk(chunk=_chunk("cdc:42", "cobranca"), score=8.0)
@@ -351,3 +410,30 @@ async def test_chroma_roundtrip_preserves_structured_metadata(tmp_path) -> None:
     [result] = await pipeline.retrieve("repeticao indevida", doc_id=chunk.doc_id)
 
     assert result.chunk.metadata == chunk.metadata
+
+
+async def test_chroma_bm25_ignores_portuguese_stopword_only_overlap(tmp_path) -> None:
+    pytest.importorskip("chromadb")
+    from app.rag.vector_store import ChromaVectorStore
+
+    store = ChromaVectorStore(
+        tmp_path / "chroma",
+        collection_name="evidence-stopword-regression",
+    )
+    relevant = _chunk(
+        "evidence:invoice",
+        "Comprovante de pagamento da compra cobrada na fatura.",
+    )
+    unrelated = _chunk(
+        "evidence:menu",
+        "Cardápio do restaurante e horário de atendimento.",
+    )
+    await store.upsert([relevant, unrelated], [[1.0, 0.0], [0.0, 1.0]])
+
+    results = await store.lexical_query(
+        "comprovante do pagamento", doc_id=relevant.doc_id, k=2
+    )
+    stopword_results = await store.lexical_query("do e da", doc_id=relevant.doc_id, k=2)
+
+    assert [item.chunk.chunk_id for item in results] == [relevant.chunk_id]
+    assert stopword_results == []

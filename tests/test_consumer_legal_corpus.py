@@ -449,6 +449,105 @@ def test_heavily_subdivided_articles_also_get_an_article_level_chunk() -> None:
     assert citation.unit_id is None
 
 
+def test_multipart_article_citation_quotes_the_exact_retrieved_chunk_body() -> None:
+    corpus = get_default_legal_corpus()
+    article_chunks = [
+        item
+        for item in corpus.as_chunks()
+        if item.metadata["chunk_level"] == "article"
+    ]
+
+    assert any(not item.chunk_id.endswith("part-01") for item in article_chunks)
+    for chunk in article_chunks:
+        provision = corpus.provision_for_chunk(chunk)
+        prefix = f"{corpus._chunk_header(provision, None)}\n\n"
+        expected_excerpt = chunk.text.removeprefix(prefix)
+
+        citation = corpus.authority_for_chunk(RetrievedChunk(chunk=chunk, score=0.91))
+
+        assert chunk.text.startswith(prefix)
+        assert expected_excerpt
+        assert citation.unit_id is None
+        assert citation.official_excerpt == expected_excerpt
+        assert citation.official_excerpt_sha256 == hashlib.sha256(
+            expected_excerpt.encode("utf-8")
+        ).hexdigest()
+        assert citation.official_excerpt != provision.official_text
+
+
+def test_legal_citation_rejects_a_noncanonical_chunk_header() -> None:
+    corpus = get_default_legal_corpus()
+    chunk = next(
+        item
+        for item in corpus.as_chunks()
+        if item.chunk_id.endswith(":br-cdc-art-51:article:part-02")
+    )
+    tampered = chunk.model_copy(update={"text": f"Cabeçalho adulterado\n\n{chunk.text}"})
+
+    with pytest.raises(ValueError, match="canonical corpus identity"):
+        corpus.authority_for_chunk(tampered)
+
+
+def test_legal_citation_rejects_invented_body_beneath_a_canonical_header() -> None:
+    corpus = get_default_legal_corpus()
+    chunk = next(
+        item
+        for item in corpus.as_chunks()
+        if item.chunk_id.endswith(":br-cdc-art-51:article:part-02")
+    )
+    provision = corpus.provision_for_chunk(chunk)
+    prefix = f"{corpus._chunk_header(provision, None)}\n\n"
+    tampered = chunk.model_copy(update={"text": f"{prefix}Texto jurídico inventado."})
+
+    with pytest.raises(ValueError, match="canonical corpus identity"):
+        corpus.authority_for_chunk(tampered)
+
+
+def test_article_citation_reconstructs_missing_metadata_from_stable_id() -> None:
+    corpus = get_default_legal_corpus()
+    chunk = next(
+        item
+        for item in corpus.as_chunks()
+        if item.chunk_id.endswith(":br-cdc-art-51:article:part-02")
+    )
+    provision = corpus.provision_for_chunk(chunk)
+    prefix = f"{corpus._chunk_header(provision, None)}\n\n"
+    without_metadata = chunk.model_copy(update={"metadata": {}})
+
+    citation = corpus.authority_for_chunk(without_metadata)
+
+    assert citation.official_excerpt == chunk.text.removeprefix(prefix)
+    assert citation.official_excerpt != provision.official_text
+
+
+def test_multipart_unit_citation_quotes_only_its_canonical_piece() -> None:
+    corpus = get_default_legal_corpus()
+    chunk = next(
+        item
+        for item in corpus.as_chunks()
+        if item.chunk_id.endswith(":br-cdc-art-54-g-inciso-i:part-02")
+    )
+    provision = corpus.provision_for_chunk(chunk)
+    unit = corpus.unit_for_chunk(chunk)
+    assert unit is not None
+    lead_in = corpus._lead_in_text(provision, unit)
+    header = corpus._chunk_header(provision, unit)
+    prefix = f"{header}\n\n{lead_in}\n" if lead_in else f"{header}\n\n"
+    expected_excerpt = chunk.text.removeprefix(prefix)
+
+    citation = corpus.authority_for_chunk(RetrievedChunk(chunk=chunk, score=0.89))
+
+    assert expected_excerpt
+    assert citation.unit_id == "br-cdc-art-54-g-inciso-i"
+    assert citation.unit_label == unit.label
+    assert citation.status is unit.status
+    assert citation.official_excerpt == expected_excerpt
+    assert citation.official_excerpt != unit.text
+    assert citation.official_excerpt_sha256 == hashlib.sha256(
+        expected_excerpt.encode("utf-8")
+    ).hexdigest()
+
+
 def test_article_level_chunks_are_only_built_for_subdivided_articles() -> None:
     corpus = get_default_legal_corpus()
     levels = {

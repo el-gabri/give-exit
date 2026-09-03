@@ -68,6 +68,36 @@ def test_scope_gate_abstains_only_on_strong_non_consumer_signals() -> None:
         category="other",
         complaint="Meu empregador não pagou meu salário nem o vale-transporte.",
     )
+    assert not is_consumer_scope(
+        category="other",
+        complaint=(
+            "A empresa onde trabalho está há dois meses sem pagar meu salário e "
+            "também não depositou o vale-transporte combinado."
+        ),
+    )
+    assert not is_consumer_scope(
+        category="unauthorized_charge",
+        complaint=(
+            "A empresa não fez o pagamento do meu salário previsto no contrato "
+            "de trabalho."
+        ),
+    )
+    assert not is_consumer_scope(
+        category="other",
+        complaint="Meu empregador nao pagou meu salario na loja em que trabalho.",
+    )
+    assert not is_consumer_scope(
+        category="other",
+        complaint="Meu empregador não liberou o seguro-desemprego nem pagou meu salário.",
+    )
+    assert not is_consumer_scope(
+        category="other",
+        complaint="O empregador alterou meu cartão de ponto e não pagou as horas extras.",
+    )
+    assert not is_consumer_scope(
+        category="other",
+        complaint="Meu empregador não fez a entrega do EPI exigido para o trabalho.",
+    )
     assert is_consumer_scope(
         category="other",
         complaint="A loja não entregou o produto que comprei.",
@@ -75,6 +105,13 @@ def test_scope_gate_abstains_only_on_strong_non_consumer_signals() -> None:
     assert is_consumer_scope(
         category="product_defect",
         complaint="O aparelho parou de funcionar.",
+    )
+    assert is_consumer_scope(
+        category="other",
+        complaint=(
+            "A loja onde trabalho fez uma cobrança no meu cartão por uma compra "
+            "que eu não fiz."
+        ),
     )
 
 
@@ -88,6 +125,63 @@ def test_lay_intake_category_is_refined_for_legal_retrieval() -> None:
         "right_of_withdrawal"
     )
     assert "artigo 49" in build_legal_queries(facts)[1]
+
+
+def test_retrieval_category_uses_confirmed_real_world_phrasing() -> None:
+    cases = (
+        (
+            ConsumerIssueCategory.SERVICE_FAILURE,
+            "A geladeira nova parou de gelar depois de dez dias.",
+            "Quero o dinheiro de volta.",
+            "substituição restituição abatimento",
+        ),
+        (
+            ConsumerIssueCategory.SERVICE_FAILURE,
+            "A loja cancelou a compra alegando falta de estoque.",
+            "Quero receber o produto anunciado.",
+            "entrega forçada",
+        ),
+        (
+            ConsumerIssueCategory.OTHER,
+            "Recebi o tênis há cinco dias, mas não gostei do modelo.",
+            "Quero desistir da compra.",
+            "direito de arrependimento",
+        ),
+        (
+            ConsumerIssueCategory.OTHER,
+            "A propaganda prometia acesso ilimitado, mas ele dura três meses.",
+            "Quero cancelar sem multa.",
+            "publicidade enganosa",
+        ),
+        (
+            ConsumerIssueCategory.LOAN_OR_INTEREST,
+            "A loja só aprovaria o financiamento se eu contratasse o seguro.",
+            "Quero retirar o seguro.",
+            "vantagem manifestamente excessiva",
+        ),
+        (
+            ConsumerIssueCategory.UNAUTHORIZED_CHARGE,
+            "A empresa de cobrança liga para colegas e ameaça me expor.",
+            "Quero que parem as ameaças.",
+            "ameaça constrangimento",
+        ),
+        (
+            ConsumerIssueCategory.OTHER,
+            "A cláusula que impede cancelamento estava em letras minúsculas.",
+            "Quero cancelar sem a multa escondida.",
+            "contrato de adesão",
+        ),
+    )
+
+    for intake_category, complaint, resolution, expected_anchor in cases:
+        queries = build_legal_queries(
+            _facts(
+                issue_category=intake_category,
+                complaint_summary=complaint,
+                desired_resolution=resolution,
+            )
+        )
+        assert expected_anchor in queries[-1]
 
 
 def test_evidence_queries_include_claim_and_requested_resolution() -> None:

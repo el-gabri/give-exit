@@ -649,6 +649,43 @@ def _restore_chunk(chunk_id: str, text: str, metadata: Mapping[str, object]) -> 
     )
 
 
+def _normalize_lexical_text(text: str) -> str:
+    decomposed = unicodedata.normalize("NFKD", text.casefold())
+    return "".join(char for char in decomposed if not unicodedata.combining(char))
+
+
+# Mirrors PostgreSQL's Snowball Portuguese stopword dictionary. Keeping these
+# terms out of the dependency-free BM25 adapter prevents a function-word-only
+# overlap from being interpreted as an independent lexical retrieval signal.
+_PORTUGUESE_STOPWORDS = frozenset(
+    re.findall(
+        r"[a-z0-9]+",
+        _normalize_lexical_text(
+            """
+            de a o que e do da em um para com não uma os no se na por mais as dos
+            como mas ao ele das à seu sua ou quando muito nos já eu também só pelo
+            pela até isso ela entre depois sem mesmo aos seus quem nas me esse eles
+            você essa num nem suas meu às minha numa pelos elas qual nós lhe deles
+            essas esses pelas este dele tu te vocês vos lhes meus minhas teu tua teus
+            tuas nosso nossa nossos nossas dela delas esta estes estas aquele aquela
+            aqueles aquelas isto aquilo estou está estamos estão estive esteve
+            estivemos estiveram estava estávamos estavam estivera estivéramos esteja
+            estejamos estejam estivesse estivéssemos estivessem estiver estivermos
+            estiverem hei há havemos hão houve houvemos houveram houvera houvéramos
+            haja hajamos hajam houvesse houvéssemos houvessem houver houvermos
+            houverem houverei haverá houveremos houverão houveria houveríamos
+            houveriam sou somos são era éramos eram fui foi fomos foram fora fôramos
+            seja sejamos sejam fosse fôssemos fossem for formos forem serei será
+            seremos serão seria seríamos seriam tenho tem temos tém tinha tínhamos
+            tinham tive teve tivemos tiveram tivera tivéramos tenha tenhamos tenham
+            tivesse tivéssemos tivessem tiver tivermos tiverem terei terá teremos
+            terão teria teríamos teriam
+            """
+        ),
+    )
+)
+
+
 def _bm25_rank(query: str, chunks: list[Chunk], k: int) -> list[RetrievedChunk]:
     """Small deterministic BM25 implementation with no runtime dependency."""
     if k < 1 or not chunks:
@@ -693,6 +730,5 @@ def _bm25_rank(query: str, chunks: list[Chunk], k: int) -> list[RetrievedChunk]:
 
 
 def _lexical_tokens(text: str) -> list[str]:
-    decomposed = unicodedata.normalize("NFKD", text.casefold())
-    without_accents = "".join(char for char in decomposed if not unicodedata.combining(char))
-    return re.findall(r"[a-z0-9]+", without_accents)
+    tokens = re.findall(r"[a-z0-9]+", _normalize_lexical_text(text))
+    return [token for token in tokens if token not in _PORTUGUESE_STOPWORDS]

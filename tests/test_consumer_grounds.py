@@ -167,6 +167,75 @@ def _chunk_for(provision_id: str):
     )
 
 
+def _chunk_for_unit(unit_id: str):
+    return next(
+        chunk
+        for chunk in get_default_legal_corpus().as_chunks()
+        if chunk.metadata.get("unit_id") == unit_id
+    )
+
+
+def test_correlated_queries_choose_corroborated_unit_within_provision() -> None:
+    service = _service()
+    paragraph_2 = _chunk_for_unit("br-cdc-art-43-paragrafo-2")
+    paragraph_4 = _chunk_for_unit("br-cdc-art-43-paragrafo-4")
+    result_sets = [
+        [
+            RetrievedChunk(chunk=paragraph_4, score=0.032),
+            RetrievedChunk(chunk=paragraph_2, score=0.028),
+        ],
+        [RetrievedChunk(chunk=paragraph_2, score=0.027)],
+        [RetrievedChunk(chunk=paragraph_2, score=0.026)],
+    ]
+
+    grounds = service._legal_grounds(result_sets, _facts(), _traces(result_sets))
+
+    assert [ground.authority.unit_id for ground in grounds] == [
+        "br-cdc-art-43-paragrafo-2"
+    ]
+
+
+def test_provision_window_is_applied_after_correlated_sibling_selection() -> None:
+    service = _service()
+    corpus = get_default_legal_corpus()
+    paragraph_2 = _chunk_for_unit("br-cdc-art-43-paragrafo-2")
+    paragraph_4 = _chunk_for_unit("br-cdc-art-43-paragrafo-4")
+    intervening = []
+    seen_provisions = {"br-cdc-art-43"}
+    for chunk in corpus.as_chunks():
+        provision_id = str(chunk.metadata.get("provision_id"))
+        if provision_id in seen_provisions:
+            continue
+        provision = corpus.provision_for_chunk(chunk)
+        if not provision_is_eligible(provision):
+            continue
+        seen_provisions.add(provision_id)
+        intervening.append(chunk)
+        if len(intervening) == MAX_GROUND_CANDIDATES - 1:
+            break
+    assert len(intervening) == MAX_GROUND_CANDIDATES - 1
+
+    first_query = [RetrievedChunk(chunk=paragraph_4, score=0.032)]
+    first_query.extend(
+        RetrievedChunk(chunk=chunk, score=0.031 - index * 0.001)
+        for index, chunk in enumerate(intervening)
+    )
+    first_query.append(RetrievedChunk(chunk=paragraph_2, score=0.023))
+    result_sets = [
+        first_query,
+        [RetrievedChunk(chunk=paragraph_2, score=0.022)],
+        [RetrievedChunk(chunk=paragraph_2, score=0.021)],
+    ]
+
+    grounds = service._legal_grounds(result_sets, _facts(), _traces(result_sets))
+
+    article_43 = next(
+        ground for ground in grounds if ground.authority.provision_id == "br-cdc-art-43"
+    )
+    assert article_43.authority.unit_id == "br-cdc-art-43-paragrafo-2"
+    assert article_43.authority.retrieval_rank == MAX_GROUND_CANDIDATES + 1
+
+
 def test_article_outside_the_notice_scope_is_not_cited() -> None:
     """Eligibility is about what an individual notice can rest on.
 

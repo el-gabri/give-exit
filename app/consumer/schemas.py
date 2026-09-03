@@ -376,12 +376,28 @@ class LegalAuthorityCitation(BaseModel):
         provision: LegalProvision,
         *,
         unit: LegalTextUnit | None = None,
+        official_excerpt: str | None = None,
+        official_excerpt_sha256: str | None = None,
         chunk_id: str | None = None,
         retrieval_rank: int | None = None,
         retrieval_score: float | None = None,
     ) -> LegalAuthorityCitation:
         if provision.content_sha256 is None:  # pragma: no cover - validator guarantees it
             raise ValueError("provision has no content hash")
+        if official_excerpt is None and official_excerpt_sha256 is not None:
+            raise ValueError("official excerpt hash requires an explicit excerpt")
+        if unit is not None and official_excerpt is not None and official_excerpt not in unit.text:
+            raise ValueError("explicit official excerpt does not belong to the legal unit")
+        cited_excerpt = (
+            official_excerpt
+            if official_excerpt is not None
+            else unit.text if unit is not None else None
+        )
+        cited_excerpt_sha256 = (
+            official_excerpt_sha256
+            if official_excerpt is not None
+            else unit.content_sha256 if unit is not None else None
+        )
         return cls(
             provision_id=provision.provision_id,
             source_name=provision.source_name,
@@ -407,8 +423,8 @@ class LegalAuthorityCitation(BaseModel):
             source_snapshot_sha256=provision.source_snapshot_sha256,
             unit_id=unit.unit_id if unit is not None else None,
             unit_label=unit.label if unit is not None else None,
-            official_excerpt=unit.text if unit is not None else None,
-            official_excerpt_sha256=(unit.content_sha256 if unit is not None else None),
+            official_excerpt=cited_excerpt,
+            official_excerpt_sha256=cited_excerpt_sha256,
             chunk_id=chunk_id,
             retrieval_rank=retrieval_rank,
             retrieval_score=retrieval_score,

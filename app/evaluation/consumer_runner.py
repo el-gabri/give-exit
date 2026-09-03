@@ -18,7 +18,8 @@ from pathlib import Path
 from typing import cast
 
 from app.consumer.legal_corpus import LegalCorpus
-from app.consumer.retrieval import build_legal_queries_for_case, is_consumer_scope
+from app.consumer.retrieval import build_legal_queries, is_consumer_scope
+from app.consumer.schemas import ConsumerCaseFacts
 from app.evaluation.consumer_golden import (
     load_consumer_legal_dataset,
     validate_consumer_legal_labels,
@@ -48,7 +49,7 @@ _INACTIVE_STATUSES = {
 }
 _UNKNOWN_STATUSES = {"", "desconhecido", "unknown"}
 _UNIT_MARKERS = ("-caput", "-paragrafo-", "-inciso-", "-alinea-")
-QUERY_BUILDER_VERSION = "consumer-legal-three-query-v2"
+QUERY_BUILDER_VERSION = "consumer-legal-three-query-v3"
 
 
 def _threshold(raw: str) -> tuple[str, float]:
@@ -376,18 +377,19 @@ class ConsumerLegalRetrievalEvaluator:
         hits: list[ConsumerLegalRetrievalHit] = []
         retrieval_outcome = "completed"
         try:
+            facts = ConsumerCaseFacts(
+                issue_category=case.intake_category,
+                complaint_summary=case.complaint,
+                desired_resolution=case.desired_resolution,
+            )
             if not is_consumer_scope(
-                category=case.category,
-                complaint=case.complaint,
+                category=case.intake_category.value,
+                complaint=facts.complaint_summary or "",
             ):
                 retrieval_outcome = "scope_gate_abstained"
             else:
                 result_sets = []
-                queries = build_legal_queries_for_case(
-                    category=case.category,
-                    complaint=case.complaint,
-                    desired_resolution=case.desired_resolution,
-                )
+                queries = build_legal_queries(facts)
                 for query in queries:
                     raw_result = self._retriever(query, self._cutoffs[-1])
                     if inspect.isawaitable(raw_result):

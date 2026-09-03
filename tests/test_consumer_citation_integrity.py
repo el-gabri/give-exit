@@ -5,6 +5,7 @@ a shorter notice: it is a false statement of proof in a legal artifact, and the
 per-citation hash makes the wrong attribution look verified.
 """
 
+import hashlib
 from pathlib import Path
 
 import fitz
@@ -16,6 +17,8 @@ from app.consumer.service import _clean_chunk_quote, _markdown_inline
 from app.core.config import LLMProvider, Settings, VectorStoreBackend
 from app.rag.chunking import is_heading
 from app.reporting.convert import strip_markdown_escapes
+from app.schemas.rag import RetrievedChunk
+from app.schemas.trace import RetrievalTrace, RetrievedItemTrace
 
 FATURA = (
     "FATURA DA LOJA EXEMPLO. Cobranca nao reconhecida de R$ 250,00 lancada em "
@@ -25,6 +28,51 @@ CONTRATO = (
     "CONTRATO DA OPERADORA XPTO. O cliente autorizou expressamente o debito "
     "automatico mensal e declarou ciencia integral das clausulas contratuais."
 )
+
+
+def _evidence_traces(
+    result_sets: list[list[RetrievedChunk]],
+) -> list[RetrievalTrace]:
+    traces: list[RetrievalTrace] = []
+    for query_index, results in enumerate(result_sets):
+        query = f"evidence query {query_index}"
+        traces.append(
+            RetrievalTrace(
+                batch_id="evidence-batch",
+                agent="consumer_case_evidence",
+                doc_id=results[0].chunk.doc_id if results else "evidence-doc",
+                query_index=query_index,
+                query=query,
+                query_sha256=hashlib.sha256(query.encode()).hexdigest(),
+                requested_k=max(1, len(results)),
+                candidate_k=max(1, len(results)),
+                returned_count=len(results),
+                retrieval_mode="hybrid",
+                embedding_model="test",
+                vector_store="memory",
+                index_version="test",
+                chunking_version="test",
+                score_type="rrf_score",
+                rrf_constant=60,
+                dense_weight=1.0,
+                lexical_weight=1.0,
+                results=[
+                    RetrievedItemTrace(
+                        rank=rank,
+                        chunk_id=result.chunk.chunk_id,
+                        doc_id=result.chunk.doc_id,
+                        page_start=result.chunk.page_start,
+                        page_end=result.chunk.page_end,
+                        score=result.score,
+                        content_sha256=hashlib.sha256(
+                            result.chunk.text.encode()
+                        ).hexdigest(),
+                    )
+                    for rank, result in enumerate(results, start=1)
+                ],
+            )
+        )
+    return traces
 
 
 def _pdf_bytes(text: str) -> bytes:
@@ -180,7 +228,73 @@ def test_chunk_spanning_pages_is_dropped_rather_than_misattributed() -> None:
         score=0.9,
     )
 
-    assert ConsumerCaseService._evidence_references([[spanning]], page_sources) == []
+    result_sets = [[spanning]]
+    assert (
+        ConsumerCaseService._evidence_references(
+            result_sets,
+            page_sources,
+            _evidence_traces(result_sets),
+        )
+        == []
+    )
+
+
+def test_evidence_references_exclude_hits_without_retrieval_support() -> None:
+    from app.consumer.schemas import ConsumerEvidence, EvidenceStatus
+    from app.consumer.service import ConsumerCaseService
+    from app.consumer.store import StoredEvidence
+    from app.schemas.document import ExtractionMethod
+    from app.schemas.rag import Chunk
+
+    def _evidence(evidence_id: str, name: str) -> StoredEvidence:
+        return StoredEvidence(
+            public=ConsumerEvidence(
+                evidence_id=evidence_id,
+                filename=name,
+                page_count=1,
+                media_type="application/pdf",
+                extraction_method=ExtractionMethod.NATIVE_TEXT,
+                status=EvidenceStatus.ACCEPTED,
+                source_sha256="0" * 64,
+                content_sha256="1" * 64,
+            )
+        )
+
+    relevant = RetrievedChunk(
+        chunk=Chunk(
+            chunk_id="evidence:relevant",
+            doc_id="evidence-doc",
+            text="Compra cobrada na fatura sem autorização.",
+            page_start=1,
+            page_end=1,
+        ),
+        score=0.032,
+    )
+    unrelated = RetrievedChunk(
+        chunk=Chunk(
+            chunk_id="evidence:unrelated",
+            doc_id="evidence-doc",
+            text="Cardápio do restaurante anexo.",
+            page_start=2,
+            page_end=2,
+        ),
+        score=0.016,
+    )
+    result_sets = [[relevant, unrelated]]
+    page_sources = {
+        1: (_evidence("a" * 32, "fatura.pdf"), 1),
+        2: (_evidence("b" * 32, "anexo.pdf"), 1),
+    }
+
+    citations = ConsumerCaseService._evidence_references(
+        result_sets,
+        page_sources,
+        _evidence_traces(result_sets),
+    )
+
+    assert [(citation.filename, citation.chunk_id) for citation in citations] == [
+        ("fatura.pdf", "evidence:relevant")
+    ]
 
 
 def test_untrusted_excerpt_cannot_inject_a_markdown_link() -> None:

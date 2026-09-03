@@ -23,42 +23,63 @@ _OUT_OF_SCOPE_CATEGORIES = {
     "neighbor_dispute",
     "no_consumer_relationship",
 }
-_CONSUMER_SIGNALS = (
-    "assinatura",
-    "banco",
-    "cartão",
+# These signals describe a concrete consumer transaction, product, service or
+# charge.  They may legitimately coexist with words from another legal domain
+# (for example, an employer may also make an unauthorized card charge).
+_STRONG_CONSUMER_SIGNALS = (
     "cobrança",
+    "cobranca",
     "compra",
     "comprei",
     "consumidor",
     "contratei",
-    "contrato",
-    "empresa",
-    "entrega",
     "fatura",
     "financiamento",
+    "paguei",
+    "plano de saúde",
+    "plano de saude",
+    "produto",
+)
+# These words occur frequently in consumer narratives, but also describe
+# employment, inheritance and neighbour disputes.  They can establish scope
+# for an otherwise ambiguous intake, but must not override a strong
+# non-consumer signal by themselves.
+_WEAK_CONSUMER_SIGNALS = (
+    "assinatura",
+    "banco",
+    "cartão",
+    "cartao",
+    "contrato",
+    "entrega",
+    "empresa",
     "fornecedor",
     "internet",
     "loja",
     "operadora",
     "pagamento",
-    "paguei",
-    "plano de saúde",
-    "produto",
     "seguro",
     "serviço",
+    "servico",
 )
 _NON_CONSUMER_SIGNALS = (
     "benefício trabalhista",
+    "beneficio trabalhista",
     "demissão",
+    "demissao",
     "empregador",
     "herança",
+    "heranca",
     "hora extra",
+    "horas extras",
     "inventário",
+    "inventario",
     "meu vizinho",
     "salário",
+    "salario",
     "vale-transporte",
+    "vale transporte",
     "vínculo empregatício",
+    "vinculo empregaticio",
 )
 
 _CATEGORY_EXPANSIONS: dict[str, str] = {
@@ -92,15 +113,97 @@ _CATEGORY_EXPANSIONS: dict[str, str] = {
 }
 
 _SUBCATEGORY_SIGNALS: tuple[tuple[str, tuple[str, ...]], ...] = (
-    ("right_of_withdrawal", ("arrepend", "desisti da compra", "sete dias", "7 dias")),
-    ("non_delivery", ("não entreg", "nao entreg", "entrega atrasada")),
-    ("product_defect", ("produto com defeito", "produto quebr", "vício do produto")),
-    ("misleading_advertising", ("publicidade engan", "propaganda engan", "anúncio engan")),
-    ("abusive_collection", ("ameaça na cobrança", "ameaca na cobranca", "cobrança vexatória")),
-    ("abusive_practice", ("venda casada", "condicionou a compra", "vantagem excessiva")),
+    (
+        "right_of_withdrawal",
+        (
+            "direito de arrependimento",
+            "desistir da compra",
+            "desisti da compra",
+            "sete dias",
+            "7 dias",
+        ),
+    ),
+    (
+        "non_delivery",
+        (
+            "não entreg",
+            "nao entreg",
+            "não recebi",
+            "nao recebi",
+            "entrega atrasada",
+            "falta de estoque",
+            "pedido cancelad",
+            "compra cancelad",
+        ),
+    ),
+    (
+        "product_defect",
+        (
+            "produto com defeito",
+            "produto quebr",
+            "vício do produto",
+            "vicio do produto",
+            "parou de funcionar",
+            "parou de gelar",
+        ),
+    ),
+    (
+        "misleading_advertising",
+        (
+            "publicidade enganosa",
+            "propaganda enganosa",
+            "anúncio enganoso",
+            "anuncio enganoso",
+            "condições anunciadas",
+            "condicoes anunciadas",
+            "acesso ilimitado",
+            "certificado custa",
+        ),
+    ),
+    (
+        "abusive_collection",
+        (
+            "ameaça na cobrança",
+            "ameaca na cobranca",
+            "cobrança vexatória",
+            "cobranca vexatoria",
+            "empresa de cobrança",
+            "empresa de cobranca",
+            "ameaça me expor",
+            "ameaca me expor",
+        ),
+    ),
+    (
+        "abusive_practice",
+        (
+            "venda casada",
+            "condicionou a compra",
+            "vantagem excessiva",
+            "só aprovaria se",
+            "so aprovaria se",
+            "aprovaria o financiamento se",
+            "obrigado a contratar",
+            "obrigada a contratar",
+        ),
+    ),
     ("public_utility", ("sem água", "sem energia", "serviço essencial interromp")),
     ("consumer_safety", ("reação alérgica", "risco à saúde", "acidente de consumo")),
-    ("contract_terms", ("cláusula abusiva", "contrato ilegível", "contrato de adesão")),
+    (
+        "contract_terms",
+        (
+            "cláusula abusiva",
+            "clausula abusiva",
+            "cláusula que",
+            "clausula que",
+            "contrato ilegível",
+            "contrato ilegivel",
+            "contrato de adesão",
+            "contrato de adesao",
+            "letras minúsculas",
+            "letras minusculas",
+            "multa escondida",
+        ),
+    ),
 )
 
 
@@ -108,7 +211,10 @@ def build_legal_queries(facts: ConsumerCaseFacts) -> list[str]:
     """Build bounded, replayable legal queries from confirmed case facts."""
 
     category = facts.issue_category.value if facts.issue_category is not None else "other"
-    category = infer_retrieval_category(category, facts.complaint_summary or "")
+    category = infer_retrieval_category(
+        category,
+        _join_non_empty(facts.complaint_summary, facts.desired_resolution),
+    )
     return build_legal_queries_for_case(
         category=category,
         complaint=facts.complaint_summary or "",
@@ -168,7 +274,12 @@ def is_consumer_scope(*, category: str | None, complaint: str) -> bool:
         return False
 
     normalized_complaint = _clean(complaint).casefold()
-    has_consumer_signal = any(signal in normalized_complaint for signal in _CONSUMER_SIGNALS)
+    has_strong_consumer_signal = any(
+        signal in normalized_complaint for signal in _STRONG_CONSUMER_SIGNALS
+    )
+    has_weak_consumer_signal = any(
+        signal in normalized_complaint for signal in _WEAK_CONSUMER_SIGNALS
+    )
     has_non_consumer_signal = any(
         signal in normalized_complaint for signal in _NON_CONSUMER_SIGNALS
     )
@@ -177,11 +288,11 @@ def is_consumer_scope(*, category: str | None, complaint: str) -> bool:
     # inheritance dispute easily lands in a concrete consumer category; letting
     # the category short-circuit the check made this gate unreachable for every
     # value except "other".
-    if has_non_consumer_signal and not has_consumer_signal:
+    if has_non_consumer_signal and not has_strong_consumer_signal:
         return False
     if normalized_category in _CATEGORY_EXPANSIONS and normalized_category != "other":
         return True
-    return has_consumer_signal or not has_non_consumer_signal
+    return has_strong_consumer_signal or has_weak_consumer_signal or not has_non_consumer_signal
 
 
 def build_evidence_queries(facts: ConsumerCaseFacts) -> list[str]:

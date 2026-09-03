@@ -10,7 +10,7 @@ import pytest
 from pydantic import ValidationError
 
 from app.consumer.legal_corpus import get_default_legal_corpus
-from app.consumer.schemas import ProvisionStatus
+from app.consumer.schemas import ConsumerIssueCategory, ProvisionStatus
 from app.evaluation.consumer_golden import load_consumer_legal_dataset
 from app.evaluation.consumer_retrievers import offline_hybrid_retriever
 from app.evaluation.consumer_runner import (
@@ -55,6 +55,7 @@ def _case(*, no_ground: bool = False) -> ConsumerLegalGoldenCase:
     return ConsumerLegalGoldenCase(
         case_id="metric_fixture",
         category="unauthorized_charge",
+        intake_category=ConsumerIssueCategory.UNAUTHORIZED_CHARGE,
         slices=("supplier:telecom",),
         complaint="A operadora cobrou um pacote que eu nunca contratei e já paguei.",
         desired_resolution="Quero meu dinheiro de volta.",
@@ -98,7 +99,7 @@ def test_seed_dataset_is_separate_versioned_and_explicitly_unreviewed() -> None:
     dataset = load_consumer_legal_dataset(DATASET_PATH)
 
     assert dataset.dataset_id == "consumer-legal-retrieval-seed"
-    assert dataset.version == "1.0.0"
+    assert dataset.version == "1.1.0"
     assert dataset.authoring == "developer_authored_seed"
     assert dataset.review_status == "requires_legal_review"
     assert dataset.source_url.endswith("/l8078compilado.htm")
@@ -106,6 +107,9 @@ def test_seed_dataset_is_separate_versioned_and_explicitly_unreviewed() -> None:
     assert len({case.category for case in dataset.cases}) >= 12
     assert sum(case.no_applicable_ground for case in dataset.cases) == 2
     assert all(case.slices for case in dataset.cases)
+    salary_case = next(case for case in dataset.cases if case.case_id == "salario_atrasado")
+    assert salary_case.category == "no_consumer_relationship"
+    assert salary_case.intake_category is ConsumerIssueCategory.OTHER
     assert any(
         judgment.unit_id == "br-cdc-art-42-paragrafo-unico"
         for case in dataset.cases
@@ -267,13 +271,49 @@ async def test_evaluator_accepts_sync_and_async_retriever_callables() -> None:
     assert sync_summary.run is not None
     assert sync_summary.run.dataset_sha256 == dataset.content_sha256
     assert sync_summary.run.corpus_sha256 == get_default_legal_corpus().corpus_sha256
-    assert sync_summary.run.query_builder_version == "consumer-legal-three-query-v2"
+    assert sync_summary.run.query_builder_version == "consumer-legal-three-query-v3"
     assert sync_summary.run.queries_per_case == 3
     assert sync_summary.by_category["unauthorized_charge"].case_count == 1
     assert sync_summary.by_slice["supplier:telecom"].case_count == 1
     assert sync_summary.metric_case_counts["consumer_recall@5"] == 1
     assert sync_summary.run.retrieval.configuration_complete is False
     assert sync_summary.metric_directions["consumer_hard_negative_rate@5"] == "lower_is_better"
+
+
+async def test_evaluator_uses_production_intake_category_for_queries() -> None:
+    case = _case().model_copy(
+        update={
+            # The fine category remains useful for reporting, but it is not a
+            # category the guided production intake can submit.
+            "category": "right_of_withdrawal",
+            "intake_category": ConsumerIssueCategory.UNAUTHORIZED_CHARGE,
+        }
+    )
+    dataset = ConsumerLegalGoldenDataset(
+        dataset_id="intake-category-fixture",
+        version="1.0.0",
+        description="Fixture proving production-equivalent query construction.",
+        source_url="https://www.planalto.gov.br/ccivil_03/leis/l8078compilado.htm",
+        authoring="developer_authored_seed",
+        review_status="requires_legal_review",
+        cases=(case,),
+    )
+
+    summary = await ConsumerLegalRetrievalEvaluator(lambda _query, _k: []).run(dataset)
+
+    result = summary.cases[0]
+    assert result.category == "right_of_withdrawal"
+    assert summary.by_category["right_of_withdrawal"].case_count == 1
+    assert any("artigo 42" in query for query in result.queries)
+    assert all("artigo 49" not in query for query in result.queries)
+
+
+def test_golden_case_rejects_non_production_intake_category() -> None:
+    payload = _case().model_dump(mode="json")
+    payload["intake_category"] = "right_of_withdrawal"
+
+    with pytest.raises(ValidationError, match="intake_category"):
+        ConsumerLegalGoldenCase.model_validate(payload)
 
 
 async def test_evaluator_isolates_provider_failure_in_case_result() -> None:
@@ -305,6 +345,7 @@ async def test_no_consumer_scope_gate_abstains_without_calling_retriever() -> No
         update={
             "case_id": "no_scope_fixture",
             "category": "no_consumer_relationship",
+            "intake_category": ConsumerIssueCategory.OTHER,
             "slices": ("ground:none",),
             "complaint": "Meu empregador não pagou meu salário e minhas horas extras.",
             "desired_resolution": "Quero receber meu salário atrasado.",

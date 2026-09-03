@@ -403,6 +403,11 @@ class LegalCorpus:
         # generation resolves that document once per candidate chunk, so
         # memoizing it removes tens of full re-renders per request.
         self._parsed_document: ParsedDocument | None = None
+        # Citations are resolved against freshly generated canonical chunks,
+        # never trusted from vector-store payloads alone.  Keep one private map
+        # per supported chunk size so repeated grounds do not rebuild the
+        # corpus for every citation.
+        self._canonical_chunk_maps: dict[int, Mapping[str, Chunk]] = {}
 
     @property
     def release_id(self) -> str:
@@ -803,17 +808,86 @@ class LegalCorpus:
         *,
         retrieval_rank: int | None = None,
     ) -> LegalAuthorityCitation:
-        chunk = item.chunk if isinstance(item, RetrievedChunk) else item
+        retrieved_chunk = item.chunk if isinstance(item, RetrievedChunk) else item
         score = item.score if isinstance(item, RetrievedChunk) else None
-        provision = self.provision_for_chunk(item)
-        unit = self.unit_for_chunk(item)
+        chunk = self._canonical_chunk_for_citation(retrieved_chunk)
+        provision = self.provision_for_chunk(chunk)
+        unit = self.unit_for_chunk(chunk)
+        official_excerpt = self._canonical_chunk_body(chunk, provision, unit)
+        official_excerpt_sha256 = hashlib.sha256(
+            official_excerpt.encode("utf-8")
+        ).hexdigest()
         return LegalAuthorityCitation.from_provision(
             provision,
             unit=unit,
+            official_excerpt=official_excerpt,
+            official_excerpt_sha256=official_excerpt_sha256,
             chunk_id=chunk.chunk_id,
             retrieval_rank=retrieval_rank,
             retrieval_score=score,
         )
+
+    def _canonical_chunk_for_citation(self, chunk: Chunk) -> Chunk:
+        """Resolve a store result by stable id and reject altered payloads.
+
+        Empty metadata is tolerated for legacy stores because the stable id is
+        sufficient to reconstruct it.  Any metadata that is present, however,
+        must match the canonical corpus in full.
+        """
+
+        target_chars = DEFAULT_LEGAL_CHUNK_TARGET_CHARS
+        raw_chunking_version = chunk.metadata.get("chunking_version")
+        version_prefix = f"{LEGAL_CHUNKING_VERSION}:target="
+        if isinstance(raw_chunking_version, str) and raw_chunking_version.startswith(
+            version_prefix
+        ):
+            try:
+                target_chars = int(raw_chunking_version.removeprefix(version_prefix))
+            except ValueError as exc:
+                raise ValueError("legal chunk has an invalid chunking identity") from exc
+
+        canonical_chunks = self._canonical_chunk_maps.get(target_chars)
+        if canonical_chunks is None:
+            generated = self.as_chunks(target_chars=target_chars)
+            canonical_chunks = MappingProxyType(
+                {item.chunk_id: item for item in generated}
+            )
+            if len(canonical_chunks) != len(generated):  # pragma: no cover - corpus invariant
+                raise ValueError("canonical legal corpus contains duplicate chunk ids")
+            self._canonical_chunk_maps[target_chars] = canonical_chunks
+
+        canonical = canonical_chunks.get(chunk.chunk_id)
+        if canonical is None:
+            raise ValueError("legal chunk id does not resolve to the canonical corpus")
+        if chunk.model_dump(exclude={"metadata"}) != canonical.model_dump(
+            exclude={"metadata"}
+        ):
+            raise ValueError("legal chunk does not match its canonical corpus identity")
+        if chunk.metadata and chunk.metadata != canonical.metadata:
+            raise ValueError("legal chunk metadata does not match the canonical corpus")
+        return canonical
+
+    def _canonical_chunk_body(
+        self,
+        chunk: Chunk,
+        provision: LegalProvision,
+        unit: LegalTextUnit | None,
+    ) -> str:
+        """Remove canonical retrieval context while preserving the exact piece."""
+
+        chunk_level = chunk.metadata.get("chunk_level")
+        if chunk_level not in {"article", "provision", "unit"}:
+            raise ValueError("canonical legal chunk has an invalid chunk level")
+        header_unit = unit if chunk_level == "unit" else None
+        header = self._chunk_header(provision, header_unit)
+        lead_in = self._lead_in_text(provision, unit) if chunk_level == "unit" and unit else ""
+        prefix = f"{header}\n\n{lead_in}\n" if lead_in else f"{header}\n\n"
+        if not chunk.text.startswith(prefix):  # pragma: no cover - generator invariant
+            raise ValueError("canonical legal chunk has an invalid retrieval prefix")
+        body = chunk.text[len(prefix) :]
+        if not body:  # pragma: no cover - generator invariant
+            raise ValueError("canonical legal chunk has no official body")
+        return body
 
     @staticmethod
     def _page_text(provision: LegalProvision) -> str:
