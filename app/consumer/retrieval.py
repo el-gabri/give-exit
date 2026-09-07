@@ -8,6 +8,9 @@ audit replay possible without an LLM call.
 
 from __future__ import annotations
 
+import re
+import unicodedata
+
 from app.consumer.schemas import ConsumerCaseFacts
 
 MAX_QUERY_CHARS = 2_000
@@ -40,6 +43,37 @@ _STRONG_CONSUMER_SIGNALS = (
     "plano de saude",
     "produto",
 )
+# In a mixed-domain clause, a transaction word alone does not identify which
+# relationship the complaint is about. The bank is handled separately because
+# "banco de horas" is an employment term, not a consumer counterparty.
+_CONSUMER_COUNTERPARTY_SIGNALS = (
+    "fornecedor",
+    "loja",
+    "operadora",
+)
+_CONSUMER_TRANSACTION_SERVICE_SIGNALS = (
+    "assinatura",
+    "cartão",
+    "cobrança",
+    "compra",
+    "comprei",
+    "contratei",
+    "contrato",
+    "crédito",
+    "débito",
+    "entrega",
+    "empréstimo",
+    "fatura",
+    "financiamento",
+    "internet",
+    "juros",
+    "pagamento",
+    "paguei",
+    "plano de saúde",
+    "produto",
+    "seguro",
+    "serviço",
+)
 # These words occur frequently in consumer narratives, but also describe
 # employment, inheritance and neighbour disputes.  They can establish scope
 # for an otherwise ambiguous intake, but must not override a strong
@@ -62,6 +96,7 @@ _WEAK_CONSUMER_SIGNALS = (
     "servico",
 )
 _NON_CONSUMER_SIGNALS = (
+    "banco de horas",
     "benefício trabalhista",
     "beneficio trabalhista",
     "demissão",
@@ -73,6 +108,9 @@ _NON_CONSUMER_SIGNALS = (
     "horas extras",
     "inventário",
     "inventario",
+    "contracheque",
+    "em que trabalho",
+    "onde trabalho",
     "meu vizinho",
     "salário",
     "salario",
@@ -80,6 +118,27 @@ _NON_CONSUMER_SIGNALS = (
     "vale transporte",
     "vínculo empregatício",
     "vinculo empregaticio",
+)
+_BANK_ACCOUNT_SIGNALS = (
+    "conta bancária",
+    "conta bancaria",
+    "conta-salário",
+    "conta-salario",
+    "conta salário",
+    "conta salario",
+    "minha conta",
+    "meu saldo",
+)
+_BANK_ACCESS_FAILURE_SIGNALS = (
+    "bloque",
+    "não libera",
+    "nao libera",
+    "retid",
+    "indisponível",
+    "indisponivel",
+)
+_SCOPE_CLAUSE_BOUNDARY = re.compile(
+    r"(?:[.!?;\n]+|,\s+(?:contudo|entretanto|mas|porem)\s+)"
 )
 
 _CATEGORY_EXPANSIONS: dict[str, str] = {
@@ -273,23 +332,26 @@ def is_consumer_scope(*, category: str | None, complaint: str) -> bool:
     if normalized_category in _OUT_OF_SCOPE_CATEGORIES:
         return False
 
-    normalized_complaint = _clean(complaint).casefold()
-    has_strong_consumer_signal = any(
-        signal in normalized_complaint for signal in _STRONG_CONSUMER_SIGNALS
+    normalized_complaint = _scope_normalize(complaint)
+    has_strong_consumer_signal = _scope_contains_any(
+        normalized_complaint, _STRONG_CONSUMER_SIGNALS
     )
-    has_weak_consumer_signal = any(
-        signal in normalized_complaint for signal in _WEAK_CONSUMER_SIGNALS
+    has_weak_consumer_signal = _scope_contains_any(
+        normalized_complaint, _WEAK_CONSUMER_SIGNALS
     )
-    has_non_consumer_signal = any(
-        signal in normalized_complaint for signal in _NON_CONSUMER_SIGNALS
+    has_non_consumer_signal = _scope_contains_any(
+        normalized_complaint, _NON_CONSUMER_SIGNALS
     )
     # The narrative is checked before the category, not after it. The intake
     # taxonomy is inferred from the same free text by keyword, so a labour or
     # inheritance dispute easily lands in a concrete consumer category; letting
     # the category short-circuit the check made this gate unreachable for every
     # value except "other".
-    if has_non_consumer_signal and not has_strong_consumer_signal:
-        return False
+    if has_non_consumer_signal:
+        return any(
+            _clause_has_consumer_relationship(clause)
+            for clause in _scope_clauses(normalized_complaint)
+        )
     if normalized_category in _CATEGORY_EXPANSIONS and normalized_category != "other":
         return True
     return has_strong_consumer_signal or has_weak_consumer_signal or not has_non_consumer_signal
@@ -319,6 +381,54 @@ def _join_non_empty(*values: str | None) -> str:
 
 def _clean(value: str | None) -> str:
     return " ".join((value or "").split())
+
+
+def _scope_normalize(value: str | None) -> str:
+    decomposed = unicodedata.normalize("NFKD", (value or "").casefold())
+    normalized = "".join(
+        character for character in decomposed if not unicodedata.combining(character)
+    )
+    return re.sub(r"[^\S\n]+", " ", normalized).strip()
+
+
+def _scope_contains_any(value: str, signals: tuple[str, ...]) -> bool:
+    return any(_scope_normalize(signal) in value for signal in signals)
+
+
+def _scope_clauses(normalized_complaint: str) -> tuple[str, ...]:
+    return tuple(
+        clause.strip()
+        for clause in _SCOPE_CLAUSE_BOUNDARY.split(normalized_complaint)
+        if clause.strip()
+    )
+
+
+def _clause_has_consumer_relationship(clause: str) -> bool:
+    bank_counterparty = "banco" in clause and "banco de horas" not in clause
+    bank_account_dispute = (
+        bank_counterparty
+        and _scope_contains_any(clause, _BANK_ACCOUNT_SIGNALS)
+        and _scope_contains_any(clause, _BANK_ACCESS_FAILURE_SIGNALS)
+    )
+    if bank_account_dispute:
+        return True
+
+    has_counterparty = bank_counterparty or _scope_contains_any(
+        clause, _CONSUMER_COUNTERPARTY_SIGNALS
+    )
+    if not has_counterparty or not _scope_contains_any(
+        clause, _CONSUMER_TRANSACTION_SERVICE_SIGNALS
+    ):
+        return False
+    if not _scope_contains_any(clause, _NON_CONSUMER_SIGNALS):
+        return True
+
+    # A worker can still have a separate consumer dispute with the employer's
+    # store. Requiring an explicit personal card or invoice charge preserves
+    # that case without treating a workplace purchase as a CDC relationship.
+    return _scope_contains_any(clause, ("cobrança",)) and _scope_contains_any(
+        clause, ("cartão", "fatura")
+    )
 
 
 def _bounded(value: str) -> str:

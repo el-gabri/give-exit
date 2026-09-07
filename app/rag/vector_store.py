@@ -690,11 +690,11 @@ def _bm25_rank(query: str, chunks: list[Chunk], k: int) -> list[RetrievedChunk]:
     """Small deterministic BM25 implementation with no runtime dependency."""
     if k < 1 or not chunks:
         return []
-    query_terms = Counter(_lexical_tokens(query))
+    query_terms = Counter(portuguese_lexical_tokens(query))
     if not query_terms:
         return []
 
-    documents = [_lexical_tokens(chunk.text) for chunk in chunks]
+    documents = [portuguese_lexical_tokens(chunk.text) for chunk in chunks]
     document_frequency = {
         term: sum(term in set(document) for document in documents) for term in query_terms
     }
@@ -729,6 +729,8 @@ def _bm25_rank(query: str, chunks: list[Chunk], k: int) -> list[RetrievedChunk]:
     return ranked[:k]
 
 
-def _lexical_tokens(text: str) -> list[str]:
+def portuguese_lexical_tokens(text: str) -> list[str]:
+    """Normalize text with the same stopword policy as local BM25 retrieval."""
+
     tokens = re.findall(r"[a-z0-9]+", _normalize_lexical_text(text))
     return [token for token in tokens if token not in _PORTUGUESE_STOPWORDS]

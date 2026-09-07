@@ -113,6 +113,53 @@ def test_scope_gate_abstains_only_on_strong_non_consumer_signals() -> None:
             "que eu não fiz."
         ),
     )
+    assert not is_consumer_scope(
+        category="other",
+        complaint=(
+            "Meu empregador fez uma cobrança indevida no contracheque e não pagou "
+            "meu salário."
+        ),
+    )
+    assert not is_consumer_scope(
+        category="other",
+        complaint="Comprei o uniforme obrigatório e meu empregador não me reembolsou.",
+    )
+    assert is_consumer_scope(
+        category="other",
+        complaint="O banco bloqueou minha conta-salário e não libera meu salário.",
+    )
+    assert not is_consumer_scope(
+        category="other",
+        complaint=(
+            "Meu empregador fez uma cobrança sobre o banco de horas e não pagou "
+            "meu salário."
+        ),
+    )
+    assert not is_consumer_scope(
+        category="other",
+        complaint=(
+            "O banco fica perto do meu trabalho. Meu empregador bloqueou minha conta "
+            "no sistema de ponto e não pagou meu salário."
+        ),
+    )
+    assert is_consumer_scope(
+        category="other",
+        complaint=(
+            "Meu empregador não pagou meu salário. A operadora cancelou meu serviço "
+            "de internet."
+        ),
+    )
+    assert not is_consumer_scope(
+        category="other",
+        complaint=(
+            "Comprei o uniforme obrigatório na loja em que trabalho, mas meu "
+            "empregador não me reembolsou o salário."
+        ),
+    )
+    assert not is_consumer_scope(
+        category="other",
+        complaint="A companhia não depositou meu sala\u0301rio.",
+    )
 
 
 def test_lay_intake_category_is_refined_for_legal_retrieval() -> None:

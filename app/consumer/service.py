@@ -12,6 +12,7 @@ import hashlib
 import re
 import uuid
 from decimal import Decimal
+from itertools import combinations
 from pathlib import Path
 from time import perf_counter
 from typing import Any
@@ -73,6 +74,7 @@ from app.consumer.store import (
 from app.core.logging import get_logger
 from app.ingestion.service import DocumentIngestionService
 from app.rag.pipeline import RagPipeline
+from app.rag.vector_store import portuguese_lexical_tokens
 from app.schemas.document import DocumentPage, ExtractionMethod, ParsedDocument
 from app.schemas.rag import RetrievedChunk
 from app.schemas.security import SecurityAction
@@ -109,6 +111,47 @@ _EVIDENCE_PAGE_MARKER_RE = re.compile(
 # create a link, and escaping them turned every masked "CPF 12.***.***/0001-00"
 # in real evidence into "12.\*\*\*.\*\*\*/0001-00" in the delivered document.
 _MARKDOWN_INLINE_ESCAPE_RE = re.compile(r"([\\`\[\]<>])")
+
+# These words come from the evidence-query scaffolding or generic request
+# phrasing. Letting them count as factual overlap would make almost any receipt
+# or attachment look supportive merely because it mentions a document, value,
+# date or requested solution.
+_GENERIC_EVIDENCE_TERMS = frozenset(
+    {
+        "comprova",
+        "comprovacao",
+        "comunicacao",
+        "comunicacoes",
+        "data",
+        "datas",
+        "documento",
+        "evidencia",
+        "fato",
+        "fatos",
+        "prejuizo",
+        "providencia",
+        "providencias",
+        "quero",
+        "solicitada",
+        "solicitado",
+        "solucao",
+        "tentativa",
+        "valor",
+        "valores",
+    }
+)
+_DATE_ANCHOR_RE = re.compile(
+    r"\b(?:\d{1,2}[./-]\d{1,2}[./-]\d{2,4}|\d{4}[./-]\d{1,2}[./-]\d{1,2})\b"
+)
+_LABELED_IDENTIFIER_RE = re.compile(
+    r"\b(?:contrato|fatura|ocorrencia|pedido|protocolo)\s*"
+    r"(?:n(?:o|ro)?\.?|numero)?\s*[:#-]?\s*([a-z0-9][a-z0-9./-]{3,})",
+    re.IGNORECASE,
+)
+_EMBEDDED_IDENTIFIER_RE = re.compile(
+    r"\b(?=[a-z0-9./-]*\d)[a-z0-9][a-z0-9./-]{5,}\b",
+    re.IGNORECASE,
+)
 
 _CATEGORY_LABEL = {
     "unauthorized_charge": "cobrança não reconhecida ou indevida",
@@ -422,6 +465,7 @@ class ConsumerCaseService:
             evidence_results,
             page_sources,
             evidence_traces,
+            record.facts,
         )
         if not legal_grounds or not evidence_references:
             missing_support: list[str] = []
@@ -926,6 +970,7 @@ class ConsumerCaseService:
         result_sets: list[list[RetrievedChunk]],
         page_sources: dict[int, tuple[StoredEvidence, int]],
         traces: list[RetrievalTrace],
+        facts: ConsumerCaseFacts,
     ) -> list[EvidenceCitation]:
         strongly_supported = strongly_supported_chunk_ids(traces)
         if not strongly_supported:
@@ -953,7 +998,7 @@ class ConsumerCaseService:
                 continue
             evidence, original_page = source
             quote = _clean_chunk_quote(chunk.text)
-            if not quote:
+            if not quote or not _evidence_supports_confirmed_facts(quote, facts):
                 continue
             citations.append(
                 EvidenceCitation(
@@ -1094,6 +1139,199 @@ def _chunk_query_occurrences(traces: list[RetrievalTrace]) -> dict[str, int]:
         for item in trace.results:
             occurrences.setdefault(item.chunk_id, set()).add(query_key)
     return {chunk_id: len(queries) for chunk_id, queries in occurrences.items()}
+
+
+def _evidence_supports_confirmed_facts(text: str, facts: ConsumerCaseFacts) -> bool:
+    """Require a retrieved excerpt to support the confirmed case topic."""
+
+    text_tokens = portuguese_lexical_tokens(text)
+    if not text_tokens:
+        return False
+    if _matches_unique_case_identifier(text_tokens, facts):
+        return True
+
+    factual_text = " ".join(
+        value
+        for value in (facts.complaint_summary, facts.desired_resolution)
+        if value
+    )
+    supplier_tokens = set(portuguese_lexical_tokens(facts.bank_name or ""))
+    fact_topic = [
+        token
+        for token in portuguese_lexical_tokens(factual_text)
+        if len(token) >= 3
+        and not token.isdigit()
+        and token not in _GENERIC_EVIDENCE_TERMS
+        and token not in supplier_tokens
+    ]
+    evidence_topic = [
+        token
+        for token in text_tokens
+        if len(token) >= 3
+        and not token.isdigit()
+        and token not in _GENERIC_EVIDENCE_TERMS
+        and token not in supplier_tokens
+    ]
+    return _has_topical_evidence_overlap(
+        fact_topic,
+        evidence_topic,
+        hard_anchor_count=_evidence_hard_anchor_count(text, text_tokens, facts),
+    )
+
+
+def _evidence_hard_anchor_count(
+    text: str,
+    text_tokens: list[str],
+    facts: ConsumerCaseFacts,
+) -> int:
+    matched: set[str] = set()
+    fact_amounts = {
+        amount
+        for amount in (
+            facts.direct_loss_amount,
+            facts.improper_payment_amount,
+            facts.unsuccessful_scenario_cost_amount,
+        )
+        if amount is not None and amount > 0
+    }
+    for fact_text in (facts.complaint_summary, facts.desired_resolution):
+        if fact_text:
+            fact_amounts.update(item.amount for item in extract_brl_mentions(fact_text))
+    if fact_amounts.intersection(item.amount for item in extract_brl_mentions(text)):
+        matched.add("amount")
+
+    supplier_tokens = portuguese_lexical_tokens(facts.bank_name or "")
+    if supplier_tokens and _contains_token_sequence(text_tokens, supplier_tokens):
+        matched.add("supplier")
+
+    fact_texts = [
+        facts.incident_date_or_period or "",
+        facts.complaint_summary or "",
+        facts.desired_resolution or "",
+    ]
+    date_anchors = {
+        match.group(0)
+        for fact_text in fact_texts
+        for match in _DATE_ANCHOR_RE.finditer(fact_text)
+    }
+    if any(
+        _contains_token_sequence(text_tokens, portuguese_lexical_tokens(anchor))
+        for anchor in date_anchors
+    ):
+        matched.add("date")
+    return len(matched)
+
+
+def _matches_unique_case_identifier(
+    text_tokens: list[str],
+    facts: ConsumerCaseFacts,
+) -> bool:
+    fact_texts = [
+        facts.incident_date_or_period or "",
+        facts.complaint_summary or "",
+        facts.desired_resolution or "",
+    ]
+
+    identifiers = set(facts.prior_protocols)
+    identifiers.update(
+        match.group(0)
+        for protocol in facts.prior_protocols
+        for match in _EMBEDDED_IDENTIFIER_RE.finditer(protocol)
+    )
+    identifiers.update(
+        match.group(1)
+        for fact_text in fact_texts
+        for match in _LABELED_IDENTIFIER_RE.finditer(fact_text)
+        if any(char.isdigit() for char in match.group(1))
+    )
+    return any(
+        len(compact := "".join(portuguese_lexical_tokens(identifier))) >= 4
+        and _contains_compact_identifier(text_tokens, compact)
+        for identifier in identifiers
+    )
+
+
+def _has_topical_evidence_overlap(
+    fact_tokens: list[str],
+    evidence_tokens: list[str],
+    *,
+    hard_anchor_count: int,
+) -> bool:
+    """Match a factual phrase, or several shared terms close together in both texts."""
+
+    shared = set(fact_tokens).intersection(evidence_tokens)
+    if len(shared) < 2:
+        return False
+
+    # Several independent anchors make two topical matches meaningful even if
+    # the consumer and the source use a different word order.
+    if hard_anchor_count >= 2:
+        return True
+
+    fact_bigrams = set(zip(fact_tokens, fact_tokens[1:], strict=False))
+    evidence_bigrams = set(zip(evidence_tokens, evidence_tokens[1:], strict=False))
+    if fact_bigrams.intersection(evidence_bigrams):
+        return True
+
+    required_terms = 2 if hard_anchor_count else 3
+    window_width = 4 if hard_anchor_count else 6
+    if len(shared) < required_terms:
+        return False
+    fact_groups = _proximate_term_groups(
+        fact_tokens,
+        shared,
+        group_size=required_terms,
+        window_width=window_width,
+    )
+    if not fact_groups:
+        return False
+    evidence_groups = _proximate_term_groups(
+        evidence_tokens,
+        shared,
+        group_size=required_terms,
+        window_width=window_width,
+    )
+    return not fact_groups.isdisjoint(evidence_groups)
+
+
+def _proximate_term_groups(
+    tokens: list[str],
+    allowed: set[str],
+    *,
+    group_size: int,
+    window_width: int,
+) -> set[tuple[str, ...]]:
+    groups: set[tuple[str, ...]] = set()
+    for index in range(len(tokens)):
+        window_terms = sorted(set(tokens[index : index + window_width]).intersection(allowed))
+        groups.update(combinations(window_terms, group_size))
+    return groups
+
+
+def _contains_token_sequence(tokens: list[str], sequence: list[str]) -> bool:
+    if not sequence or len(sequence) > len(tokens):
+        return False
+    width = len(sequence)
+    return any(
+        tokens[index : index + width] == sequence
+        for index in range(len(tokens) - width + 1)
+    )
+
+
+def _contains_compact_identifier(tokens: list[str], identifier: str) -> bool:
+    """Match an identifier across punctuation splits, never across unrelated text."""
+
+    if len(identifier) < 4:
+        return False
+    for start in range(len(tokens)):
+        candidate = ""
+        for token in tokens[start:]:
+            candidate += token
+            if candidate == identifier:
+                return True
+            if len(candidate) >= len(identifier):
+                break
+    return False
 
 
 def _annotate_composer_selection(

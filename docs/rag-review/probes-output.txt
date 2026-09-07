@@ -1,0 +1,258 @@
+{
+  "art5_channels": {
+    "dense": [
+      {
+        "rank": 2,
+        "score": 0.6295940775570935,
+        "chunk_id": "d68e1774805dd3ee:legal:br-cdc-art-5:article:part-01",
+        "shared_tokens": [
+          "assistencia",
+          "consumo"
+        ]
+      }
+    ],
+    "lexical": [
+      {
+        "rank": 11,
+        "score": 8.433894086830339,
+        "chunk_id": "d68e1774805dd3ee:legal:br-cdc-art-5-inciso-i:part-01",
+        "shared_tokens": [
+          "assistencia",
+          "consumo"
+        ]
+      },
+      {
+        "rank": 17,
+        "score": 6.372352200380112,
+        "chunk_id": "d68e1774805dd3ee:legal:br-cdc-art-5:article:part-01",
+        "shared_tokens": [
+          "assistencia",
+          "consumo"
+        ]
+      }
+    ]
+  },
+  "evaluation_design": {
+    "cases": 15,
+    "no_ground_cases": 2,
+    "requested_k": 10,
+    "production_k": 8,
+    "candidate_k": 40,
+    "production_candidate_k": 32,
+    "query_formatter_in_trace": false
+  },
+  "rrf": {
+    "maximum": 0.03278688524590164,
+    "single_ceiling": 0.01639344262295082,
+    "both_channels_rank32": 0.021739130434782608,
+    "minimum_ratio": 0.6630434782608695,
+    "rrf_floor_excludes_supported_default": false
+  },
+  "low_raw_scores_still_cited": [
+    {
+      "unit_id": "br-cdc-art-5-inciso-i",
+      "score": 0.03278688524590164
+    },
+    {
+      "unit_id": "br-cdc-art-104-a-paragrafo-5",
+      "score": 0.03225806451612903
+    }
+  ],
+  "target_eligibility": {
+    "br-cdc-art-5-inciso-i": true,
+    "br-cdc-art-104-a-paragrafo-5": true
+  },
+  "degraded_natural_queries": [
+    {
+      "complaint": "A assistência técnica da loja não me atende e não resolve o defeito do aparelho.",
+      "queries": [
+        "Situação de consumo relatada: A assistência técnica da loja não me atende e não resolve o defeito do aparelho.. Quero a solução do problema.. Localizar dispositivos legais diretamente aplicáveis.",
+        "A assistência técnica da loja não me atende e não resolve o defeito do aparelho.. Quero a solução do problema.. direitos básicos do consumidor fornecedor produto serviço reparação",
+        "direitos básicos do consumidor fornecedor produto serviço reparação"
+      ],
+      "grounds": [
+        "br-cdc-art-14-paragrafo-3-inciso-i"
+      ]
+    },
+    {
+      "complaint": "Paguei assistência para consertar a geladeira, mas não resolveram.",
+      "queries": [
+        "Situação de consumo relatada: Paguei assistência para consertar a geladeira, mas não resolveram.. Quero a solução do problema.. Localizar dispositivos legais diretamente aplicáveis.",
+        "Paguei assistência para consertar a geladeira, mas não resolveram.. Quero a solução do problema.. direitos básicos do consumidor fornecedor produto serviço reparação",
+        "direitos básicos do consumidor fornecedor produto serviço reparação"
+      ],
+      "grounds": [
+        "br-cdc-art-24-caput",
+        "br-cdc-art-14-paragrafo-3-inciso-i",
+        "br-cdc-art-6-inciso-vi"
+      ]
+    },
+    {
+      "complaint": "Comprei um produto e a loja se recusa a me dar assistência gratuita.",
+      "queries": [
+        "Situação de consumo relatada: Comprei um produto e a loja se recusa a me dar assistência gratuita.. Quero a solução do problema.. Localizar dispositivos legais diretamente aplicáveis.",
+        "Comprei um produto e a loja se recusa a me dar assistência gratuita.. Quero a solução do problema.. direitos básicos do consumidor fornecedor produto serviço reparação",
+        "direitos básicos do consumidor fornecedor produto serviço reparação"
+      ],
+      "grounds": [
+        "br-cdc-art-5-inciso-i",
+        "br-cdc-art-24-caput"
+      ]
+    }
+  ],
+  "identical_query_fallback": {
+    "hashes_equal": true,
+    "supported_count": 3
+  },
+  "uppercase_receipt": {
+    "input": "CASO ABCDEF12 EVIDENCIA ABCDEF34 PAGINA 1\n\nPAGAMENTO APROVADO\n\nTOTAL R$ 149,90",
+    "chunks": []
+  },
+  "long_queries": {
+    "lengths": [
+      1172,
+      1159,
+      70
+    ],
+    "q3": "cobrança indevida repetição do indébito pagamento em excesso artigo 42",
+    "resolution_retained": [
+      true,
+      true,
+      false
+    ]
+  },
+  "merge": {
+    "max_order": [
+      "d68e1774805dd3ee:legal:br-cf-art-1-iii:part-01",
+      "d68e1774805dd3ee:legal:br-cf-art-5-v:part-01"
+    ],
+    "cross_query_rrf_order": [
+      "d68e1774805dd3ee:legal:br-cf-art-5-v:part-01",
+      "d68e1774805dd3ee:legal:br-cf-art-1-iii:part-01"
+    ]
+  },
+  "cancellation": {
+    "active_before_release": 2,
+    "peak": 2
+  },
+  "legal_chunks": {
+    "max_length": 1194,
+    "over_target": 0,
+    "split_unit_count": 1,
+    "article_chunks": 29
+  },
+  "summary": {
+    "hybrid": {
+      "grounds": 79,
+      "labeled_hard_negatives": [
+        [
+          "servico_de_reparo_malfeito",
+          "br-cdc-art-18-paragrafo-6-inciso-ii"
+        ],
+        [
+          "oferta_nao_entregue",
+          "br-cdc-art-18"
+        ],
+        [
+          "arrependimento_compra_online",
+          "br-cdc-art-18"
+        ],
+        [
+          "superendividamento_e_minimo_existencial",
+          "br-cdc-art-42-paragrafo-unico"
+        ]
+      ],
+      "notice_exact_recall": 0.3333333333333333,
+      "articles": {
+        "br-cdc-art-18": 7,
+        "br-cdc-art-19": 3,
+        "br-cdc-art-5": 1,
+        "br-cdc-art-39": 7,
+        "br-cdc-art-54-b": 5,
+        "br-cdc-art-20": 2,
+        "br-cdc-art-14": 2,
+        "br-cdc-art-54-g": 8,
+        "br-cdc-art-35": 1,
+        "br-cdc-art-33": 2,
+        "br-cdc-art-104-a": 3,
+        "br-cdc-art-4": 5,
+        "br-cdc-art-49": 1,
+        "br-cdc-art-54-f": 2,
+        "br-cdc-art-54-d": 2,
+        "br-cdc-art-37": 1,
+        "br-cdc-art-6": 2,
+        "br-cdc-art-30": 1,
+        "br-cdc-art-53": 1,
+        "br-cdc-art-51": 4,
+        "br-cdc-art-42": 3,
+        "br-cdc-art-44": 2,
+        "br-cdc-art-42-a": 2,
+        "br-cdc-art-43": 2,
+        "br-cdc-art-104-c": 1,
+        "br-cdc-art-12": 2,
+        "br-cdc-art-54": 1,
+        "br-cdc-art-22": 1,
+        "br-cdc-art-10": 1,
+        "br-cdc-art-8": 1,
+        "br-cdc-art-9": 1,
+        "br-cdc-art-104-b": 1,
+        "br-cdc-art-54-a": 1
+      }
+    },
+    "degraded": {
+      "grounds": 18,
+      "labeled_hard_negatives": [],
+      "notice_exact_recall": 0.34615384615384615,
+      "articles": {
+        "br-cdc-art-18": 1,
+        "br-cdc-art-20": 1,
+        "br-cdc-art-35": 1,
+        "br-cdc-art-49": 1,
+        "br-cdc-art-37": 1,
+        "br-cdc-art-38": 1,
+        "br-cdc-art-39": 1,
+        "br-cdc-art-42": 2,
+        "br-cdc-art-42-a": 2,
+        "br-cdc-art-43": 1,
+        "br-cdc-art-54": 1,
+        "br-cdc-art-51": 1,
+        "br-cdc-art-22": 1,
+        "br-cdc-art-10": 1,
+        "br-cdc-art-104-b": 1,
+        "br-cdc-art-104-a": 1
+      }
+    },
+    "corroborated_hybrid": {
+      "grounds": 22,
+      "labeled_hard_negatives": [
+        [
+          "servico_de_reparo_malfeito",
+          "br-cdc-art-18-paragrafo-6-inciso-ii"
+        ],
+        [
+          "oferta_nao_entregue",
+          "br-cdc-art-18"
+        ],
+        [
+          "arrependimento_compra_online",
+          "br-cdc-art-18"
+        ]
+      ],
+      "notice_exact_recall": 0.0641025641025641,
+      "articles": {
+        "br-cdc-art-18": 4,
+        "br-cdc-art-20": 1,
+        "br-cdc-art-54-g": 6,
+        "br-cdc-art-104-a": 2,
+        "br-cdc-art-49": 1,
+        "br-cdc-art-54-b": 2,
+        "br-cdc-art-104-c": 1,
+        "br-cdc-art-51": 1,
+        "br-cdc-art-10": 1,
+        "br-cdc-art-12": 1,
+        "br-cdc-art-8": 1,
+        "br-cdc-art-104-b": 1
+      }
+    }
+  }
+}

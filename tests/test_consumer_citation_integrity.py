@@ -13,7 +13,12 @@ import httpx
 import pytest
 
 from app.api.main import create_app
-from app.consumer.service import _clean_chunk_quote, _markdown_inline
+from app.consumer.schemas import ConsumerCaseFacts
+from app.consumer.service import (
+    _clean_chunk_quote,
+    _evidence_supports_confirmed_facts,
+    _markdown_inline,
+)
 from app.core.config import LLMProvider, Settings, VectorStoreBackend
 from app.rag.chunking import is_heading
 from app.reporting.convert import strip_markdown_escapes
@@ -28,6 +33,16 @@ CONTRATO = (
     "CONTRATO DA OPERADORA XPTO. O cliente autorizou expressamente o debito "
     "automatico mensal e declarou ciencia integral das clausulas contratuais."
 )
+
+
+def _confirmed_facts() -> ConsumerCaseFacts:
+    return ConsumerCaseFacts(
+        bank_name="Loja Exemplo",
+        complaint_summary=(
+            "A Loja Exemplo cobrou R$ 250,00 na fatura sem autorizacao."
+        ),
+        desired_resolution="Quero o estorno integral da cobranca indevida.",
+    )
 
 
 def _evidence_traces(
@@ -234,6 +249,7 @@ def test_chunk_spanning_pages_is_dropped_rather_than_misattributed() -> None:
             result_sets,
             page_sources,
             _evidence_traces(result_sets),
+            _confirmed_facts(),
         )
         == []
     )
@@ -290,11 +306,156 @@ def test_evidence_references_exclude_hits_without_retrieval_support() -> None:
         result_sets,
         page_sources,
         _evidence_traces(result_sets),
+        _confirmed_facts(),
     )
 
     assert [(citation.filename, citation.chunk_id) for citation in citations] == [
         ("fatura.pdf", "evidence:relevant")
     ]
+
+
+def test_dual_channel_hit_without_confirmed_fact_overlap_is_not_cited() -> None:
+    """Channel agreement is not evidence that a retrieved attachment proves a fact."""
+    from app.consumer.schemas import ConsumerEvidence, EvidenceStatus
+    from app.consumer.service import ConsumerCaseService
+    from app.consumer.store import StoredEvidence
+    from app.schemas.document import ExtractionMethod
+    from app.schemas.rag import Chunk
+
+    def _evidence(evidence_id: str, name: str) -> StoredEvidence:
+        return StoredEvidence(
+            public=ConsumerEvidence(
+                evidence_id=evidence_id,
+                filename=name,
+                page_count=1,
+                media_type="application/pdf",
+                extraction_method=ExtractionMethod.NATIVE_TEXT,
+                status=EvidenceStatus.ACCEPTED,
+                source_sha256="0" * 64,
+                content_sha256="1" * 64,
+            )
+        )
+
+    relevant = RetrievedChunk(
+        chunk=Chunk(
+            chunk_id="evidence:invoice",
+            doc_id="evidence-doc",
+            text="Compra cobrada na fatura sem autorizacao.",
+            page_start=1,
+            page_end=1,
+        ),
+        score=0.032,
+    )
+    unrelated = RetrievedChunk(
+        chunk=Chunk(
+            chunk_id="evidence:menu",
+            doc_id="evidence-doc",
+            text="Cardapio executivo: valor R$ 45,00, entrega prevista para sexta-feira.",
+            page_start=2,
+            page_end=2,
+        ),
+        # Consistent with appearing at rank 24 in both RRF channels and safely
+        # above the maximum possible contribution from either channel alone.
+        score=2 / (60 + 24),
+    )
+    result_sets = [[relevant, unrelated]]
+    page_sources = {
+        1: (_evidence("a" * 32, "fatura.pdf"), 1),
+        2: (_evidence("b" * 32, "cardapio.pdf"), 1),
+    }
+
+    citations = ConsumerCaseService._evidence_references(
+        result_sets,
+        page_sources,
+        _evidence_traces(result_sets),
+        _confirmed_facts(),
+    )
+
+    assert [(citation.filename, citation.chunk_id) for citation in citations] == [
+        ("fatura.pdf", "evidence:invoice")
+    ]
+
+
+def _bank_fee_facts() -> ConsumerCaseFacts:
+    return ConsumerCaseFacts(
+        bank_name="Bradesco",
+        complaint_summary=(
+            "O Bradesco cobrou R$ 9.208,80 em juros de cheque especial e tarifa "
+            "de manutencao da conta."
+        ),
+        incident_date_or_period="05/09/2025",
+        desired_resolution="Quero cancelar a tarifa e receber de volta os juros.",
+    )
+
+
+@pytest.mark.parametrize(
+    "excerpt",
+    [
+        "Bradesco: politica de privacidade da conta e protecao de dados pessoais.",
+        (
+            "Bradesco oferece emprestimo pessoal no valor de R$ 9.208,80, com "
+            "taxa de juros de 1,5% ao mes e pagamento em 48 parcelas."
+        ),
+        "Aviso de expediente publicado em 05/09/2025.",
+        "Taxa de juros para manutencao de veiculos.",
+    ],
+)
+def test_non_unique_anchor_or_unordered_terms_do_not_support_evidence(
+    excerpt: str,
+) -> None:
+    assert not _evidence_supports_confirmed_facts(excerpt, _bank_fee_facts())
+
+
+def test_unique_case_identifier_can_support_evidence_by_itself() -> None:
+    facts = ConsumerCaseFacts(prior_protocols=["ABC-123"])
+
+    assert _evidence_supports_confirmed_facts(
+        "Atendimento identificado como ABC-123.",
+        facts,
+    )
+
+
+def test_unique_case_identifier_does_not_match_as_a_substring() -> None:
+    facts = ConsumerCaseFacts(prior_protocols=["1234"])
+
+    assert not _evidence_supports_confirmed_facts(
+        "Atendimento identificado como 91234.",
+        facts,
+    )
+
+
+def test_identifier_is_extracted_from_a_descriptive_protocol_value() -> None:
+    facts = ConsumerCaseFacts(
+        prior_protocols=["Protocolo de atendimento no SAC 123091890"]
+    )
+
+    assert _evidence_supports_confirmed_facts(
+        "Protocolo 123091890.",
+        facts,
+    )
+
+
+def test_hard_anchor_plus_proximate_topic_supports_evidence() -> None:
+    facts = ConsumerCaseFacts(
+        bank_name="Bradesco",
+        complaint_summary="O banco lancou tarifa de manutencao da conta.",
+    )
+
+    assert _evidence_supports_confirmed_facts(
+        "Bradesco registrou manutencao mensal da tarifa.",
+        facts,
+    )
+
+
+def test_strong_proximate_topic_supports_evidence_without_hard_anchor() -> None:
+    facts = ConsumerCaseFacts(
+        complaint_summary="Compra lancada na fatura sem autorizacao.",
+    )
+
+    assert _evidence_supports_confirmed_facts(
+        "A fatura registra compra sem autorizacao.",
+        facts,
+    )
 
 
 def test_untrusted_excerpt_cannot_inject_a_markdown_link() -> None:
