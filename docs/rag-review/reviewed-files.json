@@ -1,0 +1,86 @@
+[
+  {
+    "Path": "C:\\Users\\gabri\\PycharmProjects\\give-exit\\app\\rag\\pipeline.py",
+    "Hash": "D360675446743D186E1519E4A2EDA4C52AA814CEC9850467DFC26B86415B33D0"
+  },
+  {
+    "Path": "C:\\Users\\gabri\\PycharmProjects\\give-exit\\app\\rag\\vector_store.py",
+    "Hash": "A7443876E23E64202905038EB1370C888F8C026BF0A19EF0302DA46C4B4115C6"
+  },
+  {
+    "Path": "C:\\Users\\gabri\\PycharmProjects\\give-exit\\app\\rag\\embeddings.py",
+    "Hash": "86124EF5D7A3187EF3EF3060ED3A96D4567121CC0BE293E97CF87DF36ADE7D17"
+  },
+  {
+    "Path": "C:\\Users\\gabri\\PycharmProjects\\give-exit\\app\\rag\\factory.py",
+    "Hash": "2C9D36F391890FBED8F9C778549FF3866FB42644C909F1BB2B66D0185F753D9A"
+  },
+  {
+    "Path": "C:\\Users\\gabri\\PycharmProjects\\give-exit\\app\\rag\\resilience.py",
+    "Hash": "A00CBBBA0B866CCA83D64D53830529FB562C705AA1B657C02029387F3FF0718C"
+  },
+  {
+    "Path": "C:\\Users\\gabri\\PycharmProjects\\give-exit\\app\\rag\\chunking.py",
+    "Hash": "E4C318FFF411A27EF0D4C4F9CB7573D5D9F725B625B58B96FE82576788B91067"
+  },
+  {
+    "Path": "C:\\Users\\gabri\\PycharmProjects\\give-exit\\app\\rag\\reranking.py",
+    "Hash": "AF582B1417D25FBF5FA531D4E6E88951E3B9AC972CF3752A9A6BEDF1712EB5BC"
+  },
+  {
+    "Path": "C:\\Users\\gabri\\PycharmProjects\\give-exit\\app\\consumer\\legal_corpus.py",
+    "Hash": "D5010985CCCFB40B3D1923EE7E3E5F348B9F0C21A3147185CE77E2639592BE1D"
+  },
+  {
+    "Path": "C:\\Users\\gabri\\PycharmProjects\\give-exit\\app\\consumer\\embedding_generation.py",
+    "Hash": "F23257684FB2313F7DBBF3F01DA496135A0BF9DBA7B834F87BA2F2AA784ADDB8"
+  },
+  {
+    "Path": "C:\\Users\\gabri\\PycharmProjects\\give-exit\\app\\consumer\\retrieval.py",
+    "Hash": "493C622388E94A0F7CBE2E92D15AD6FFCF8A592C65183485CBF0FA853CF8834B"
+  },
+  {
+    "Path": "C:\\Users\\gabri\\PycharmProjects\\give-exit\\app\\consumer\\legal_policy.py",
+    "Hash": "20A2C330412668B41014D02B456E237F6B37FCD52FC7FE15D00672927A3DC1DA"
+  },
+  {
+    "Path": "C:\\Users\\gabri\\PycharmProjects\\give-exit\\app\\consumer\\legal_index.py",
+    "Hash": "47208CB62CE24DA8A8CA52512323804E5C0B5ADCCE94922E7FE3F92D18B20C76"
+  },
+  {
+    "Path": "C:\\Users\\gabri\\PycharmProjects\\give-exit\\app\\consumer\\service.py",
+    "Hash": "B6AA55C50C0A06A74DA863E15679351FECFF54EB0B356B07199CD10254BAD410"
+  },
+  {
+    "Path": "C:\\Users\\gabri\\PycharmProjects\\give-exit\\app\\evaluation\\__init__.py",
+    "Hash": "637597735BE3703DA3105A6CE93A8CC09861B932ED8A9B4EF7AD8297FB424073"
+  },
+  {
+    "Path": "C:\\Users\\gabri\\PycharmProjects\\give-exit\\app\\evaluation\\consumer_golden.py",
+    "Hash": "7441DBC7C4C255434B38DEB3CDCB6588B4945C029E1217A7BC47CC6C7F17766C"
+  },
+  {
+    "Path": "C:\\Users\\gabri\\PycharmProjects\\give-exit\\app\\evaluation\\consumer_retrievers.py",
+    "Hash": "0DBADFDB7E4616EAEF26D14E69A046380AC601A05AAEA7F8E0CB05982BDFBD52"
+  },
+  {
+    "Path": "C:\\Users\\gabri\\PycharmProjects\\give-exit\\app\\evaluation\\consumer_runner.py",
+    "Hash": "AF9E47289B26411519E78CBFEED8CB77A5CF1F59EAF01B6DE30836EDA4F882CB"
+  },
+  {
+    "Path": "C:\\Users\\gabri\\PycharmProjects\\give-exit\\app\\evaluation\\security_benchmark.py",
+    "Hash": "207CB56572E6C466AE4C7CDC0FDDB0BB93F5CB7314A2E4D12CE8492D914149F9"
+  },
+  {
+    "Path": "C:\\Users\\gabri\\PycharmProjects\\give-exit\\app\\schemas\\rag.py",
+    "Hash": "ACA6910D524A9FF620B9206FDFBAF42193C055B55747D6EE01F1BB2F5DA4B752"
+  },
+  {
+    "Path": "C:\\Users\\gabri\\PycharmProjects\\give-exit\\app\\schemas\\trace.py",
+    "Hash": "618FB9D63E653721A87BC2E0A1E39D1059F1BB32FAACA9796B340369E6588795"
+  },
+  {
+    "Path": "C:\\Users\\gabri\\PycharmProjects\\give-exit\\app\\schemas\\embedding.py",
+    "Hash": "EF4D18958602BC485D95DF9F711E5C9F321A36086D741D1E1631601C5F16C218"
+  }
+]
