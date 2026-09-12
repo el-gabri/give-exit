@@ -76,12 +76,25 @@ jobs:
             --max consumer_hard_negative_rate@5=0.07 \
             --max consumer_inactive_provision_rate@5=0.0 \
             --max consumer_unknown_status_rate@5=0.0
+      - name: Consumer notice final-ground gates
+        # Scores the grounds the production selector would cite, not ranked
+        # candidates. The known-bad ceiling is the measured baseline; it may
+        # only go down.
+        run: |
+          python -m app.evaluation.consumer_runner \
+            eval_data/consumer_legal_retrieval \
+            --evaluate-notice \
+            --output consumer-notice-results.json \
+            --max consumer_notice_known_bad_citations=4 \
+            --min consumer_notice_abstention=1.0
       - name: Upload consumer evaluation evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: consumer-legal-retrieval-results
-          path: consumer-legal-retrieval-results.json
+          path: |
+            consumer-legal-retrieval-results.json
+            consumer-notice-results.json
       - name: Security gate benchmark
         # Thresholds are asserted in tests/test_security_benchmark.py; this
         # step publishes the per-category numbers in the build log.

@@ -2,12 +2,18 @@
 
 from __future__ import annotations
 
+import asyncio
+import json
+import sys
 from pathlib import Path
 from typing import Any
+
+import pytest
 
 from app.consumer.legal_corpus import get_default_legal_corpus
 from app.consumer.legal_policy import LEGAL_GROUND_POLICY_VERSION
 from app.consumer.schemas import ConsumerIssueCategory, LegalGround
+from app.evaluation import consumer_runner
 from app.evaluation.consumer_golden import load_consumer_legal_dataset
 from app.evaluation.consumer_notice import (
     ConsumerNoticeGroundEvaluator,
@@ -179,3 +185,40 @@ async def test_a_failing_case_is_recorded_without_stopping_the_run() -> None:
     assert len(failed) == 13
     assert summary.failed_case_count == 13
     assert all("store offline" in case.errors[0] for case in failed)
+
+
+def test_cli_writes_notice_results_and_gates_on_totals(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    output = tmp_path / "notice.json"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "consumer_runner",
+            str(DATASET_PATH),
+            "--evaluate-notice",
+            "--output",
+            str(output),
+            "--max",
+            "consumer_notice_known_bad_citations=3",
+        ],
+    )
+
+    with pytest.raises(SystemExit) as excinfo:
+        asyncio.run(consumer_runner._cli())
+
+    assert excinfo.value.code == 1
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    assert payload["totals"]["consumer_notice_known_bad_citations"] == 4
+
+
+def test_cli_rejects_require_semantic_without_notice_mode(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(sys, "argv", ["consumer_runner", "--require-semantic"])
+
+    with pytest.raises(SystemExit) as excinfo:
+        asyncio.run(consumer_runner._cli())
+
+    assert excinfo.value.code == 2

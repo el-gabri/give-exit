@@ -234,6 +234,20 @@ python -m app.evaluation.consumer_runner `
   --output consumer-retrieval-results.json
 ```
 
+A avaliação pelo caminho da notificação mede os fundamentos que o seletor de
+produção realmente citaria (as três consultas de produção, k=8, e o mesmo
+`select_legal_grounds` usado pelo serviço), e não candidatos ranqueados:
+
+```powershell
+python -m app.evaluation.consumer_runner --evaluate-notice --output notice-results.json
+python -m app.evaluation.consumer_runner --evaluate-notice --notice-pipeline configured `
+  --require-semantic --output configured-notice-results.json
+```
+
+O relatório traz fundamentos citados, citações ruins conhecidas (hard negatives
+rotulados que foram citados), recall exato das unidades citadas, abstenção e
+sucesso da recuperação semântica.
+
 ## Privacidade e limitações
 
 - Uploads brutos são apagados, mas texto extraído e chunks continuam sendo

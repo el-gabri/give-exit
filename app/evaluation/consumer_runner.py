@@ -564,6 +564,31 @@ def _import_retriever(spec: str) -> ConsumerRetriever:
     return cast(ConsumerRetriever, candidate)
 
 
+async def _run_selected_evaluation(
+    args: argparse.Namespace,
+    dataset: ConsumerLegalGoldenDataset,
+) -> tuple[EvaluationSummary, list[tuple[str, float]]]:
+    """Run the evaluation the CLI flags select; return it with its minimum gates."""
+
+    minimums: list[tuple[str, float]] = list(args.minimums)
+    if args.evaluate_notice:
+        from app.evaluation.consumer_notice import run_notice_evaluation
+
+        summary = await run_notice_evaluation(dataset, pipeline_name=args.notice_pipeline)
+        if args.require_semantic:
+            minimums.append(("consumer_notice_semantic_success", 1.0))
+        return summary, minimums
+    if args.retriever:
+        retriever = _import_retriever(args.retriever)
+    elif args.empty_baseline:
+        retriever = _empty_retriever
+    else:
+        from app.evaluation.consumer_retrievers import offline_hybrid_retriever
+
+        retriever = offline_hybrid_retriever
+    return await ConsumerLegalRetrievalEvaluator(retriever).run(dataset), minimums
+
+
 async def _cli() -> None:
     from app.core.logging import configure_logging
 
@@ -597,7 +622,7 @@ async def _cli() -> None:
         default=[],
         type=_threshold,
         metavar="METRIC=VALUE",
-        help="fail if a metric average falls below VALUE (repeatable)",
+        help="fail if a metric average (or integer total) falls below VALUE (repeatable)",
     )
     parser.add_argument(
         "--max",
@@ -606,22 +631,34 @@ async def _cli() -> None:
         default=[],
         type=_threshold,
         metavar="METRIC=VALUE",
-        help="fail if a metric average rises above VALUE (repeatable)",
+        help="fail if a metric average (or integer total) rises above VALUE (repeatable)",
+    )
+    parser.add_argument(
+        "--evaluate-notice",
+        action="store_true",
+        help="score the grounds the production selector would cite (k=8, three queries)",
+    )
+    parser.add_argument(
+        "--notice-pipeline",
+        choices=("offline", "configured"),
+        default="offline",
+        help="stack used by --evaluate-notice; 'configured' needs an active legal index",
+    )
+    parser.add_argument(
+        "--require-semantic",
+        action="store_true",
+        help="with --evaluate-notice, fail when any case fell back to lexical-only retrieval",
     )
     args = parser.parse_args()
 
+    if args.evaluate_notice and (args.retriever or args.empty_baseline):
+        parser.error("--evaluate-notice cannot be combined with --retriever or --empty-baseline")
+    if args.require_semantic and not args.evaluate_notice:
+        parser.error("--require-semantic requires --evaluate-notice")
     if args.retriever and args.empty_baseline:
         parser.error("--retriever and --empty-baseline are mutually exclusive")
-    if args.retriever:
-        retriever = _import_retriever(args.retriever)
-    elif args.empty_baseline:
-        retriever = _empty_retriever
-    else:
-        from app.evaluation.consumer_retrievers import offline_hybrid_retriever
-
-        retriever = offline_hybrid_retriever
     dataset = load_consumer_legal_dataset(Path(args.dataset))
-    summary = await ConsumerLegalRetrievalEvaluator(retriever).run(dataset)
+    summary, minimums = await _run_selected_evaluation(args, dataset)
     rendered = summary.model_dump_json(indent=2)
     if args.output:
         Path(args.output).write_text(rendered + "\n", encoding="utf-8")
@@ -631,7 +668,7 @@ async def _cli() -> None:
         raise SystemExit(2)
     violations = check_consumer_gates(
         summary,
-        minimums=args.minimums,
+        minimums=minimums,
         maximums=args.maximums,
     )
     if violations:

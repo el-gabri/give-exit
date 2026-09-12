@@ -373,9 +373,23 @@ python -m app.evaluation.consumer_runner \
   --output consumer-retrieval-results.json
 ```
 
+The notice-path evaluation scores the grounds the production selector would
+actually cite (the three production queries, k=8, and the same
+`select_legal_grounds` the service uses), rather than ranked candidates:
+
+```bash
+python -m app.evaluation.consumer_runner --evaluate-notice --output notice-results.json
+python -m app.evaluation.consumer_runner --evaluate-notice --notice-pipeline configured \
+  --require-semantic --output configured-notice-results.json
+```
+
+It reports cited grounds, known-bad citations (labelled hard negatives that
+were cited), exact recall over cited units, abstention and semantic success.
+
 CI runs Ruff, strict MyPy, Python 3.10/3.12 tests, scoped coverage, import-linter
 architecture checks, dead-code detection (vulture), dependency auditing, Consumer
-retrieval regression gates, the prompt-injection benchmark and container builds.
+retrieval and notice final-ground regression gates, the prompt-injection
+benchmark and container builds.
 Mutation testing (`mutmut`, scoped to `app/consumer`, `app/rag` and
 `app/security`) is configured in `pyproject.toml` and runs incrementally on the
 diff rather than as a full-repo CI step.
