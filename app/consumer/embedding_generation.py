@@ -7,14 +7,20 @@ import hashlib
 import importlib.metadata
 import json
 import math
-import os
 import platform
-import struct
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Literal
+from typing import Literal
 
+from app.consumer.embedding_artifacts import (
+    atomic_write,
+    canonical_json_bytes,
+    chunk_ids_sha256,
+    chunks_sha256,
+    float32_vector,
+    vectors_sha256,
+)
 from app.consumer.legal_corpus import LEGAL_CHUNKING_IDENTITY, LegalCorpus
 from app.core.logging import get_logger
 from app.rag.embeddings import validate_embedding_vectors
@@ -259,8 +265,8 @@ class EmbeddingGenerationManager:
             document_id=self._document_id,
             chunking_version=LEGAL_CHUNKING_IDENTITY,
             expected_chunk_count=len(self._chunks),
-            expected_chunk_ids_sha256=_chunk_ids_sha256(self._chunks),
-            expected_chunks_sha256=_chunks_sha256(self._chunks),
+            expected_chunk_ids_sha256=chunk_ids_sha256(self._chunks),
+            expected_chunks_sha256=chunks_sha256(self._chunks),
             contract=self._contract,
             shard_size=self._shard_size,
             expected_shard_count=math.ceil(len(self._chunks) / self._shard_size),
@@ -340,14 +346,14 @@ class EmbeddingGenerationManager:
         chunks: list[Chunk],
         vectors: list[list[float]],
     ) -> EmbeddingShardManifest:
-        float32_vectors = [_float32_vector(vector) for vector in vectors]
+        float32_vectors = [float32_vector(vector) for vector in vectors]
         dimension = validate_embedding_vectors(
             float32_vectors,
             expected_count=len(chunks),
             expected_dimension=self._contract.output_dimension,
         )
         payload = b"\n".join(
-            _canonical_json_bytes(
+            canonical_json_bytes(
                 {"chunk": chunk.model_dump(mode="json"), "vector": vector}
             )
             for chunk, vector in zip(chunks, float32_vectors, strict=True)
@@ -355,15 +361,15 @@ class EmbeddingGenerationManager:
         compressed = gzip.compress(payload, compresslevel=6, mtime=0)
         filename = f"embeddings-{shard_index:04d}.jsonl.gz"
         path = self._generation_dir / filename
-        _atomic_write(path, compressed)
+        atomic_write(path, compressed)
         return EmbeddingShardManifest(
             shard_index=shard_index,
             artifact_file=filename,
             artifact_sha256=hashlib.sha256(compressed).hexdigest(),
             chunk_count=len(chunks),
-            chunk_ids_sha256=_chunk_ids_sha256(chunks),
-            chunks_sha256=_chunks_sha256(chunks),
-            vectors_sha256=_vectors_sha256(float32_vectors),
+            chunk_ids_sha256=chunk_ids_sha256(chunks),
+            chunks_sha256=chunks_sha256(chunks),
+            vectors_sha256=vectors_sha256(float32_vectors),
             output_dimension=dimension,
         )
 
@@ -395,11 +401,11 @@ class EmbeddingGenerationManager:
                 entries,
                 expected_dimension=shard.output_dimension,
             )
-            if _vectors_sha256(vectors) != shard.vectors_sha256:
+            if vectors_sha256(vectors) != shard.vectors_sha256:
                 return None
-            if _chunk_ids_sha256(expected_chunks) != shard.chunk_ids_sha256:
+            if chunk_ids_sha256(expected_chunks) != shard.chunk_ids_sha256:
                 return None
-            if _chunks_sha256(expected_chunks) != shard.chunks_sha256:
+            if chunks_sha256(expected_chunks) != shard.chunks_sha256:
                 return None
             return entries
         except (KeyError, OSError, TypeError, ValueError, gzip.BadGzipFile, json.JSONDecodeError):
@@ -417,7 +423,7 @@ class EmbeddingGenerationManager:
 
     def _save_manifest(self, manifest: EmbeddingGenerationManifest) -> None:
         manifest.updated_at = _now()
-        _atomic_write(
+        atomic_write(
             self._manifest_path,
             manifest.model_dump_json(indent=2).encode("utf-8"),
         )
@@ -469,7 +475,7 @@ def validated_vectors_for_chunks(
         raise ValueError(f"embedding chunk coverage mismatch: missing={missing}, extra={extra}")
     for chunk_id, expected in expected_by_id.items():
         actual, _ = actual_by_id[chunk_id]
-        if _canonical_json_bytes(actual.model_dump(mode="json")) != _canonical_json_bytes(
+        if canonical_json_bytes(actual.model_dump(mode="json")) != canonical_json_bytes(
             expected.model_dump(mode="json")
         ):
             raise ValueError(f"stored chunk does not match canonical corpus: {chunk_id}")
@@ -499,32 +505,15 @@ def _generation_id(
         "corpus_sha256": corpus.corpus_sha256,
         "document_id": corpus.as_parsed_document().doc_id,
         "chunking_version": LEGAL_CHUNKING_IDENTITY,
-        "chunks_sha256": _chunks_sha256(chunks),
+        "chunks_sha256": chunks_sha256(chunks),
         "contract": contract.document_identity(),
         "shard_size": shard_size,
     }
-    return hashlib.sha256(_canonical_json_bytes(payload)).hexdigest()[:16]
+    return hashlib.sha256(canonical_json_bytes(payload)).hexdigest()[:16]
 
 
 def _shards(chunks: list[Chunk], size: int) -> list[list[Chunk]]:
     return [chunks[start : start + size] for start in range(0, len(chunks), size)]
-
-
-def _chunk_ids_sha256(chunks: list[Chunk]) -> str:
-    return hashlib.sha256("\n".join(chunk.chunk_id for chunk in chunks).encode("utf-8")).hexdigest()
-
-
-def _chunks_sha256(chunks: list[Chunk]) -> str:
-    digest = hashlib.sha256()
-    for chunk in chunks:
-        digest.update(_canonical_json_bytes(chunk.model_dump(mode="json")))
-        digest.update(b"\n")
-    return digest.hexdigest()
-
-
-def _vectors_sha256(vectors: list[list[float]]) -> str:
-    canonical = [_float32_vector(vector) for vector in vectors]
-    return hashlib.sha256(_canonical_json_bytes(canonical)).hexdigest()
 
 
 def _persisted_vectors_match(
@@ -541,13 +530,13 @@ def _persisted_vectors_match(
 
     if len(expected) != len(persisted):
         return False
-    if _vectors_sha256(expected) == _vectors_sha256(persisted):
+    if vectors_sha256(expected) == vectors_sha256(persisted):
         return True
     for expected_vector, persisted_vector in zip(expected, persisted, strict=True):
         if len(expected_vector) != len(persisted_vector):
             return False
-        expected_float32 = _float32_vector(expected_vector)
-        persisted_float32 = _float32_vector(persisted_vector)
+        expected_float32 = float32_vector(expected_vector)
+        persisted_float32 = float32_vector(persisted_vector)
         if not all(
             math.isclose(
                 expected_value,
@@ -563,33 +552,6 @@ def _persisted_vectors_match(
         ):
             return False
     return True
-
-
-def _float32_vector(vector: list[float]) -> list[float]:
-    """Canonicalize the manifest's declared float32 storage contract."""
-
-    normalized: list[float] = []
-    for value in vector:
-        converted = struct.unpack("!f", struct.pack("!f", float(value)))[0]
-        normalized.append(0.0 if converted == 0.0 else converted)
-    return normalized
-
-
-def _canonical_json_bytes(value: Any) -> bytes:
-    return json.dumps(
-        value,
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
-        allow_nan=False,
-    ).encode("utf-8")
-
-
-def _atomic_write(path: Path, data: bytes) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
-    temporary.write_bytes(data)
-    temporary.replace(path)
 
 
 def _package_versions() -> dict[str, str]:
