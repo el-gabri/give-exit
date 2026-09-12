@@ -50,6 +50,14 @@ def _parser() -> argparse.ArgumentParser:
             "obrigatória com --adopt-source-index"
         ),
     )
+    parser.add_argument(
+        "--no-reuse",
+        action="store_true",
+        help=(
+            "não reaproveita vetores de gerações anteriores; a retomada da própria "
+            "geração continua valendo"
+        ),
+    )
     return parser
 
 
@@ -59,7 +67,10 @@ async def _run(
     check: bool,
     adopt_source_index: str | None,
     attested_source_revision: str | None,
+    no_reuse: bool,
 ) -> int:
+    if no_reuse and (check or adopt_source_index):
+        raise ValueError("--no-reuse só se aplica à construção de uma geração")
     if adopt_source_index and (force or check):
         raise ValueError("--adopt-source-index não pode ser combinado com --force ou --check")
     if bool(adopt_source_index) != bool(attested_source_revision):
@@ -112,13 +123,17 @@ async def _run(
         flush=True,
     )
     started = time.perf_counter()
-    result = await preindex_legal_corpus(rag, corpus, force=force)
+    result = await preindex_legal_corpus(rag, corpus, force=force, reuse=not no_reuse)
     elapsed = time.perf_counter() - started
     verb = "reutilizado" if result.action == "reused" else "indexado"
     print(f"Índice legal {verb} com sucesso em {elapsed:.1f}s: {index_name}")
     print(f"Documento: {result.doc_id} · chunks: {result.chunks}")
     if result.generation_id is not None:
         print(f"Geração: {result.generation_id} · manifesto: {result.manifest_path}")
+        print(
+            f"Vetores reaproveitados de gerações anteriores: {result.reused_vectors} "
+            f"(fontes: {', '.join(result.reuse_sources) or 'nenhuma'})"
+        )
     return 0
 
 
@@ -131,6 +146,7 @@ def main(argv: list[str] | None = None) -> int:
                 check=args.check,
                 adopt_source_index=args.adopt_source_index,
                 attested_source_revision=args.attest_source_revision,
+                no_reuse=args.no_reuse,
             )
         )
     except KeyboardInterrupt:

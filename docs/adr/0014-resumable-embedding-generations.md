@@ -2,7 +2,8 @@
 
 ## Status
 
-Accepted
+Accepted; amended by [ADR 0017](0017-cross-generation-vector-reuse.md), which
+reuses unchanged document vectors across generations.
 
 ## Context
 

@@ -95,7 +95,10 @@ effect. It writes checksummed immutable shards and a generation manifest,
 validates canonical chunk identity, vector dimension and normalization, imports
 precomputed vectors, verifies persistence and only then marks the generation
 active. Legacy vectors may be adopted only with an explicit operator attestation
-and retain that weaker provenance in the manifest.
+and retain that weaker provenance in the manifest. A new generation reuses the
+vectors of chunks whose text is unchanged from a verified earlier embedded
+generation with the same document identity, after a two-text canary confirms
+the embedding space (ADR 0017).
 
 ## Legal provenance
 
@@ -177,3 +180,6 @@ production claims.
 - [0011](adr/0011-retrieval-traceability-and-evaluation.md) — retrieval audit
 - [0012](adr/0012-bounded-consumer-extrajudicial-notice.md) — product boundary
 - [0013](adr/0013-versioned-consumer-law-retrieval.md) — legal corpus and RAG
+- [0014](adr/0014-resumable-embedding-generations.md) — resumable embedding generations
+- [0015](adr/0015-bounded-notice-prose-composer.md) — bounded notice prose composer
+- [0017](adr/0017-cross-generation-vector-reuse.md) — cross-generation vector reuse

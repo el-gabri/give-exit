@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
+from app.consumer import preindex_legal
 from app.consumer.embedding_generation import EmbeddingGenerationManager
 from app.consumer.legal_corpus import LegalCorpus, get_default_legal_corpus
 from app.consumer.legal_index import (
@@ -308,3 +309,12 @@ async def test_a_failed_canary_aborts_the_build_and_no_reuse_recovers(tmp_path: 
     assert recovered.reused_vectors == 0
     assert _manifest(drifting, target_corpus).reuse_canary is None
     assert await legal_corpus_is_indexed(drifting, target_corpus)
+
+
+def test_preindex_cli_exposes_no_reuse() -> None:
+    assert preindex_legal._parser().parse_args(["--no-reuse"]).no_reuse is True
+
+
+def test_no_reuse_only_applies_to_building(capsys: pytest.CaptureFixture[str]) -> None:
+    assert preindex_legal.main(["--no-reuse", "--check"]) == 1
+    assert "--no-reuse" in capsys.readouterr().err

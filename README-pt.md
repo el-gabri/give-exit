@@ -174,8 +174,14 @@ python -m app.consumer.preindex_legal --check
 O primeiro comando pode levar dezenas de minutos ou horas com o JUÁ em CPU,
 dependendo do hardware e do tamanho dos chunks. Cada shard concluído é durável;
 reiniciar o mesmo comando continua do último shard verificado. Depois de
-concluído, a API reutiliza os 460 chunks persistidos. Use `--force` somente para
+concluído, a API reutiliza os 472 chunks persistidos. Use `--force` somente para
 uma reconstrução deliberada.
+
+Um novo release do corpus reaproveita os vetores de todo chunk cujo texto não
+mudou, vindos de gerações anteriores verificadas do mesmo modelo, revisão e
+formatador de documento. Antes, dois textos reaproveitados são re-embedados
+como canário; se divergirem, a construção para e sugere `--no-reuse`, que
+recalcula tudo mantendo a retomada.
 
 Um namespace legado pode ser promovido sem outra execução longa se o operador
 tiver verificado de forma independente a revisão exata presente no cache:

@@ -273,6 +273,12 @@ run can be restarted with the same command. Once complete, the API reuses the
 472 persisted legal chunks instead of recomputing them inside a notice request.
 Use `--force` only for a deliberate rebuild.
 
+A new corpus release reuses the vectors of every chunk whose text did not
+change, taken from verified earlier generations of the same model, revision
+and document formatter. Two reused texts are re-embedded first as a canary;
+if they differ, the build stops and suggests `--no-reuse`, which recomputes
+everything while keeping resume.
+
 For a legacy namespace whose exact cached model revision was independently
 verified by the operator, promotion can avoid another multi-hour embedding run:
 
