@@ -20,6 +20,7 @@ from app.evaluation.consumer_runner import (
     normalize_consumer_retrieval_hit,
 )
 from app.schemas.evaluation import (
+    CaseResult,
     ConsumerLegalGoldenCase,
     ConsumerLegalGoldenDataset,
     ConsumerLegalRelevance,
@@ -49,6 +50,40 @@ def test_consumer_regression_gates_check_floors_ceilings_and_missing_metrics() -
         "unknown: not produced by this run, cannot gate on it",
         "consumer_hard_negative_rate@5: 0.100 > allowed 0.050",
     ]
+
+
+def test_summary_totals_sum_per_case_counts() -> None:
+    summary = EvaluationSummary.from_cases(
+        [
+            CaseResult(case_name="a", counts={"consumer_notice_grounds": 3}),
+            CaseResult(
+                case_name="b",
+                counts={
+                    "consumer_notice_grounds": 2,
+                    "consumer_notice_known_bad_citations": 1,
+                },
+            ),
+        ]
+    )
+
+    assert summary.totals == {
+        "consumer_notice_grounds": 5,
+        "consumer_notice_known_bad_citations": 1,
+    }
+
+
+def test_gates_also_read_integer_totals() -> None:
+    summary = EvaluationSummary(totals={"consumer_notice_known_bad_citations": 5})
+
+    assert check_consumer_gates(
+        summary, maximums=(("consumer_notice_known_bad_citations", 4.0),)
+    ) == ["consumer_notice_known_bad_citations: 5.000 > allowed 4.000"]
+    assert (
+        check_consumer_gates(
+            summary, maximums=(("consumer_notice_known_bad_citations", 5.0),)
+        )
+        == []
+    )
 
 
 def _case(*, no_ground: bool = False) -> ConsumerLegalGoldenCase:

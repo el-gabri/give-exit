@@ -70,15 +70,22 @@ def check_consumer_gates(
 ) -> list[str]:
     """Return deterministic regression-gate violations for a summary."""
 
+    def lookup(name: str) -> float | None:
+        if name in summary.averages:
+            return summary.averages[name]
+        if name in summary.totals:
+            return float(summary.totals[name])
+        return None
+
     violations: list[str] = []
     for name, floor in minimums:
-        actual = summary.averages.get(name)
+        actual = lookup(name)
         if actual is None:
             violations.append(f"{name}: not produced by this run, cannot gate on it")
         elif actual < floor:
             violations.append(f"{name}: {actual:.3f} < required {floor:.3f}")
     for name, ceiling in maximums:
-        actual = summary.averages.get(name)
+        actual = lookup(name)
         if actual is None:
             violations.append(f"{name}: not produced by this run, cannot gate on it")
         elif actual > ceiling:

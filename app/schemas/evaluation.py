@@ -68,6 +68,10 @@ class CaseResult(BaseModel):
     retrieval_outcome: str | None = None
     metrics: list[MetricResult] = Field(default_factory=list)
     errors: list[str] = Field(default_factory=list)
+    counts: dict[str, int] = Field(
+        default_factory=dict,
+        description="Integer counts for this case, summed into EvaluationSummary.totals",
+    )
 
     def score(self, metric_name: str) -> float | None:
         for metric in self.metrics:
@@ -128,6 +132,7 @@ class EvaluationRunMetadata(BaseModel):
     queries_per_case: int = Field(ge=1)
     cutoffs: tuple[int, ...] = Field(min_length=1)
     retrieval: RetrievalEvaluationConfiguration
+    ground_policy_version: str | None = None
 
 
 class EvaluationSummary(BaseModel):
@@ -135,6 +140,7 @@ class EvaluationSummary(BaseModel):
 
     cases: list[CaseResult] = Field(default_factory=list)
     averages: dict[str, float] = Field(default_factory=dict)
+    totals: dict[str, int] = Field(default_factory=dict)
     metric_case_counts: dict[str, int] = Field(default_factory=dict)
     metric_directions: dict[str, MetricDirection] = Field(default_factory=dict)
     failed_case_count: int = Field(default=0, ge=0)
@@ -155,6 +161,7 @@ class EvaluationSummary(BaseModel):
         return cls(
             cases=cases,
             averages=averages,
+            totals=_sum_counts(cases),
             metric_case_counts=metric_case_counts,
             metric_directions=directions,
             failed_case_count=failed_case_count,
@@ -181,6 +188,14 @@ def _aggregate_metrics(
             totals.setdefault(metric.name, []).append(metric.score)
     averages = {name: round(sum(scores) / len(scores), 3) for name, scores in totals.items()}
     return averages, directions, {name: len(scores) for name, scores in totals.items()}
+
+
+def _sum_counts(cases: list[CaseResult]) -> dict[str, int]:
+    totals: dict[str, int] = {}
+    for case in cases:
+        for name, value in case.counts.items():
+            totals[name] = totals.get(name, 0) + value
+    return dict(sorted(totals.items()))
 
 
 def _group_cases(
