@@ -101,7 +101,7 @@ branch = true
 # module by module as follow-up work adds coverage elsewhere — a blind
 # repo-wide 100% would block on the ~787 statements already uncovered
 # across the codebase, most of which predate this gate.
-source = ["app.rag.reranking"]
+source = ["app.consumer.ground_selection", "app.rag.reranking"]
 
 [tool.coverage.report]
 fail_under = 100

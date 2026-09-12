@@ -23,6 +23,8 @@ from app.consumer.composer import (
     NoticeDraftComposer,
     NoticeProse,
 )
+from app.consumer.ground_selection import issue_label, select_legal_grounds
+from app.consumer.ground_selection import merge_results as _merge_results
 from app.consumer.intake import (
     extract_explicit_facts,
     merge_explicit_facts,
@@ -38,7 +40,6 @@ from app.consumer.legal_index import (
 from app.consumer.legal_policy import (
     LEGAL_GROUND_POLICY_REVIEW_STATUS,
     LEGAL_GROUND_POLICY_VERSION,
-    provision_is_eligible,
     strongly_supported_chunk_ids,
 )
 from app.consumer.monetary import extract_brl_mentions
@@ -61,7 +62,6 @@ from app.consumer.schemas import (
     LegalGround,
     MonetarySourceType,
     NoticeGenerationTiming,
-    ProvisionStatus,
     SettlementComponentSource,
     SettlementInputs,
 )
@@ -85,15 +85,6 @@ from app.security.telemetry import redact_sensitive_text
 
 logger = get_logger(__name__)
 
-# A notice cites law; a weakly ranked article is worse than a shorter notice.
-# Only the strongest merged hits are eligible, each hit must stay within reach
-# of the best one, and the score-type-aware gate in legal_policy must show
-# dense/lexical agreement (or cross-query corroboration for non-RRF scores).
-# Unlike the former relative-only floor, an arbitrary low-scoring top hit can
-# no longer become authority merely because every other hit is even weaker.
-MAX_GROUND_CANDIDATES = 8
-MIN_GROUND_SCORE_RATIO = 0.5
-MAX_LEGAL_GROUNDS = 8
 DEFAULT_MAX_DOCUMENTS_PER_CASE = 20
 
 # Scaffolding this service injects between evidence pages so the generic
@@ -152,18 +143,6 @@ _EMBEDDED_IDENTIFIER_RE = re.compile(
     r"\b(?=[a-z0-9./-]*\d)[a-z0-9][a-z0-9./-]{5,}\b",
     re.IGNORECASE,
 )
-
-_CATEGORY_LABEL = {
-    "unauthorized_charge": "cobrança não reconhecida ou indevida",
-    "fraud": "fraude, golpe ou compra não reconhecida",
-    "account_block": "bloqueio de conta, acesso ou valores",
-    "negative_credit_record": "registro negativo de crédito",
-    "loan_or_interest": "empréstimo, financiamento ou juros",
-    "service_failure": "problema com produto ou serviço",
-    "over_indebtedness": "superendividamento",
-    "other": "controvérsia de consumo",
-}
-
 
 class ConsumerCaseNotReadyError(ValueError):
     def __init__(self, missing: list[str]) -> None:
@@ -881,89 +860,16 @@ class ConsumerCaseService:
         facts: ConsumerCaseFacts,
         traces: list[RetrievalTrace] | None = None,
     ) -> list[LegalGround]:
-        category = facts.issue_category.value if facts.issue_category else "other"
-        if not is_consumer_scope(
-            category=category,
-            complaint=facts.complaint_summary or "",
-        ):
-            return []
-        # The issue category shapes the retrieval queries (see
-        # build_legal_queries) but no longer decides which articles may be
-        # cited: a consumer who picks the wrong type, or the catch-all
-        # "other", must still be able to reach the authorities their own
-        # report supports.
-        strongly_supported = strongly_supported_chunk_ids(traces or [])
-        if not strongly_supported:
-            return []
-        merged = _merge_results(result_sets)
-        if not merged:
-            return []
-        score_floor = merged[0].score * MIN_GROUND_SCORE_RATIO
-        query_occurrences = _chunk_query_occurrences(traces or [])
-        candidates_by_provision: dict[str, list[tuple[int, RetrievedChunk]]] = {}
-        for rank, result in enumerate(merged, start=1):
-            if result.chunk.chunk_id not in strongly_supported:
-                continue
-            for provision in self._legal_corpus.provisions_for_chunk(result):
-                if provision.status is not ProvisionStatus.ACTIVE:
-                    continue
-                if not provision_is_eligible(provision):
-                    continue
-                unit = self._legal_corpus.unit_for_chunk(result)
-                if unit is not None and unit.status is not ProvisionStatus.ACTIVE:
-                    continue
-                if provision.provision_id not in candidates_by_provision:
-                    candidates_by_provision[provision.provision_id] = []
-                candidates_by_provision[provision.provision_id].append((rank, result))
-
-        provision_candidates: list[tuple[int, float, int, RetrievedChunk]] = []
-        for ranked_candidates in candidates_by_provision.values():
-            selected_rank, selected = min(
-                ranked_candidates,
-                key=lambda item: (
-                    -query_occurrences.get(item[1].chunk.chunk_id, 0),
-                    -int(self._legal_corpus.unit_for_chunk(item[1]) is not None),
-                    -item[1].score,
-                    item[1].chunk.chunk_id,
-                ),
-            )
-            # A provision keeps the strongest position earned by any sibling,
-            # while the quoted unit is the one corroborated across the most
-            # independent formulations of the confirmed facts.
-            provision_candidates.append(
-                (
-                    min(rank for rank, _ in ranked_candidates),
-                    max(item.score for _, item in ranked_candidates),
-                    selected_rank,
-                    selected,
-                )
-            )
-
-        grounds: list[LegalGround] = []
-        issue = _CATEGORY_LABEL[facts.issue_category.value if facts.issue_category else "other"]
-        provision_candidates.sort(key=lambda item: (item[0], item[3].chunk.chunk_id))
-        for _, provision_score, rank, result in provision_candidates[:MAX_GROUND_CANDIDATES]:
-            if provision_score < score_floor:
-                continue
-            provision = self._legal_corpus.provision_for_chunk(result)
-            authority = self._legal_corpus.authority_for_chunk(
-                result,
-                retrieval_rank=rank,
-            )
-            grounds.append(
-                LegalGround(
-                    authority=authority,
-                    application_to_facts=(
-                        f"O texto oficial em {provision.citation_label} foi localizado "
-                        f"pela política de recuperação para {issue}. Sua aplicabilidade "
-                        "ao caso não foi decidida pelo sistema e deve ser validada por "
-                        "profissional habilitado contra os fatos e documentos citados."
-                    ),
-                )
-            )
-            if len(grounds) >= MAX_LEGAL_GROUNDS:
-                return grounds
-        return grounds
+        # The gate is looked up here, at call time, so replacing this module's
+        # strongly_supported_chunk_ids (as docs/rag-review/probes.py does)
+        # still changes what a notice cites.
+        return select_legal_grounds(
+            self._legal_corpus,
+            facts,
+            result_sets,
+            traces,
+            support=strongly_supported_chunk_ids,
+        )
 
     @staticmethod
     def _evidence_references(
@@ -1111,34 +1017,6 @@ def _evidence_status(action: SecurityAction) -> EvidenceStatus:
         SecurityAction.HUMAN_REVIEW: EvidenceStatus.REVIEW_REQUIRED,
         SecurityAction.BLOCK: EvidenceStatus.BLOCKED,
     }[action]
-
-
-def _merge_results(result_sets: list[list[RetrievedChunk]]) -> list[RetrievedChunk]:
-    best: dict[str, RetrievedChunk] = {}
-    for results in result_sets:
-        for result in results:
-            current = best.get(result.chunk.chunk_id)
-            if current is None or result.score > current.score:
-                best[result.chunk.chunk_id] = result
-    return sorted(best.values(), key=lambda item: (-item.score, item.chunk.chunk_id))
-
-
-def _chunk_query_occurrences(traces: list[RetrievalTrace]) -> dict[str, int]:
-    """Count independent queries that returned each chunk.
-
-    Scores from separate RRF calls share a scale, but taking only their maximum
-    erases the stronger signal that a statutory unit survived several distinct
-    formulations of the confirmed facts.
-    """
-
-    occurrences: dict[str, set[tuple[str, int]]] = {}
-    for trace in traces:
-        if trace.error is not None:
-            continue
-        query_key = (trace.batch_id, trace.query_index)
-        for item in trace.results:
-            occurrences.setdefault(item.chunk_id, set()).add(query_key)
-    return {chunk_id: len(queries) for chunk_id, queries in occurrences.items()}
 
 
 def _evidence_supports_confirmed_facts(text: str, facts: ConsumerCaseFacts) -> bool:
@@ -1441,7 +1319,7 @@ def _render_notice_markdown(
 ) -> str:
     name = facts.consumer_name or "[PREENCHER NOME DO(A) CONSUMIDOR(A)]"
     supplier = facts.bank_name or "[PREENCHER EMPRESA, FORNECEDOR OU INSTITUIÇÃO]"
-    subject = _CATEGORY_LABEL[facts.issue_category.value if facts.issue_category else "other"]
+    subject = issue_label(facts)
     protocols = (
         ", ".join(_single_line(item) for item in facts.prior_protocols)
         or "nenhum protocolo informado"

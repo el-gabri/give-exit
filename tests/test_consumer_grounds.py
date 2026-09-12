@@ -2,14 +2,11 @@
 
 import hashlib
 
+from app.consumer.ground_selection import MAX_GROUND_CANDIDATES, MIN_GROUND_SCORE_RATIO
 from app.consumer.legal_corpus import get_default_legal_corpus
 from app.consumer.legal_policy import provision_is_eligible
 from app.consumer.schemas import ConsumerCaseFacts, ConsumerIssueCategory
-from app.consumer.service import (
-    MAX_GROUND_CANDIDATES,
-    MIN_GROUND_SCORE_RATIO,
-    ConsumerCaseService,
-)
+from app.consumer.service import ConsumerCaseService
 from app.ingestion.service import DocumentIngestionService
 from app.llm.mock_client import MockLLMClient
 from app.rag.embeddings import MockEmbeddingClient
