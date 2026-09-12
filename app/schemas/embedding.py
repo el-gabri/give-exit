@@ -62,6 +62,17 @@ class EmbeddingContract(BaseModel):
         }
 
 
+class ReuseCanary(BaseModel):
+    """Evidence that reused vectors still live in the current embedding space."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    text_sha256s: tuple[str, ...] = Field(min_length=1)
+    min_cosine: float
+    threshold: float = Field(gt=0, le=1)
+    passed: bool
+
+
 class EmbeddingShardManifest(BaseModel):
     """Checksummed output for one independently resumable chunk shard."""
 
@@ -75,6 +86,7 @@ class EmbeddingShardManifest(BaseModel):
     chunks_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
     vectors_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
     output_dimension: int = Field(ge=1)
+    reused_chunk_count: int = Field(default=0, ge=0)
 
 
 class EmbeddingGenerationManifest(BaseModel):
@@ -82,9 +94,10 @@ class EmbeddingGenerationManifest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    schema_version: Literal["embedding-generation-manifest-v1"] = (
-        "embedding-generation-manifest-v1"
-    )
+    schema_version: Literal[
+        "embedding-generation-manifest-v1",
+        "embedding-generation-manifest-v2",
+    ] = "embedding-generation-manifest-v2"
     generation_id: str = Field(pattern=r"^[a-f0-9]{16}$")
     status: EmbeddingGenerationStatus = EmbeddingGenerationStatus.BUILDING
     index_name: str = Field(min_length=1)
@@ -110,6 +123,9 @@ class EmbeddingGenerationManifest(BaseModel):
     validated_at: datetime | None = None
     activated_at: datetime | None = None
     error: str | None = None
+    reused_chunk_count: int = Field(default=0, ge=0)
+    reuse_sources: list[str] = Field(default_factory=list)
+    reuse_canary: ReuseCanary | None = None
 
     @model_validator(mode="after")
     def _validate_provenance_fields(self) -> EmbeddingGenerationManifest:
@@ -120,6 +136,8 @@ class EmbeddingGenerationManifest(BaseModel):
                 raise ValueError(
                     "adopted vectors require an attested revision matching the contract"
                 )
+            if self.reused_chunk_count:
+                raise ValueError("adopted vectors cannot be reused from other generations")
         elif self.source_index_name is not None or self.attested_source_model_revision is not None:
             raise ValueError("embedded generations cannot claim legacy-source attestation")
         return self
