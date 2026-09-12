@@ -11,7 +11,7 @@ import platform
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from app.consumer.embedding_artifacts import (
     atomic_write,
@@ -22,6 +22,14 @@ from app.consumer.embedding_artifacts import (
     vectors_sha256,
 )
 from app.consumer.legal_corpus import LEGAL_CHUNKING_IDENTITY, LegalCorpus
+from app.consumer.vector_reuse import (
+    CANARY_MIN_COSINE,
+    CANARY_SIZE,
+    ReusableVectorIndex,
+    ReuseCanaryError,
+    cosine,
+    text_sha256,
+)
 from app.core.logging import get_logger
 from app.rag.embeddings import validate_embedding_vectors
 from app.rag.pipeline import RagPipeline
@@ -30,6 +38,7 @@ from app.schemas.embedding import (
     EmbeddingGenerationManifest,
     EmbeddingGenerationStatus,
     EmbeddingShardManifest,
+    ReuseCanary,
 )
 from app.schemas.rag import Chunk
 
@@ -92,67 +101,43 @@ class EmbeddingGenerationManager:
             return False
         return True
 
-    async def build_and_activate(self, *, force: bool = False) -> EmbeddingGenerationManifest:
+    async def build_and_activate(
+        self,
+        *,
+        force: bool = False,
+        reuse: bool = True,
+    ) -> EmbeddingGenerationManifest:
         manifest = self._new_manifest(provenance="embedded")
         if not force:
             existing = self._load_manifest(required=False)
             if existing is not None:
                 self._validate_manifest_identity(existing)
                 manifest = existing
+        manifest.schema_version = "embedding-generation-manifest-v2"
+        if manifest.reused_chunk_count == 0:
+            manifest.reuse_canary = None
         manifest.status = EmbeddingGenerationStatus.BUILDING
         manifest.error = None
         self._save_manifest(manifest)
 
-        completed = {shard.shard_index: shard for shard in manifest.shards}
-        for shard_index, chunks in enumerate(_shards(self._chunks, self._shard_size)):
-            shard = completed.get(shard_index)
-            if shard is not None and self._verified_shard_entries(shard, chunks) is not None:
-                logger.info(
-                    "embedding_shard_reused",
-                    generation_id=self._generation_id,
-                    shard_index=shard_index,
-                    chunks=len(chunks),
-                )
-                continue
-            try:
-                vectors = await self._rag.embed_document_batch(
-                    [chunk.text for chunk in chunks]
-                )
-                dimension = validate_embedding_vectors(
-                    vectors,
-                    expected_count=len(chunks),
-                    expected_dimension=manifest.contract.output_dimension,
-                )
-                if manifest.contract.output_dimension is None:
-                    manifest.contract = manifest.contract.model_copy(
-                        update={"output_dimension": dimension}
-                    )
-                shard_manifest = self._write_shard(shard_index, chunks, vectors)
-                manifest.shards = sorted(
-                    [item for item in manifest.shards if item.shard_index != shard_index]
-                    + [shard_manifest],
-                    key=lambda item: item.shard_index,
-                )
-                manifest.completed_chunk_count = sum(
-                    item.chunk_count for item in manifest.shards
-                )
-                manifest.updated_at = _now()
-                manifest.error = None
-                self._save_manifest(manifest)
-                logger.info(
-                    "embedding_shard_completed",
-                    generation_id=self._generation_id,
-                    shard_index=shard_index,
-                    completed_chunks=manifest.completed_chunk_count,
-                    expected_chunks=manifest.expected_chunk_count,
-                    output_dimension=dimension,
-                )
-            except Exception as exc:
-                manifest.status = EmbeddingGenerationStatus.FAILED
-                manifest.error = f"{type(exc).__name__}: {exc}"
-                manifest.updated_at = _now()
-                self._save_manifest(manifest)
-                raise
+        pending = self._pending_shards(manifest)
+        reuse_index = ReusableVectorIndex.empty()
+        if reuse and not force and pending:
+            reuse_index = ReusableVectorIndex.from_artifacts(
+                self._generation_dir.parent,
+                self._contract,
+                exclude_generation_id=self._generation_id,
+            )
+        try:
+            await self._check_reuse_canary(manifest, reuse_index, pending)
+            for shard_index, chunks in pending:
+                await self._build_shard(manifest, shard_index, chunks, reuse_index)
+        except Exception as exc:
+            manifest.status = EmbeddingGenerationStatus.FAILED
+            manifest.error = f"{type(exc).__name__}: {exc}"
+            manifest.updated_at = _now()
+            self._save_manifest(manifest)
+            raise
 
         chunks, vectors = self._load_complete_generation(manifest)
         manifest.status = EmbeddingGenerationStatus.VALIDATED
@@ -180,6 +165,117 @@ class EmbeddingGenerationManager:
         manifest.error = None
         self._save_manifest(manifest)
         return manifest
+
+    def _pending_shards(
+        self,
+        manifest: EmbeddingGenerationManifest,
+    ) -> list[tuple[int, list[Chunk]]]:
+        """Shards still to build; this generation's own verified shards are resumed."""
+
+        completed = {shard.shard_index: shard for shard in manifest.shards}
+        pending: list[tuple[int, list[Chunk]]] = []
+        for shard_index, chunks in enumerate(_shards(self._chunks, self._shard_size)):
+            shard = completed.get(shard_index)
+            if shard is not None and self._verified_shard_entries(shard, chunks) is not None:
+                logger.info(
+                    "embedding_shard_reused",
+                    generation_id=self._generation_id,
+                    shard_index=shard_index,
+                    chunks=len(chunks),
+                )
+                continue
+            pending.append((shard_index, chunks))
+        return pending
+
+    async def _check_reuse_canary(
+        self,
+        manifest: EmbeddingGenerationManifest,
+        reuse_index: ReusableVectorIndex,
+        pending: list[tuple[int, list[Chunk]]],
+    ) -> None:
+        """Re-embed a few reused texts and refuse vectors from another space."""
+
+        reused_texts = sorted(
+            {
+                (text_sha256(chunk.text), chunk.text)
+                for _, chunks in pending
+                for chunk in chunks
+                if reuse_index.lookup(chunk.text) is not None
+            }
+        )
+        if not reused_texts:
+            return
+        probe = reused_texts[:CANARY_SIZE]
+        fresh = await self._rag.embed_document_batch([text for _, text in probe])
+        cosines = [
+            cosine(float32_vector(vector), reuse_index.require(text).vector)
+            for (_, text), vector in zip(probe, fresh, strict=True)
+        ]
+        canary = ReuseCanary(
+            text_sha256s=tuple(digest for digest, _ in probe),
+            min_cosine=min(cosines),
+            threshold=CANARY_MIN_COSINE,
+            passed=min(cosines) >= CANARY_MIN_COSINE,
+        )
+        manifest.reuse_canary = canary
+        self._save_manifest(manifest)
+        if not canary.passed:
+            raise ReuseCanaryError(
+                "reused vectors differ from the current model "
+                f"(minimum cosine {min(cosines):.6f} < {CANARY_MIN_COSINE}); "
+                "rerun with --no-reuse"
+            )
+
+    async def _build_shard(
+        self,
+        manifest: EmbeddingGenerationManifest,
+        shard_index: int,
+        chunks: list[Chunk],
+        reuse_index: ReusableVectorIndex,
+    ) -> None:
+        """Embed a shard's new texts, take the others from earlier generations, record it."""
+
+        hits = [reuse_index.lookup(chunk.text) for chunk in chunks]
+        missing = [chunk.text for chunk, hit in zip(chunks, hits, strict=True) if hit is None]
+        fresh = iter(await self._rag.embed_document_batch(missing) if missing else [])
+        vectors = [list(hit.vector) if hit is not None else next(fresh) for hit in hits]
+        dimension = validate_embedding_vectors(
+            vectors,
+            expected_count=len(chunks),
+            expected_dimension=manifest.contract.output_dimension,
+        )
+        if manifest.contract.output_dimension is None:
+            manifest.contract = manifest.contract.model_copy(
+                update={"output_dimension": dimension}
+            )
+        shard_manifest = self._write_shard(
+            shard_index,
+            chunks,
+            vectors,
+            sources=[hit.source() if hit is not None else None for hit in hits],
+        )
+        manifest.shards = sorted(
+            [item for item in manifest.shards if item.shard_index != shard_index]
+            + [shard_manifest],
+            key=lambda item: item.shard_index,
+        )
+        manifest.completed_chunk_count = sum(item.chunk_count for item in manifest.shards)
+        manifest.reused_chunk_count = sum(item.reused_chunk_count for item in manifest.shards)
+        manifest.reuse_sources = sorted(
+            {*manifest.reuse_sources, *(hit.generation_id for hit in hits if hit is not None)}
+        )
+        manifest.updated_at = _now()
+        manifest.error = None
+        self._save_manifest(manifest)
+        logger.info(
+            "embedding_shard_completed",
+            generation_id=self._generation_id,
+            shard_index=shard_index,
+            completed_chunks=manifest.completed_chunk_count,
+            expected_chunks=manifest.expected_chunk_count,
+            reused_chunks=shard_manifest.reused_chunk_count,
+            output_dimension=dimension,
+        )
 
     async def adopt_and_activate(
         self,
@@ -345,6 +441,8 @@ class EmbeddingGenerationManager:
         shard_index: int,
         chunks: list[Chunk],
         vectors: list[list[float]],
+        *,
+        sources: list[dict[str, str] | None] | None = None,
     ) -> EmbeddingShardManifest:
         float32_vectors = [float32_vector(vector) for vector in vectors]
         dimension = validate_embedding_vectors(
@@ -352,16 +450,16 @@ class EmbeddingGenerationManager:
             expected_count=len(chunks),
             expected_dimension=self._contract.output_dimension,
         )
-        payload = b"\n".join(
-            canonical_json_bytes(
-                {"chunk": chunk.model_dump(mode="json"), "vector": vector}
-            )
-            for chunk, vector in zip(chunks, float32_vectors, strict=True)
-        )
-        compressed = gzip.compress(payload, compresslevel=6, mtime=0)
+        origins: list[dict[str, str] | None] = sources or [None] * len(chunks)
+        records: list[bytes] = []
+        for chunk, vector, origin in zip(chunks, float32_vectors, origins, strict=True):
+            record: dict[str, Any] = {"chunk": chunk.model_dump(mode="json"), "vector": vector}
+            if origin is not None:
+                record["source"] = origin
+            records.append(canonical_json_bytes(record))
+        compressed = gzip.compress(b"\n".join(records), compresslevel=6, mtime=0)
         filename = f"embeddings-{shard_index:04d}.jsonl.gz"
-        path = self._generation_dir / filename
-        atomic_write(path, compressed)
+        atomic_write(self._generation_dir / filename, compressed)
         return EmbeddingShardManifest(
             shard_index=shard_index,
             artifact_file=filename,
@@ -371,6 +469,7 @@ class EmbeddingGenerationManager:
             chunks_sha256=chunks_sha256(chunks),
             vectors_sha256=vectors_sha256(float32_vectors),
             output_dimension=dimension,
+            reused_chunk_count=sum(origin is not None for origin in origins),
         )
 
     def _verified_shard_entries(

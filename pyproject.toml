@@ -104,6 +104,7 @@ branch = true
 source = [
     "app.consumer.embedding_artifacts",
     "app.consumer.ground_selection",
+    "app.consumer.vector_reuse",
     "app.rag.reranking",
 ]
 

@@ -22,6 +22,8 @@ class LegalIndexResult:
     chunks: int
     generation_id: str | None = None
     manifest_path: Path | None = None
+    reused_vectors: int = 0
+    reuse_sources: tuple[str, ...] = ()
 
 
 async def legal_corpus_is_indexed(rag: RagPipeline, corpus: LegalCorpus) -> bool:
@@ -63,6 +65,7 @@ async def preindex_legal_corpus(
     corpus: LegalCorpus,
     *,
     force: bool = False,
+    reuse: bool = True,
 ) -> LegalIndexResult:
     """Materialize the immutable corpus once and verify the persisted document."""
 
@@ -84,13 +87,15 @@ async def preindex_legal_corpus(
 
     if rag.embedding_artifacts_dir is not None:
         manager = EmbeddingGenerationManager(rag, corpus)
-        manifest = await manager.build_and_activate(force=force)
+        manifest = await manager.build_and_activate(force=force, reuse=reuse)
         return LegalIndexResult(
             action="indexed",
             doc_id=doc_id,
             chunks=len(chunks),
             generation_id=manifest.generation_id,
             manifest_path=manager.manifest_path,
+            reused_vectors=manifest.reused_chunk_count,
+            reuse_sources=tuple(manifest.reuse_sources),
         )
 
     await rag.index_chunks(chunks)

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import gzip
 import hashlib
 import json
 from pathlib import Path
@@ -11,12 +12,25 @@ from pydantic import ValidationError
 
 from app.consumer.embedding_generation import EmbeddingGenerationManager
 from app.consumer.legal_corpus import LegalCorpus, get_default_legal_corpus
-from app.consumer.legal_index import preindex_legal_corpus
-from app.consumer.vector_reuse import ReusableVectorIndex, cosine
+from app.consumer.legal_index import (
+    adopt_legal_corpus_index,
+    legal_corpus_is_indexed,
+    preindex_legal_corpus,
+)
+from app.consumer.vector_reuse import (
+    CANARY_SIZE,
+    ReusableVectorIndex,
+    ReuseCanaryError,
+    cosine,
+)
 from app.rag.embeddings import MockEmbeddingClient
 from app.rag.pipeline import RagPipeline
 from app.rag.vector_store import InMemoryVectorStore
-from app.schemas.embedding import EmbeddingContract, EmbeddingGenerationManifest
+from app.schemas.embedding import (
+    EmbeddingContract,
+    EmbeddingGenerationManifest,
+    EmbeddingGenerationStatus,
+)
 
 
 def _pipeline(
@@ -58,6 +72,28 @@ def _contract(dimension: int | None = 128) -> EmbeddingContract:
         document_formatter_version="plain-document-v1",
         query_formatter_version="instruction-prefix-v2",
     )
+
+
+class CountingEmbedder(MockEmbeddingClient):
+    def __init__(self) -> None:
+        super().__init__()
+        self.document_texts = 0
+
+    async def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        self.document_texts += len(texts)
+        return await super().embed_documents(texts)
+
+
+class DriftingEmbedder(CountingEmbedder):
+    """Same declared contract, different vectors: a silent formatter change."""
+
+    async def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        vectors = await super().embed_documents(texts)
+        return [vector[1:] + vector[:1] for vector in vectors]
+
+
+class OtherFormatterEmbedder(MockEmbeddingClient):
+    document_format_version = "prefixed-document-v9"
 
 
 async def test_new_manifests_are_v2_and_v1_manifests_stay_readable(tmp_path: Path) -> None:
@@ -173,3 +209,102 @@ def test_reuse_needs_a_pinned_dimension_and_readable_manifests(tmp_path: Path) -
     assert cosine([1.0, 0.0], [1.0]) == 0.0
     assert cosine([1.0, 0.0], [2.0, 0.0]) == 1.0
     assert cosine([0.0, 0.0], [1.0, 0.0]) == 0.0
+
+
+async def test_a_new_generation_reuses_every_identical_chunk_text(tmp_path: Path) -> None:
+    source_corpus, target_corpus = _corpus(40), _corpus(60)
+    source_pipeline = _pipeline(tmp_path, MockEmbeddingClient())
+    await preindex_legal_corpus(source_pipeline, source_corpus)
+    source_id = _manifest(source_pipeline, source_corpus).generation_id
+    embedder = CountingEmbedder()
+    pipeline = _pipeline(tmp_path, embedder)
+
+    result = await preindex_legal_corpus(pipeline, target_corpus)
+
+    source_chunks = len(source_corpus.as_chunks())
+    target_chunks = len(target_corpus.as_chunks())
+    manifest = _manifest(pipeline, target_corpus)
+    assert result.reused_vectors == source_chunks
+    assert result.reuse_sources == (source_id,)
+    assert manifest.reused_chunk_count == source_chunks
+    assert manifest.reuse_sources == [source_id]
+    assert manifest.reuse_canary is not None and manifest.reuse_canary.passed
+    assert embedder.document_texts == target_chunks - source_chunks + CANARY_SIZE
+    assert manifest.provenance == "embedded"
+    assert manifest.status is EmbeddingGenerationStatus.ACTIVE
+    assert await legal_corpus_is_indexed(pipeline, target_corpus)
+    generation_dir = _manifest_path(pipeline, target_corpus).parent
+    lines = [
+        line
+        for shard in manifest.shards
+        for line in gzip.decompress(
+            (generation_dir / shard.artifact_file).read_bytes()
+        ).splitlines()
+    ]
+    sources = [json.loads(line).get("source") for line in lines]
+    assert sum(source is not None for source in sources) == source_chunks
+    assert {source["generation_id"] for source in sources if source} == {source_id}
+
+
+async def test_a_later_generation_prefers_the_newest_source(tmp_path: Path) -> None:
+    first, second, third = _corpus(40), _corpus(50), _corpus(60)
+    await preindex_legal_corpus(_pipeline(tmp_path, MockEmbeddingClient()), first)
+    second_pipeline = _pipeline(tmp_path, MockEmbeddingClient())
+    await preindex_legal_corpus(second_pipeline, second)
+    second_id = _manifest(second_pipeline, second).generation_id
+    pipeline = _pipeline(tmp_path, MockEmbeddingClient())
+
+    result = await preindex_legal_corpus(pipeline, third)
+
+    assert result.reused_vectors == len(second.as_chunks())
+    assert result.reuse_sources == (second_id,)
+
+
+async def test_adopted_generations_are_never_reuse_sources(tmp_path: Path) -> None:
+    source_corpus, target_corpus = _corpus(40), _corpus(60)
+    chunks = sorted(source_corpus.as_chunks(), key=lambda chunk: chunk.chunk_id)
+    vectors = await MockEmbeddingClient().embed_documents([chunk.text for chunk in chunks])
+    await adopt_legal_corpus_index(
+        _pipeline(tmp_path, MockEmbeddingClient()),
+        source_corpus,
+        list(zip(chunks, vectors, strict=True)),
+        source_index_name="legacy-index",
+        attested_model_revision="mock-hashed-bow-v1",
+    )
+    embedder = CountingEmbedder()
+    pipeline = _pipeline(tmp_path, embedder)
+
+    result = await preindex_legal_corpus(pipeline, target_corpus)
+
+    assert result.reused_vectors == 0
+    assert embedder.document_texts == len(target_corpus.as_chunks())
+    assert _manifest(pipeline, target_corpus).reuse_canary is None
+
+
+async def test_a_different_document_formatter_disables_reuse(tmp_path: Path) -> None:
+    await preindex_legal_corpus(_pipeline(tmp_path, MockEmbeddingClient()), _corpus(40))
+    pipeline = _pipeline(tmp_path, OtherFormatterEmbedder())
+
+    result = await preindex_legal_corpus(pipeline, _corpus(60))
+
+    assert result.reused_vectors == 0
+
+
+async def test_a_failed_canary_aborts_the_build_and_no_reuse_recovers(tmp_path: Path) -> None:
+    source_corpus, target_corpus = _corpus(40), _corpus(60)
+    await preindex_legal_corpus(_pipeline(tmp_path, MockEmbeddingClient()), source_corpus)
+    drifting = _pipeline(tmp_path, DriftingEmbedder())
+
+    with pytest.raises(ReuseCanaryError, match="--no-reuse"):
+        await preindex_legal_corpus(drifting, target_corpus)
+
+    failed = _manifest(drifting, target_corpus)
+    assert failed.status is EmbeddingGenerationStatus.FAILED
+    assert failed.reuse_canary is not None and not failed.reuse_canary.passed
+    assert "ReuseCanaryError" in (failed.error or "")
+
+    recovered = await preindex_legal_corpus(drifting, target_corpus, reuse=False)
+
+    assert recovered.reused_vectors == 0
+    assert _manifest(drifting, target_corpus).reuse_canary is None
+    assert await legal_corpus_is_indexed(drifting, target_corpus)
