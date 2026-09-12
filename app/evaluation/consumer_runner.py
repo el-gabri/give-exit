@@ -409,7 +409,7 @@ class ConsumerLegalRetrievalEvaluator:
                 category=case.category,
                 slices=case.slices,
                 queries=tuple(queries),
-                query_sha256=_query_hashes(queries),
+                query_sha256=query_hashes(queries),
                 retrieval_outcome="failed",
                 metrics=_failed_case_metrics(case, self._cutoffs),
                 errors=[f"retrieval failed: {type(exc).__name__}: {exc}"],
@@ -425,7 +425,7 @@ class ConsumerLegalRetrievalEvaluator:
             category=case.category,
             slices=case.slices,
             queries=tuple(queries),
-            query_sha256=_query_hashes(queries),
+            query_sha256=query_hashes(queries),
             retrieved_hits=tuple(
                 RankedEvaluationRetrievalHit(
                     rank=rank,
@@ -492,7 +492,7 @@ def _merge_normalized_hits(
     return sorted(best.values(), key=lambda hit: (-hit.score, hit.retrieval_id))
 
 
-def _query_hashes(queries: Sequence[str]) -> tuple[str, ...]:
+def query_hashes(queries: Sequence[str]) -> tuple[str, ...]:
     return tuple(hashlib.sha256(query.encode("utf-8")).hexdigest() for query in queries)
 
 

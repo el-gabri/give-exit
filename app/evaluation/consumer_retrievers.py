@@ -61,23 +61,14 @@ class _LazyConsumerRetriever:
         async with self._lock:
             if self._pipeline is None or self._doc_id is None:
                 corpus = get_default_legal_corpus()
-                pipeline = self._factory(corpus)
-                chunks = corpus.as_chunks()
-                if pipeline.embedding_artifacts_dir is None:
-                    await pipeline.index_chunks(chunks)
-                elif not await legal_corpus_is_indexed(pipeline, corpus):
-                    raise RuntimeError(
-                        "the configured legal embedding generation is not active; "
-                        "run `python -m app.consumer.preindex_legal` first"
-                    )
-                self._pipeline = pipeline
-                self._doc_id = chunks[0].doc_id
+                self._pipeline = await prepare_evaluation_pipeline(self._factory, corpus)
+                self._doc_id = corpus.as_parsed_document().doc_id
                 self._corpus = corpus
         assert self._pipeline is not None and self._doc_id is not None
         return self._pipeline, self._doc_id
 
 
-def _offline_pipeline(corpus: LegalCorpus) -> RagPipeline:
+def offline_pipeline(corpus: LegalCorpus) -> RagPipeline:
     corpus_version = f"{corpus.release_id}-{corpus.corpus_sha256[:12]}"
     return RagPipeline(
         embedder=MockEmbeddingClient(),
@@ -87,7 +78,7 @@ def _offline_pipeline(corpus: LegalCorpus) -> RagPipeline:
     )
 
 
-def _configured_pipeline(corpus: LegalCorpus) -> RagPipeline:
+def configured_pipeline(corpus: LegalCorpus) -> RagPipeline:
     """Build the provider selected by LITIGATION_EMBEDDING_* settings."""
 
     return create_rag_pipeline(
@@ -96,11 +87,32 @@ def _configured_pipeline(corpus: LegalCorpus) -> RagPipeline:
     )
 
 
+async def prepare_evaluation_pipeline(
+    factory: PipelineFactory,
+    corpus: LegalCorpus,
+) -> RagPipeline:
+    """Build one evaluation stack whose legal corpus is ready to search.
+
+    Offline stacks index the corpus in memory. A configured stack must already
+    hold the active embedding generation; evaluation never re-embeds it.
+    """
+
+    pipeline = factory(corpus)
+    if pipeline.embedding_artifacts_dir is None:
+        await pipeline.index_chunks(corpus.as_chunks())
+    elif not await legal_corpus_is_indexed(pipeline, corpus):
+        raise RuntimeError(
+            "the configured legal embedding generation is not active; "
+            "run `python -m app.consumer.preindex_legal` first"
+        )
+    return pipeline
+
+
 offline_hybrid_retriever = _LazyConsumerRetriever(
-    _offline_pipeline,
+    offline_pipeline,
     retriever_id="offline_mock_bm25_hybrid",
 )
 configured_hybrid_retriever = _LazyConsumerRetriever(
-    _configured_pipeline,
+    configured_pipeline,
     retriever_id="configured_hybrid",
 )
