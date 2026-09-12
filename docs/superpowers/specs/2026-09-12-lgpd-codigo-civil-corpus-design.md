@@ -50,7 +50,7 @@ through the refresher (section 6.1).
 |---|---|---|
 | URL | `https://www.planalto.gov.br/ccivil_03/_ato2015-2018/2018/lei/l13709compilado.htm` | `https://www.planalto.gov.br/ccivil_03/leis/2002/l10406compilada.htm` |
 | Size and encoding | 230,913 bytes, windows-1252 | 923,899 bytes, windows-1252 |
-| Article headings | 80: arts. 1–65, 55-A…55-M, 58-A, 58-B | 2,082: arts. 1–2.046 plus 46 suffixed, minus 10 absent |
+| Article headings | 80: arts. 1–65, 55-A…55-M, 58-A, 58-B | 2,083: arts. 1–2.046 plus 46 suffixed, minus 1.621–1.629 |
 | Heading levels | CAPÍTULO 10, SEÇÃO 14 | PARTE 2, LIVRO 9, TÍTULO 43, SUBTÍTULO 8, CAPÍTULO 176, SEÇÃO 153, SUBSEÇÃO 15 |
 | Most recent amending law in the page | Lei nº 15.352/2026 (Cap. IX rewritten; ANPD becomes the Agência Nacional de Proteção de Dados) | Leis nº 14.905, 15.040 and 15.068, all of 2024 |
 
@@ -59,6 +59,7 @@ through the refresher (section 6.1).
 - Source quirks the parser must handle:
   - "P A R T E G E R A L" with spaced letters;
   - "Art 1.636." without the dot after "Art";
+  - "Art. 759.(Revogado…" with no space after the dot (the article pattern accepts "(");
   - "Art. 1.620. a 1.629. (Revogados pela Lei nº 12.010, de 2009)": ten revoked articles in one
     paragraph;
   - LGPD "Art. 5 7. (VETADO)." for art. 57;
@@ -83,8 +84,8 @@ through the refresher (section 6.1).
 | LGPD, whole law | 80 | ≈ 488 |
 | CC PARTE GERAL (Livros I–III) | 235 | ≈ 497 |
 | CC PARTE ESPECIAL › Livro I (Obrigações) | 736 | ≈ 1,000 |
-| Other CC books (`audit_only`, not indexed) | 1,111 | (≈ 2,370 not indexed) |
-| **New corpus and index** | **2,299** | **≈ 2,457** |
+| Other CC books (`audit_only`, not indexed) | 1,112 | (≈ 2,370 not indexed) |
+| **New corpus and index** | **2,300** | **≈ 2,457** |
 
 The estimates assume a 260-character chunk header. The implementation records exact counts.
 
@@ -120,7 +121,15 @@ gates never call `_legal_grounds`.
 4. Vector reuse and the `preindex_legal` CLI.
 5. Golden dataset, CI gates and documentation; reindex and rollout.
 
-Every phase leaves the full test suite and the CI gates green, and can ship as its own pull request.
+Every phase leaves the full test suite and the CI gates green. Delivery groups them into three pull
+requests (plans in `docs/superpowers/plans/2026-09-12-plan-{a,b,c}-*.md`):
+
+- **A:** Phase 0.
+- **B:** Phase 4 (vector reuse), merged before any reindex.
+- **C:** Phases 1, 2, 3 and 5.
+
+Grouping C this way means the corpus release changes once, and the precedence rules land together
+with the new sources.
 
 ## 6. Design
 
@@ -184,7 +193,7 @@ Every phase leaves the full test suite and the CI gates green, and can ship as i
 |---|---|---|---|
 | `law_id` | `br-cdc` | `br-lgpd` | `br-cc` |
 | Last article | 119 | 65 | 2.046 |
-| Provisions | 130 | 80 | 2,082 |
+| Provisions | 130 | 80 | 2,083 |
 | Known absent | — | — | 1.621–1.629, revoked in bloc in the "Art. 1.620. a 1.629." paragraph |
 | Corrections | — | "Art. 5 7. (VETADO)." → "Art. 57. (VETADO)." | "P A R T E G E R A L" → "PARTE GERAL"; "Art 1.636." → "Art. 1.636." |
 | Index scope | whole law | whole law | PARTE GERAL; PARTE ESPECIAL › LIVRO I |
@@ -220,7 +229,7 @@ Every phase leaves the full test suite and the CI gates green, and can ship as i
      when, with inline notes removed, it is only the level and the numeral;
    - anything else → parse error.
 3. **Article headings:** `Art.`, the number with optional thousands separators, an optional ordinal
-   (º, ° or "o", with or without a preceding space) and an optional `-LETTER` suffix. Numbers are
+   (º, ° or "o", with or without a preceding space) an optional `-LETTER` suffix and an optional dot, followed by whitespace or "(". Numbers are
    stored without separators. The sequence is strict: the next number, or the next suffix letter
    after the base article or the previous suffix. Only spec-declared absences may break it; any
    other break is a parse error.
@@ -369,12 +378,12 @@ Every phase leaves the full test suite and the CI gates green, and can ship as i
 
 - **Parser:** a minimal HTML fixture for every rule in section 6.2, including each failure case.
 - **Real snapshots:**
-  - provision counts: 130, 80 and 2,082;
+  - provision counts: 130, 80 and 2,083;
   - the known absences;
   - index-scope counts;
   - the CDC digest.
 - **Corpus and schemas:** IDs, law IDs, the hierarchy fields, `index_scope`, and hash coverage of
-  every manifest. Existing count assertions are updated (137 → 2,299 provisions).
+  every manifest. Existing count assertions are updated (137 → 2,300 provisions).
 - **Policy and selection:**
   - LGPD chapters;
   - `audit_only` never citable;
@@ -430,9 +439,9 @@ Every phase leaves the full test suite and the CI gates green, and can ship as i
 ## 7. Acceptance criteria
 
 1. CDC provisions and units are byte-identical to the current parser's (digest test).
-2. LGPD (80) and CC (2,082) parse with the completeness validation and no unknown paragraphs
+2. LGPD (80) and CC (2,083) parse with the completeness validation and no unknown paragraphs
    between headings and articles.
-3. The corpus has 2,299 provisions, and the exact indexed chunk count (about 2,457) is recorded.
+3. The corpus has 2,300 provisions, and the exact indexed chunk count (about 2,457) is recorded.
 4. ruff, strict mypy, pytest on Python 3.10 and 3.12, coverage on the listed modules,
    import-linter and vulture pass.
 5. The retrieval gates pass at their current thresholds, or with a maintainer-approved change.
@@ -476,3 +485,5 @@ Every phase leaves the full test suite and the CI gates green, and can ship as i
   3, 5 and 6.
 - Specialist legal review of the CC scope, the LGPD eligibility rules and the new golden labels.
 - A pruning policy for old embedding generations and PostgreSQL namespaces.
+- The retrieval evaluator's `_is_hard_negative` matches ids by prefix, so it treats art. 42-A as
+  a subdivision of art. 42 and counts 5 known-bad citations where the Phase 0 matcher counts 4.
