@@ -12,20 +12,41 @@ from app.consumer.statutes.parser import (
     parse_statute,
     parsed_text_sha256,
 )
+from app.consumer.statutes.registry import CDC, STATUTES
+from app.consumer.statutes.snapshot import (
+    DATA_DIR,
+    MANIFEST_SCHEMA_VERSION,
+    LoadedStatute,
+    SnapshotManifest,
+    load_manifest,
+    load_statute,
+    manifest_path,
+    snapshot_path,
+)
 from app.consumer.statutes.spec import DivisionSelector, StatuteSpec, TextCorrection
 
 __all__ = [
+    "CDC",
+    "DATA_DIR",
     "HIERARCHY_LEVELS",
+    "MANIFEST_SCHEMA_VERSION",
     "STATUTE_PARSER_VERSION",
+    "STATUTES",
     "DivisionSelector",
+    "LoadedStatute",
     "ParsedArticle",
+    "SnapshotManifest",
     "StatuteParseError",
     "StatuteSpec",
     "TextCorrection",
     "division_numeral",
     "extract_paragraphs",
     "in_index_scope",
+    "load_manifest",
+    "load_statute",
+    "manifest_path",
     "match_article_heading",
     "parse_statute",
     "parsed_text_sha256",
+    "snapshot_path",
 ]

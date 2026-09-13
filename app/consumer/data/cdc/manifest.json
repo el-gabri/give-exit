@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "release_id": "br-cdc-official-2026-08-04-v1",
   "law_id": "br-cdc",
   "source_url": "https://www.planalto.gov.br/ccivil_03/leis/l8078compilado.htm",
@@ -7,12 +7,14 @@
   "encoding": "windows-1252",
   "snapshot_file": "l8078compilado.html",
   "snapshot_sha256": "bbfa64a79067ad3edd6b4dfff46cf905c85a44b2d5d8b2ac058a6a8855f13ef8",
-  "parser_version": "cdc-html-parser-v2",
+  "parsed_text_sha256": "ecc3fcb838ad85fb54aaae9b70b7f3cd851cdd66da14018eccaab32af402b5c9",
+  "parser_version": "planalto-statute-parser-v1",
   "acquisition_method": "download_https",
   "acquisition_note": null,
   "final_url": "https://www.planalto.gov.br/ccivil_03/leis/l8078compilado.htm",
   "http_etag": null,
   "http_last_modified": null,
+  "http_user_agent": null,
   "refresh_tool_version": "cdc-snapshot-refresh-v2",
   "review_status": "engineering_validated"
 }

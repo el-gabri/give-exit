@@ -77,7 +77,6 @@ max-complexity = 10
 # harness change; new/changed functions elsewhere are held to the bar.
 # Track bringing these under 10 as a follow-up, not a blocker.
 [tool.ruff.lint.per-file-ignores]
-"app/consumer/cdc_snapshot.py" = ["C901"]
 "app/consumer/schemas.py" = ["C901"]
 "app/consumer/service.py" = ["C901"]
 "app/evaluation/consumer_golden.py" = ["C901"]
@@ -104,6 +103,7 @@ branch = true
 source = [
     "app.consumer.embedding_artifacts",
     "app.consumer.ground_selection",
+    "app.consumer.statutes",
     "app.consumer.vector_reuse",
     "app.rag.reranking",
 ]

@@ -1,19 +1,10 @@
 """Tests for the versioned consumer-law reference corpus."""
 
 import hashlib
-import json
-from datetime import date
-from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
 
-from app.consumer.cdc_snapshot import (
-    CDC_SOURCE_URL,
-    DEFAULT_MANIFEST_PATH,
-    load_manifest,
-    load_official_cdc,
-)
 from app.consumer.legal_corpus import (
     CONSUMER_LAW_CORPUS_RELEASE_ID,
     LegalCorpus,
@@ -27,46 +18,27 @@ from app.consumer.schemas import (
     LegalUnitKind,
     ProvisionStatus,
 )
-from app.consumer.update_cdc_snapshot import refresh_snapshot
+from app.consumer.statutes import CDC, load_manifest, load_statute
 from app.rag.chunking import SectionAwareChunker
 from app.schemas.rag import Chunk, RetrievedChunk
 
 
-def test_snapshot_is_offline_versioned_and_integrity_checked() -> None:
-    manifest = load_manifest()
-    snapshot_path = DEFAULT_MANIFEST_PATH.parent / manifest.snapshot_file
-
-    assert manifest.release_id == "br-cdc-official-2026-08-04-v1"
-    assert manifest.schema_version == 2
-    assert manifest.source_url == CDC_SOURCE_URL
-    assert manifest.retrieved_on.isoformat() == "2026-08-04"
-    assert manifest.encoding == "windows-1252"
-    assert manifest.parser_version == "cdc-html-parser-v2"
-    assert manifest.acquisition_method == "download_https"
-    assert manifest.final_url == CDC_SOURCE_URL
-    assert manifest.refresh_tool_version == "cdc-snapshot-refresh-v2"
-    assert manifest.review_status == "engineering_validated"
-    assert snapshot_path.is_file()
-    assert snapshot_path.stat().st_size == 169_132
-    assert hashlib.sha256(snapshot_path.read_bytes()).hexdigest() == (
-        "bbfa64a79067ad3edd6b4dfff46cf905c85a44b2d5d8b2ac058a6a8855f13ef8"
-    )
-
-
 def test_official_snapshot_covers_complete_compiled_cdc() -> None:
-    manifest, articles = load_official_cdc()
-    ids = {article.provision_id for article in articles}
+    loaded = load_statute(CDC)
+    ids = {article.provision_id for article in loaded.articles}
 
-    assert manifest.law_id == "br-cdc"
-    assert len(articles) == 130
-    assert {article.number for article in articles} == set(range(1, 120))
+    assert loaded.manifest.law_id == "br-cdc"
+    assert len(loaded.articles) == 130
+    assert {article.number for article in loaded.articles} == set(range(1, 120))
     assert {
         "br-cdc-art-42-a",
         *(f"br-cdc-art-54-{suffix}" for suffix in "abcdefg"),
         *(f"br-cdc-art-104-{suffix}" for suffix in "abc"),
     }.issubset(ids)
     assert "repactuação de dívidas" in next(
-        article.official_text for article in articles if article.provision_id == "br-cdc-art-104-a"
+        article.official_text
+        for article in loaded.articles
+        if article.provision_id == "br-cdc-art-104-a"
     )
 
 
@@ -211,11 +183,11 @@ def test_legal_aware_chunks_never_cross_articles_and_expose_metadata() -> None:
         "chunking_version": "legal-hierarchy-v2:target=1200",
         "chunk_level": "unit",
         "lead_in_unit_ids": None,
-        "official_url": CDC_SOURCE_URL,
+        "official_url": CDC.source_url,
         "corpus_release_id": CONSUMER_LAW_CORPUS_RELEASE_ID,
         "verified_on": "2026-08-04",
         "content_sha256": corpus.unit_for_chunk(paragraph_chunk).content_sha256,
-        "source_snapshot_sha256": load_manifest().snapshot_sha256,
+        "source_snapshot_sha256": load_manifest(CDC).snapshot_sha256,
         "page": paragraph_chunk.page_start,
     }
 
@@ -251,7 +223,7 @@ def test_retrieved_chunk_maps_to_legal_authority_not_evidence() -> None:
     assert citation.chunk_id == article_42_chunk.chunk_id
     assert citation.retrieval_rank == 1
     assert citation.retrieval_score == 0.87
-    assert citation.source_snapshot_sha256 == load_manifest().snapshot_sha256
+    assert citation.source_snapshot_sha256 == load_manifest(CDC).snapshot_sha256
     assert citation.content_kind is LegalContentKind.OFFICIAL
 
 
@@ -324,7 +296,7 @@ def test_corpus_revalidates_copied_models_and_hash_covers_canonical_metadata(
 
     import app.consumer.legal_corpus as legal_corpus_module
 
-    monkeypatch.setattr(legal_corpus_module, "CDC_PARSER_VERSION", "cdc-html-parser-audit-test")
+    monkeypatch.setattr(legal_corpus_module, "STATUTE_PARSER_VERSION", "statute-parser-audit-test")
     assert LegalCorpus(corpus.provisions).corpus_sha256 != corpus.corpus_sha256
 
 
@@ -341,42 +313,6 @@ def test_legal_unit_and_citation_reject_tampered_content_hashes() -> None:
     tampered_citation = citation.model_copy(update={"official_excerpt": "trecho adulterado"})
     with pytest.raises(ValidationError, match="does not match official_excerpt"):
         LegalAuthorityCitation.model_validate(tampered_citation.model_dump())
-
-
-def test_tampered_snapshot_is_rejected(tmp_path: Path) -> None:
-    manifest = load_manifest()
-    source_path = DEFAULT_MANIFEST_PATH.parent / manifest.snapshot_file
-    copied_manifest = tmp_path / "manifest.json"
-    copied_snapshot = tmp_path / manifest.snapshot_file
-    copied_manifest.write_bytes(DEFAULT_MANIFEST_PATH.read_bytes())
-    copied_snapshot.write_bytes(source_path.read_bytes() + b"tampered")
-
-    with pytest.raises(ValueError, match="integrity check failed"):
-        load_official_cdc(copied_manifest)
-
-
-def test_local_snapshot_refresh_requires_provenance_and_explicit_promotion(
-    tmp_path: Path,
-) -> None:
-    source = DEFAULT_MANIFEST_PATH.parent / load_manifest().snapshot_file
-    with pytest.raises(ValueError, match="acquisition-note"):
-        refresh_snapshot(
-            tmp_path,
-            date(2026, 8, 4),
-            source_file=source,
-        )
-
-    _, manifest_path = refresh_snapshot(
-        tmp_path,
-        date(2026, 8, 4),
-        source_file=source,
-        acquisition_note="Downloaded from the official URL and reviewed as a local copy.",
-    )
-    payload = json.loads(manifest_path.read_text(encoding="utf-8"))
-    assert payload["acquisition_method"] == "local_file"
-    assert payload["review_status"] == "pending_review"
-    with pytest.raises(ValueError, match="not been promoted"):
-        load_manifest(manifest_path)
 
 
 def test_subdivisions_are_indexed_with_the_caput_they_depend_on() -> None:
@@ -586,9 +522,24 @@ def test_constant_provenance_fields_left_the_embedded_text_for_metadata() -> Non
     corpus = get_default_legal_corpus()
     chunks = corpus.as_chunks()
 
-    assert not any(CDC_SOURCE_URL in chunk.text for chunk in chunks)
+    assert not any(CDC.source_url in chunk.text for chunk in chunks)
     assert not any("Status:" in chunk.text for chunk in chunks)
     assert all(chunk.metadata["official_url"] for chunk in chunks)
     assert all(chunk.metadata["status"] for chunk in chunks)
     # The hierarchy breadcrumb stays: it is a topic label, not boilerplate.
     assert any("SEÇÃO II Das Cláusulas Abusivas" in chunk.text for chunk in chunks)
+
+
+def test_cdc_and_cf_chunk_texts_are_unchanged() -> None:
+    """Pinned before the statute refactor; their vectors are reused (ADR 0017)."""
+
+    texts = sorted(
+        chunk.text
+        for chunk in get_default_legal_corpus().as_chunks()
+        if chunk.metadata["law_id"] in {"br-cf", "br-cdc"}
+    )
+
+    assert len(texts) == 472
+    assert hashlib.sha256("\x1e".join(texts).encode("utf-8")).hexdigest() == (
+        "50d79e182c6a08c5945182f708a64ba3a8d8e09d6ac19f9250462aeeade219ff"
+    )

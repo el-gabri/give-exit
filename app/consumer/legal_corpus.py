@@ -17,12 +17,6 @@ from datetime import date
 from functools import lru_cache
 from types import MappingProxyType
 
-from app.consumer.cdc_snapshot import (
-    CDC_PARSER_VERSION,
-    ParsedCdcArticle,
-    load_manifest,
-    load_official_cdc,
-)
 from app.consumer.schemas import (
     LegalAuthorityCitation,
     LegalProvision,
@@ -31,16 +25,24 @@ from app.consumer.schemas import (
     LegalUnitKind,
     ProvisionStatus,
 )
+from app.consumer.statutes import (
+    CDC,
+    STATUTE_PARSER_VERSION,
+    STATUTES,
+    LoadedStatute,
+    ParsedArticle,
+    SnapshotManifest,
+    load_manifest,
+    load_statute,
+)
 from app.schemas.document import DocumentPage, ExtractionMethod, ParsedDocument
 from app.schemas.rag import Chunk, MetadataValue, RetrievedChunk
 
 CONSUMER_LAW_CORPUS_RELEASE_ID = "br-consumer-law-2026-08-04-v3"
 CORPUS_VERIFIED_ON = date(2026, 8, 4)
 CONSTITUTION_URL = "https://www.planalto.gov.br/ccivil_03/constituicao/constituicaocompilado.htm"
-CDC_URL = "https://www.planalto.gov.br/ccivil_03/leis/l8078compilado.htm"
 
 _SOURCE_NAME_CF = "Constituição da República Federativa do Brasil de 1988"
-_SOURCE_NAME_CDC = "Código de Defesa do Consumidor (Lei nº 8.078/1990)"
 _LEGACY_ID_ALIASES = {"br-cdc-art-3-p2": "br-cdc-art-3"}
 LEGAL_CHUNKING_VERSION = "legal-hierarchy-v2"
 DEFAULT_LEGAL_CHUNK_TARGET_CHARS = 1_200
@@ -330,26 +332,28 @@ _REVIEWED_CDC_METADATA: Mapping[str, tuple[str, tuple[str, ...]]] = {
 }
 
 
-def _cdc_provisions() -> tuple[LegalProvision, ...]:
-    manifest, articles = load_official_cdc()
+def _statute_provisions(
+    loaded: LoadedStatute,
+    reviewed: Mapping[str, tuple[str, tuple[str, ...]]] = MappingProxyType({}),
+) -> tuple[LegalProvision, ...]:
+    spec, manifest = loaded.spec, loaded.manifest
     provisions: list[LegalProvision] = []
-    for article in articles:
-        reviewed = _REVIEWED_CDC_METADATA.get(article.article_key)
-        summary, tags = reviewed or (_caput_extract(article), ())
+    for article in loaded.articles:
+        summary, tags = reviewed.get(article.article_key) or (_caput_extract(article), ())
         provisions.append(
             LegalProvision(
                 provision_id=article.provision_id,
-                source=LegalSource.CONSUMER_DEFENSE_CODE,
-                source_name=_SOURCE_NAME_CDC,
+                source=spec.source,
+                source_name=spec.source_name,
                 article=article.article_label,
-                citation_label=f"CDC, {article.article_label}",
+                citation_label=f"{spec.citation_prefix}, {article.article_label}",
                 summary=summary,
-                official_url=CDC_URL,
+                official_url=spec.source_url,
                 tags=tuple(tags),
                 corpus_release_id=CONSUMER_LAW_CORPUS_RELEASE_ID,
                 verified_on=manifest.retrieved_on,
                 status=article.status,
-                law_id="br-cdc",
+                law_id=spec.law_id,
                 article_key=article.article_key,
                 title=article.title,
                 chapter=article.chapter,
@@ -362,7 +366,7 @@ def _cdc_provisions() -> tuple[LegalProvision, ...]:
     return tuple(provisions)
 
 
-def _caput_extract(article: ParsedCdcArticle) -> str:
+def _caput_extract(article: ParsedArticle) -> str:
     caput = article.units[0].text
     caput = re.sub(r"^Art\.\s*\d+(?:[º°])?(?:-[A-Z])?\.?(?:\s+|$)", "", caput)
     if len(caput) <= 700:
@@ -373,7 +377,7 @@ def _caput_extract(article: ParsedCdcArticle) -> str:
 
 CURATED_PROVISIONS: tuple[LegalProvision, ...] = (
     *_CONSTITUTION_PROVISIONS,
-    *_cdc_provisions(),
+    *_statute_provisions(load_statute(CDC), _REVIEWED_CDC_METADATA),
 )
 
 
@@ -393,7 +397,11 @@ class LegalCorpus:
             LegalProvision.model_validate(provision.model_dump(mode="python"))
             for provision in provisions
         )
-        self._validate_cdc_snapshot_provenance()
+        law_ids = {provision.law_id for provision in self._provisions}
+        self._source_manifests: dict[str, SnapshotManifest] = {
+            spec.law_id: load_manifest(spec) for spec in STATUTES if spec.law_id in law_ids
+        }
+        self._validate_snapshot_provenance()
         self._by_id = MappingProxyType(
             {provision.provision_id: provision for provision in self._provisions}
         )
@@ -429,55 +437,26 @@ class LegalCorpus:
     def corpus_sha256(self) -> str:
         return self._corpus_sha256
 
-    def _validate_cdc_snapshot_provenance(self) -> None:
-        cdc_provisions = tuple(
-            provision
-            for provision in self._provisions
-            if provision.source is LegalSource.CONSUMER_DEFENSE_CODE
-        )
-        if not cdc_provisions:
-            return
-        manifest = load_manifest()
-        for provision in cdc_provisions:
+    def _validate_snapshot_provenance(self) -> None:
+        for provision in self._provisions:
+            manifest = self._source_manifests.get(provision.law_id or "")
+            if manifest is None:
+                continue
             if provision.source_snapshot_sha256 != manifest.snapshot_sha256:
-                raise ValueError(f"{provision.provision_id} does not match the pinned CDC snapshot")
+                raise ValueError(
+                    f"{provision.provision_id} does not match the pinned "
+                    f"{provision.law_id} snapshot"
+                )
             if provision.official_text is None or provision.official_text_sha256 is None:
                 raise ValueError(f"{provision.provision_id} has no integrity-checked official text")
 
     def _calculate_corpus_sha256(self) -> str:
-        cdc_manifest = (
-            load_manifest()
-            if any(
-                provision.source is LegalSource.CONSUMER_DEFENSE_CODE
-                for provision in self._provisions
-            )
-            else None
-        )
-        source_manifests = []
-        if cdc_manifest is not None:
-            source_manifests.append(
-                {
-                    "law_id": cdc_manifest.law_id,
-                    "manifest_schema_version": cdc_manifest.schema_version,
-                    "manifest_release_id": cdc_manifest.release_id,
-                    "source_url": cdc_manifest.source_url,
-                    "retrieved_on": cdc_manifest.retrieved_on.isoformat(),
-                    "encoding": cdc_manifest.encoding,
-                    "snapshot_file": cdc_manifest.snapshot_file,
-                    "snapshot_sha256": cdc_manifest.snapshot_sha256,
-                    "manifest_parser_version": cdc_manifest.parser_version,
-                    "runtime_parser_version": CDC_PARSER_VERSION,
-                    "acquisition_method": cdc_manifest.acquisition_method,
-                    "acquisition_note": cdc_manifest.acquisition_note,
-                    "final_url": cdc_manifest.final_url,
-                    "http_etag": cdc_manifest.http_etag,
-                    "http_last_modified": cdc_manifest.http_last_modified,
-                    "refresh_tool_version": cdc_manifest.refresh_tool_version,
-                    "review_status": cdc_manifest.review_status,
-                }
-            )
+        source_manifests = [
+            {**manifest.to_mapping(), "runtime_parser_version": STATUTE_PARSER_VERSION}
+            for _, manifest in sorted(self._source_manifests.items())
+        ]
         payload = {
-            "schema_version": 1,
+            "schema_version": 2,
             "corpus_release_id": self.release_id,
             "source_manifests": source_manifests,
             "provisions": [
