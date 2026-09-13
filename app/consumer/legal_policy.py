@@ -20,6 +20,12 @@ the organisation of the consumer-protection system. That boundary comes from
 the statute's own structure, so it stays stable as the corpus grows and does
 not depend on anyone predicting which article a given complaint needs.
 
+The LGPD and the Civil Code follow the same idea (ADR 0016). LGPD chapters
+on public bodies, administrative sanctions, the national authority and final
+provisions are excluded; the Civil Code is limited by its index scope. Both are
+complementary: at most three of their grounds, only beside a CDC ground, and
+none when retrieval fell back to lexical-only search.
+
 Eligibility is still not a merits decision, and the result is still marked
 ``requires_legal_review``.
 """
@@ -28,11 +34,13 @@ from __future__ import annotations
 
 import re
 import unicodedata
+from collections.abc import Sequence
+from typing import TypeVar
 
 from app.consumer.schemas import LegalProvision, LegalSource
 from app.schemas.trace import RetrievalTrace
 
-LEGAL_GROUND_POLICY_VERSION = "consumer-notice-scope-eligibility-v2"
+LEGAL_GROUND_POLICY_VERSION = "consumer-notice-scope-eligibility-v3"
 LEGAL_GROUND_POLICY_REVIEW_STATUS = "requires_legal_review"
 
 # CDC divisions whose subject matter cannot support an individual consumer's
@@ -62,6 +70,17 @@ _EXCLUDED_CDC_DIVISIONS: frozenset[tuple[str, str | None]] = frozenset(
     }
 )
 
+# ADR 0016: the LGPD and the Civil Code complement the CDC in a consumer
+# notice; they never ground one on their own.
+COMPLEMENTARY_SOURCES = frozenset({LegalSource.DATA_PROTECTION_LAW, LegalSource.CIVIL_CODE})
+MAX_COMPLEMENTARY_GROUNDS = 3
+# LGPD chapters an individual notice to a supplier cannot rest on: processing
+# by public bodies (IV), administrative sanctions (VIII), the national
+# authority and council (IX), and final and transitional provisions (X).
+_EXCLUDED_LGPD_CHAPTERS = frozenset({"iv", "viii", "ix", "x"})
+
+_Candidate = TypeVar("_Candidate")
+
 
 def provision_is_eligible(provision: LegalProvision) -> bool:
     """Whether this provision may be cited as a ground in a consumer notice.
@@ -71,10 +90,19 @@ def provision_is_eligible(provision: LegalProvision) -> bool:
     likely retrieval is to surface it, which the query expansion already
     handles.
     """
-    if provision.source is not LegalSource.CONSUMER_DEFENSE_CODE:
+    if provision.index_scope != "indexed":
+        return False
+    if provision.source is LegalSource.FEDERAL_CONSTITUTION:
         # The constitutional corpus is a small, hand-reviewed selection of
         # consumer-relevant provisions; every entry is already in scope.
         return True
+    if provision.source is LegalSource.CIVIL_CODE:
+        # The index scope already limits the Civil Code to the general part
+        # and the law of obligations.
+        return True
+    if provision.source is LegalSource.DATA_PROTECTION_LAW:
+        chapter = _division_numeral(provision.chapter, "capitulo")
+        return bool(chapter) and chapter not in _EXCLUDED_LGPD_CHAPTERS
     title = _division_numeral(provision.title, "titulo")
     chapter = _division_numeral(provision.chapter, "capitulo")
     if not title:
@@ -90,6 +118,47 @@ def provision_is_eligible(provision: LegalProvision) -> bool:
 def eligible_provisions(provisions: tuple[LegalProvision, ...]) -> tuple[LegalProvision, ...]:
     """Filter a corpus slice to what a notice may cite; used by diagnostics."""
     return tuple(provision for provision in provisions if provision_is_eligible(provision))
+
+
+def precedence_window(
+    candidates: Sequence[tuple[LegalProvision, _Candidate]],
+    *,
+    window: int,
+    lexical_only: bool,
+) -> list[tuple[LegalProvision, _Candidate]]:
+    """Admit rank-ordered candidates into the ground window.
+
+    Complementary sources take at most MAX_COMPLEMENTARY_GROUNDS slots; extra
+    ones are skipped without consuming a slot, so the Civil Code cannot push
+    CDC articles out of the window. Without semantic retrieval they are not
+    admitted at all.
+    """
+
+    admitted: list[tuple[LegalProvision, _Candidate]] = []
+    complementary = 0
+    for provision, candidate in candidates:
+        if provision.source in COMPLEMENTARY_SOURCES:
+            if lexical_only or complementary >= MAX_COMPLEMENTARY_GROUNDS:
+                continue
+            complementary += 1
+        admitted.append((provision, candidate))
+        if len(admitted) == window:
+            break
+    return admitted
+
+
+def enforce_cdc_anchor(
+    selected: Sequence[tuple[LegalProvision, _Candidate]],
+) -> list[tuple[LegalProvision, _Candidate]]:
+    """Complementary grounds stand only beside at least one CDC ground."""
+
+    if any(provision.source is LegalSource.CONSUMER_DEFENSE_CODE for provision, _ in selected):
+        return list(selected)
+    return [
+        (provision, candidate)
+        for provision, candidate in selected
+        if provision.source not in COMPLEMENTARY_SOURCES
+    ]
 
 
 def _division_numeral(label: str | None, keyword: str) -> str:

@@ -3,15 +3,17 @@
 from __future__ import annotations
 
 import hashlib
+from functools import lru_cache
 
 from app.consumer.ground_selection import (
     chunk_query_occurrences,
     issue_label,
     select_legal_grounds,
 )
-from app.consumer.legal_corpus import get_default_legal_corpus
+from app.consumer.legal_corpus import LegalCorpus, _statute_provisions, get_default_legal_corpus
 from app.consumer.schemas import ConsumerCaseFacts, ConsumerIssueCategory
 from app.consumer.service import ConsumerCaseService
+from app.consumer.statutes import CIVIL_CODE, LGPD, load_statute
 from app.schemas.rag import Chunk, RetrievedChunk
 from app.schemas.trace import RetrievalTrace, RetrievedItemTrace
 
@@ -194,3 +196,74 @@ def test_failed_traces_do_not_count_as_query_support() -> None:
 def test_issue_label_defaults_to_a_generic_consumer_dispute() -> None:
     assert issue_label(ConsumerCaseFacts()) == "controvérsia de consumo"
     assert issue_label(_facts()) == "cobrança não reconhecida ou indevida"
+
+
+@lru_cache(maxsize=1)
+def _mixed_corpus() -> LegalCorpus:
+    return LegalCorpus(
+        (
+            *get_default_legal_corpus().provisions,
+            *_statute_provisions(load_statute(LGPD)),
+            *_statute_provisions(load_statute(CIVIL_CODE)),
+        )
+    )
+
+
+def _mixed_chunk(unit_id: str) -> Chunk:
+    return next(
+        chunk for chunk in _mixed_corpus().as_chunks() if chunk.metadata["unit_id"] == unit_id
+    )
+
+
+def test_complementary_grounds_are_capped_and_keep_cdc_in_the_window() -> None:
+    complementary = [
+        _mixed_chunk(unit_id)
+        for unit_id in (
+            "br-cc-art-876-caput",
+            "br-cc-art-884-caput",
+            "br-cc-art-927-caput",
+            "br-cc-art-944-caput",
+            "br-lgpd-art-42-caput",
+        )
+    ]
+    ranked = [*complementary, _mixed_chunk("br-cdc-art-42-paragrafo-unico")]
+    results = [
+        [
+            RetrievedChunk(chunk=chunk, score=0.03 - index * 0.0001)
+            for index, chunk in enumerate(ranked)
+        ]
+    ]
+
+    grounds = select_legal_grounds(
+        _mixed_corpus(), _facts(), results, [_trace(results[0])], support=_everything_supported
+    )
+
+    law_ids = [ground.authority.law_id for ground in grounds]
+    assert law_ids.count("br-cdc") == 1
+    assert sum(law_id in {"br-cc", "br-lgpd"} for law_id in law_ids) == 3
+
+
+def test_without_a_cdc_ground_complementary_sources_are_dropped() -> None:
+    results = [[RetrievedChunk(chunk=_mixed_chunk("br-cc-art-876-caput"), score=0.03)]]
+
+    grounds = select_legal_grounds(
+        _mixed_corpus(), _facts(), results, [_trace(results[0])], support=_everything_supported
+    )
+
+    assert grounds == []
+
+
+def test_degraded_retrieval_cites_no_complementary_source() -> None:
+    results = [
+        [
+            RetrievedChunk(chunk=_mixed_chunk("br-cc-art-876-caput"), score=0.03),
+            RetrievedChunk(chunk=_mixed_chunk("br-cdc-art-42-paragrafo-unico"), score=0.029),
+        ]
+    ]
+    degraded = _trace(results[0]).model_copy(update={"degraded_mode": "lexical_only"})
+
+    grounds = select_legal_grounds(
+        _mixed_corpus(), _facts(), results, [degraded], support=_everything_supported
+    )
+
+    assert [ground.authority.law_id for ground in grounds] == ["br-cdc"]

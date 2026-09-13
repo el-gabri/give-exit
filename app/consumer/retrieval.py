@@ -168,6 +168,14 @@ _CATEGORY_EXPANSIONS: dict[str, str] = {
     "over_indebtedness": (
         "superendividamento crédito responsável repactuação conciliação artigos 54-A 104-A"
     ),
+    # No article numbers: "42" and "43" now also name LGPD and Civil Code
+    # articles. The CDC terms let the CDC anchor required by ADR 0016 surface.
+    "personal_data": (
+        "tratamento de dados pessoais direitos do titular acesso correção eliminação "
+        "consentimento compartilhamento finalidade segurança do serviço incidente de "
+        "segurança vazamento informação responsabilidade reparação de danos cadastros "
+        "e dados do consumidor"
+    ),
     "other": "direitos básicos do consumidor fornecedor produto serviço reparação",
 }
 
@@ -261,6 +269,27 @@ _SUBCATEGORY_SIGNALS: tuple[tuple[str, tuple[str, ...]], ...] = (
             "letras minúsculas",
             "letras minusculas",
             "multa escondida",
+        ),
+    ),
+    (
+        "personal_data",
+        (
+            "vazamento de dados",
+            "vazaram meus dados",
+            "vazamento dos meus dados",
+            "dados vazados",
+            "compartilharam meus dados",
+            "compartilhou meus dados",
+            "repassou meus dados",
+            "repassou meu número",
+            "venderam meus dados",
+            "vendeu meus dados",
+            "excluir meus dados",
+            "apagar meus dados",
+            "exclusão dos meus dados",
+            "meus dados pessoais",
+            "proteção de dados",
+            "lgpd",
         ),
     ),
 )

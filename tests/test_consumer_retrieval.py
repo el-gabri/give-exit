@@ -294,3 +294,25 @@ def test_concrete_category_cannot_bypass_the_consumer_scope_gate() -> None:
         category="service_failure",
         complaint="A operadora cobrou pelo serviço de internet que nunca funcionou.",
     )
+
+
+def test_personal_data_complaints_get_data_protection_vocabulary() -> None:
+    facts = _facts(
+        issue_category=ConsumerIssueCategory.OTHER,
+        complaint_summary="A loja teve um vazamento de dados e usaram meu CPF num crediário.",
+        desired_resolution="Quero saber quais dados vazaram.",
+    )
+
+    queries = build_legal_queries(facts)
+
+    assert infer_retrieval_category("other", "Vazaram meus dados pessoais") == "personal_data"
+    assert "tratamento de dados pessoais" in queries[2]
+    assert "segurança do serviço" in queries[2]
+    assert not any(character.isdigit() for character in queries[2])
+
+
+def test_specific_consumer_signals_still_win_over_personal_data() -> None:
+    assert (
+        infer_retrieval_category("other", "Houve venda casada e usaram meus dados pessoais.")
+        == "abusive_practice"
+    )

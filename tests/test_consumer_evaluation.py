@@ -306,7 +306,7 @@ async def test_evaluator_accepts_sync_and_async_retriever_callables() -> None:
     assert sync_summary.run is not None
     assert sync_summary.run.dataset_sha256 == dataset.content_sha256
     assert sync_summary.run.corpus_sha256 == get_default_legal_corpus().corpus_sha256
-    assert sync_summary.run.query_builder_version == "consumer-legal-three-query-v3"
+    assert sync_summary.run.query_builder_version == "consumer-legal-three-query-v4"
     assert sync_summary.run.queries_per_case == 3
     assert sync_summary.by_category["unauthorized_charge"].case_count == 1
     assert sync_summary.by_slice["supplier:telecom"].case_count == 1

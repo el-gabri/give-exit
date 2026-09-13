@@ -11,9 +11,14 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from app.consumer.legal_corpus import LegalCorpus
-from app.consumer.legal_policy import provision_is_eligible, strongly_supported_chunk_ids
+from app.consumer.legal_policy import (
+    enforce_cdc_anchor,
+    precedence_window,
+    provision_is_eligible,
+    strongly_supported_chunk_ids,
+)
 from app.consumer.retrieval import is_consumer_scope
-from app.consumer.schemas import ConsumerCaseFacts, LegalGround, ProvisionStatus
+from app.consumer.schemas import ConsumerCaseFacts, LegalGround, LegalProvision, ProvisionStatus
 from app.schemas.rag import RetrievedChunk
 from app.schemas.trace import RetrievalTrace
 
@@ -85,31 +90,36 @@ def select_legal_grounds(
         chunk_query_occurrences(traces or []),
     )
 
-    grounds: list[LegalGround] = []
     issue = issue_label(facts)
     provision_candidates.sort(key=lambda item: (item[0], item[3].chunk.chunk_id))
-    for _, provision_score, rank, result in provision_candidates[:MAX_GROUND_CANDIDATES]:
+    lexical_only = any(trace.degraded_mode == "lexical_only" for trace in traces or [])
+    window = precedence_window(
+        [(corpus.provision_for_chunk(item[3]), item) for item in provision_candidates],
+        window=MAX_GROUND_CANDIDATES,
+        lexical_only=lexical_only,
+    )
+    selected: list[tuple[LegalProvision, LegalGround]] = []
+    for provision, (_, provision_score, rank, result) in window:
         if provision_score < score_floor:
             continue
-        provision = corpus.provision_for_chunk(result)
-        authority = corpus.authority_for_chunk(
-            result,
-            retrieval_rank=rank,
-        )
-        grounds.append(
-            LegalGround(
-                authority=authority,
-                application_to_facts=(
-                    f"O texto oficial em {provision.citation_label} foi localizado "
-                    f"pela política de recuperação para {issue}. Sua aplicabilidade "
-                    "ao caso não foi decidida pelo sistema e deve ser validada por "
-                    "profissional habilitado contra os fatos e documentos citados."
+        authority = corpus.authority_for_chunk(result, retrieval_rank=rank)
+        selected.append(
+            (
+                provision,
+                LegalGround(
+                    authority=authority,
+                    application_to_facts=(
+                        f"O texto oficial em {provision.citation_label} foi localizado "
+                        f"pela política de recuperação para {issue}. Sua aplicabilidade "
+                        "ao caso não foi decidida pelo sistema e deve ser validada por "
+                        "profissional habilitado contra os fatos e documentos citados."
+                    ),
                 ),
             )
         )
-        if len(grounds) >= MAX_LEGAL_GROUNDS:
-            return grounds
-    return grounds
+        if len(selected) >= MAX_LEGAL_GROUNDS:
+            break
+    return [ground for _, ground in enforce_cdc_anchor(selected)]
 
 
 def _eligible_candidates(

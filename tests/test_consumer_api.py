@@ -167,7 +167,7 @@ async def test_full_consumer_notice_lifecycle(
     assert notice["evidence_references"][0]["filename"] == "extrato.pdf"
     assert notice["legal_grounds"]
     assert len(notice["corpus_sha256"]) == 64
-    assert notice["legal_ground_policy_version"] == "consumer-notice-scope-eligibility-v2"
+    assert notice["legal_ground_policy_version"] == "consumer-notice-scope-eligibility-v3"
     assert notice["legal_ground_policy_review_status"] == "requires_legal_review"
     assert all(
         ground["authority"]["official_url"].startswith("https://www.planalto.gov.br/")
