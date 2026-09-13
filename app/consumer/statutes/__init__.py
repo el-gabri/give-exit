@@ -12,7 +12,7 @@ from app.consumer.statutes.parser import (
     parse_statute,
     parsed_text_sha256,
 )
-from app.consumer.statutes.registry import CDC, STATUTES
+from app.consumer.statutes.registry import CDC, CIVIL_CODE, LGPD, STATUTES
 from app.consumer.statutes.snapshot import (
     DATA_DIR,
     MANIFEST_SCHEMA_VERSION,
@@ -27,8 +27,10 @@ from app.consumer.statutes.spec import DivisionSelector, StatuteSpec, TextCorrec
 
 __all__ = [
     "CDC",
+    "CIVIL_CODE",
     "DATA_DIR",
     "HIERARCHY_LEVELS",
+    "LGPD",
     "MANIFEST_SCHEMA_VERSION",
     "STATUTE_PARSER_VERSION",
     "STATUTES",

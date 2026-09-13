@@ -1,0 +1,20 @@
+{
+  "schema_version": 3,
+  "release_id": "br-cc-official-2026-09-12-v1",
+  "law_id": "br-cc",
+  "source_url": "https://www.planalto.gov.br/ccivil_03/leis/2002/l10406compilada.htm",
+  "retrieved_on": "2026-09-12",
+  "encoding": "windows-1252",
+  "snapshot_file": "l10406compilada.html",
+  "snapshot_sha256": "c7e5346a78691e4b3cb3ca7d19cced72a04fab026c40099367d1b078db7c4113",
+  "parsed_text_sha256": "cb60b801d600a771f539cf94be7d7990bafb5829924f1e753e4b5224db276802",
+  "parser_version": "planalto-statute-parser-v1",
+  "acquisition_method": "download_https",
+  "acquisition_note": null,
+  "final_url": "https://www.planalto.gov.br/ccivil_03/leis/2002/l10406compilada.htm",
+  "http_etag": "\"e12e4-65028bfb0defb\"",
+  "http_last_modified": "Thu, 23 Apr 2026 23:10:05 GMT",
+  "http_user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0 Safari/537.36",
+  "refresh_tool_version": "statute-snapshot-refresh-v1",
+  "review_status": "engineering_validated"
+}

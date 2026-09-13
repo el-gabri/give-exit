@@ -60,7 +60,7 @@ dev = [
 include = ["app*"]
 
 [tool.setuptools.package-data]
-"app.consumer" = ["data/cdc/*.html", "data/cdc/*.json"]
+"app.consumer" = ["data/*/*.html", "data/*/*.json"]
 
 [tool.ruff]
 line-length = 100
