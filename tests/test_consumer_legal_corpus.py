@@ -49,12 +49,16 @@ def test_default_corpus_combines_full_cdc_with_reviewed_constitution() -> None:
         item for item in corpus.provisions if item.source is LegalSource.FEDERAL_CONSTITUTION
     ]
 
+    lgpd = [item for item in corpus.provisions if item.source is LegalSource.DATA_PROTECTION_LAW]
+    civil = [item for item in corpus.provisions if item.source is LegalSource.CIVIL_CODE]
+
     assert corpus.release_id == CONSUMER_LAW_CORPUS_RELEASE_ID
-    assert len(corpus.provisions) == 137
-    assert len(cdc) == 130
-    assert len(constitution) == 7
-    assert len({item.provision_id for item in corpus.provisions}) == 137
-    assert {item.verified_on.isoformat() for item in corpus.provisions} == {"2026-08-04"}
+    assert corpus.release_id.endswith("-v4")
+    assert len(corpus.provisions) == 2300
+    assert (len(constitution), len(cdc), len(lgpd), len(civil)) == (7, 130, 80, 2083)
+    assert len({item.provision_id for item in corpus.provisions}) == 2300
+    assert {item.verified_on.isoformat() for item in (*cdc, *constitution)} == {"2026-08-04"}
+    assert len({item.verified_on for item in (*lgpd, *civil)}) == 1
     assert all(
         item.official_url.startswith("https://www.planalto.gov.br/") for item in corpus.provisions
     )
@@ -113,7 +117,10 @@ def test_parser_preserves_penalties_and_quoted_amendments_as_normative_units() -
 def test_vetoed_articles_and_units_are_auditable_but_not_active() -> None:
     corpus = get_default_legal_corpus()
     vetoed_article_ids = {
-        item.provision_id for item in corpus.provisions if item.status is ProvisionStatus.VETOED
+        item.provision_id
+        for item in corpus.provisions
+        if item.status is ProvisionStatus.VETOED
+        and item.source is LegalSource.CONSUMER_DEFENSE_CODE
     }
 
     assert vetoed_article_ids == {
@@ -130,7 +137,7 @@ def test_vetoed_articles_and_units_are_auditable_but_not_active() -> None:
         "br-cdc-art-108",
         "br-cdc-art-109",
     }
-    assert len(corpus.active_provisions) == 125
+    assert len(corpus.active_provisions) == 2215
     article_51_veto = corpus.get("br-cdc-art-51").units[5]
     assert article_51_veto.unit_id == "br-cdc-art-51-inciso-v"
     assert article_51_veto.status is ProvisionStatus.VETOED
@@ -520,6 +527,8 @@ def test_amendment_only_articles_are_audited_but_never_retrievable() -> None:
     assert not (chunked & amendment_ids)
     assert not (retrievable & amendment_ids)
     assert amendment_ids <= audited
+    assert "br-lgpd-art-60" in audited
+    assert "br-lgpd-art-60" not in chunked | retrievable
 
 
 def test_constant_provenance_fields_left_the_embedded_text_for_metadata() -> None:

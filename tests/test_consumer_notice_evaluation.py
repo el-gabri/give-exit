@@ -136,17 +136,22 @@ def test_no_ground_cases_score_abstention_and_degradation() -> None:
 
 
 async def test_offline_notice_baseline_on_the_seed_dataset() -> None:
-    """Baseline measured on 2026-09-07 (plan.md finding 4); change it deliberately."""
+    """Re-measured on 2026-09-12 with the LGPD and the Civil Code in the corpus.
+
+    On the CF+CDC corpus and the 15-case seed it was 79 grounds, 4 known-bad
+    citations and exact recall 0.333 (measured 2026-09-07). Change it
+    deliberately.
+    """
 
     summary = await run_notice_evaluation(load_consumer_legal_dataset(DATASET_PATH))
 
     assert summary.failed_case_count == 0
     assert summary.totals == {
-        "consumer_notice_complementary_grounds": 0,
-        "consumer_notice_grounds": 79,
-        "consumer_notice_known_bad_citations": 4,
+        "consumer_notice_complementary_grounds": 10,
+        "consumer_notice_grounds": 47,
+        "consumer_notice_known_bad_citations": 1,
     }
-    assert summary.averages["consumer_notice_exact_recall"] == 0.333
+    assert summary.averages["consumer_notice_exact_recall"] == 0.149
     assert summary.averages["consumer_notice_abstention"] == 1.0
     assert summary.averages["consumer_notice_semantic_success"] == 1.0
     assert summary.run is not None
@@ -182,8 +187,8 @@ async def test_a_failing_case_is_recorded_without_stopping_the_run() -> None:
     summary = await evaluator.run(load_consumer_legal_dataset(DATASET_PATH))
 
     failed = [case for case in summary.cases if case.retrieval_outcome == "failed"]
-    assert len(failed) == 13
-    assert summary.failed_case_count == 13
+    assert len(failed) == 19
+    assert summary.failed_case_count == 19
     assert all("store offline" in case.errors[0] for case in failed)
 
 
@@ -201,7 +206,7 @@ def test_cli_writes_notice_results_and_gates_on_totals(
             "--output",
             str(output),
             "--max",
-            "consumer_notice_known_bad_citations=3",
+            "consumer_notice_known_bad_citations=0",
         ],
     )
 
@@ -210,7 +215,7 @@ def test_cli_writes_notice_results_and_gates_on_totals(
 
     assert excinfo.value.code == 1
     payload = json.loads(output.read_text(encoding="utf-8"))
-    assert payload["totals"]["consumer_notice_known_bad_citations"] == 4
+    assert payload["totals"]["consumer_notice_known_bad_citations"] == 1
 
 
 def test_cli_rejects_require_semantic_without_notice_mode(
@@ -222,3 +227,34 @@ def test_cli_rejects_require_semantic_without_notice_mode(
         asyncio.run(consumer_runner._cli())
 
     assert excinfo.value.code == 2
+
+
+_ORIGINAL_CASES = frozenset(
+    {
+        "produto_duravel_com_vicio",
+        "servico_de_reparo_malfeito",
+        "oferta_nao_entregue",
+        "arrependimento_compra_online",
+        "publicidade_enganosa_por_omissao",
+        "venda_casada_seguro",
+        "cobranca_indevida_ja_paga",
+        "cobranca_com_ameacas",
+        "negativacao_sem_aviso",
+        "contrato_ilegivel_e_limitacao_oculta",
+        "interrupcao_servico_essencial",
+        "alergeno_omitido_no_rotulo",
+        "superendividamento_e_minimo_existencial",
+        "conflito_entre_vizinhos",
+        "salario_atrasado",
+    }
+)
+
+
+async def test_the_expansion_adds_no_known_bad_citation_to_the_original_cases() -> None:
+    """Spec acceptance criterion 6: at most 4 on the 15 pre-expansion cases."""
+
+    summary = await run_notice_evaluation(load_consumer_legal_dataset(DATASET_PATH))
+    original = [case for case in summary.cases if case.case_name in _ORIGINAL_CASES]
+
+    assert len(original) == 15
+    assert sum(case.counts["consumer_notice_known_bad_citations"] for case in original) <= 4

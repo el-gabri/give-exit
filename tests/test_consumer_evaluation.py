@@ -134,11 +134,11 @@ def test_seed_dataset_is_separate_versioned_and_explicitly_unreviewed() -> None:
     dataset = load_consumer_legal_dataset(DATASET_PATH)
 
     assert dataset.dataset_id == "consumer-legal-retrieval-seed"
-    assert dataset.version == "1.1.0"
+    assert dataset.version == "1.2.0"
     assert dataset.authoring == "developer_authored_seed"
     assert dataset.review_status == "requires_legal_review"
     assert dataset.source_url.endswith("/l8078compilado.htm")
-    assert len(dataset.cases) == 15
+    assert len(dataset.cases) == 21
     assert len({case.category for case in dataset.cases}) >= 12
     assert sum(case.no_applicable_ground for case in dataset.cases) == 2
     assert all(case.slices for case in dataset.cases)
@@ -150,6 +150,8 @@ def test_seed_dataset_is_separate_versioned_and_explicitly_unreviewed() -> None:
         for case in dataset.cases
         for judgment in case.relevant
     )
+    assert sum("law:lgpd" in case.slices for case in dataset.cases) == 3
+    assert sum("law:cc" in case.slices for case in dataset.cases) == 3
 
 
 def test_seed_labels_resolve_to_active_units_in_versioned_cdc() -> None:

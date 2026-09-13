@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
 
 import pytest
@@ -62,7 +63,7 @@ async def test_generation_is_checksummed_active_and_strongly_validated(
     assert result.generation_id == manager.generation_id
     assert manifest.status is EmbeddingGenerationStatus.ACTIVE
     assert manifest.completed_chunk_count == len(corpus.as_chunks())
-    assert manifest.expected_shard_count == 3
+    assert manifest.expected_shard_count == math.ceil(len(corpus.as_chunks()) / 200)
     assert manifest.contract.output_dimension == 128
     assert await legal_corpus_is_indexed(pipeline, corpus) is True
     configuration = pipeline.retrieval_configuration(
@@ -132,7 +133,7 @@ async def test_failed_generation_resumes_only_missing_shards(tmp_path: Path) -> 
     result = await preindex_legal_corpus(resumed, corpus)
 
     assert result.action == "indexed"
-    assert healthy_embedder.calls == 2
+    assert healthy_embedder.calls == math.ceil(len(corpus.as_chunks()) / 200) - 1
     assert await legal_corpus_is_indexed(resumed, corpus) is True
 
 

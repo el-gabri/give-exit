@@ -1,10 +1,11 @@
 """Versioned legal corpus for the consumer workflow.
 
-The CDC portion is built from an integrity-checked offline snapshot of the
-complete compiled statute published by Planalto.  The Constitution portion is
-a small reviewed set of consumer-relevant provisions transcribed from the
-official compiled Constitution.  Editorial summaries remain visibly separate
-from the official text in every page and citation.
+The CDC, the LGPD and the Civil Code are built from integrity-checked offline
+snapshots of the complete compiled statutes published by Planalto; only the
+Civil Code's general part and law of obligations are indexed (ADR 0016). The
+Constitution portion is a small reviewed set of consumer-relevant provisions
+transcribed from the official compiled Constitution. Editorial summaries remain
+visibly separate from the official text in every page and citation.
 """
 
 from __future__ import annotations
@@ -27,6 +28,8 @@ from app.consumer.schemas import (
 )
 from app.consumer.statutes import (
     CDC,
+    CIVIL_CODE,
+    LGPD,
     STATUTE_PARSER_VERSION,
     STATUTES,
     LoadedStatute,
@@ -40,7 +43,7 @@ from app.consumer.statutes import (
 from app.schemas.document import DocumentPage, ExtractionMethod, ParsedDocument
 from app.schemas.rag import Chunk, MetadataValue, RetrievedChunk
 
-CONSUMER_LAW_CORPUS_RELEASE_ID = "br-consumer-law-2026-08-04-v3"
+CONSUMER_LAW_CORPUS_RELEASE_ID = "br-consumer-law-2026-09-12-v4"
 CORPUS_VERIFIED_ON = date(2026, 8, 4)
 CONSTITUTION_URL = "https://www.planalto.gov.br/ccivil_03/constituicao/constituicaocompilado.htm"
 
@@ -385,6 +388,8 @@ def _default_provisions() -> tuple[LegalProvision, ...]:
     return (
         *_CONSTITUTION_PROVISIONS,
         *_statute_provisions(load_statute(CDC), _REVIEWED_CDC_METADATA),
+        *_statute_provisions(load_statute(LGPD)),
+        *_statute_provisions(load_statute(CIVIL_CODE)),
     )
 
 
@@ -557,7 +562,10 @@ class LegalCorpus:
             language="pt",
             extraction_method=ExtractionMethod.NATIVE_TEXT,
             warnings=[
-                "CDC: texto oficial compilado de snapshot local verificado por SHA-256.",
+                "CDC, LGPD e Código Civil: texto oficial compilado de snapshots locais "
+                "verificados por SHA-256.",
+                "Código Civil: só a Parte Geral e o Livro I da Parte Especial entram no "
+                "índice; os demais livros ficam no corpus para auditoria.",
                 "CF: seleção de dispositivos transcritos da compilação oficial do Planalto.",
                 "Unidades vetadas ou revogadas são mantidas para auditoria e marcadas.",
             ],

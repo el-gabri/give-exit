@@ -6,20 +6,14 @@ from functools import lru_cache
 
 import pytest
 
-from app.consumer.legal_corpus import (
-    LegalCorpus,
-    _statute_provisions,
-    get_default_legal_corpus,
-)
-from app.consumer.statutes import CIVIL_CODE, load_statute
+from app.consumer.legal_corpus import LegalCorpus, get_default_legal_corpus
 from app.schemas.document import ParsedDocument
 from app.schemas.rag import RetrievedChunk
 
 
 @lru_cache(maxsize=1)
 def _with_civil_code() -> LegalCorpus:
-    base = get_default_legal_corpus().provisions
-    return LegalCorpus((*base, *_statute_provisions(load_statute(CIVIL_CODE))))
+    return get_default_legal_corpus()
 
 
 def test_hierarchy_reaches_provisions_chunks_and_citations() -> None:

@@ -10,10 +10,9 @@ from app.consumer.ground_selection import (
     issue_label,
     select_legal_grounds,
 )
-from app.consumer.legal_corpus import LegalCorpus, _statute_provisions, get_default_legal_corpus
+from app.consumer.legal_corpus import LegalCorpus, get_default_legal_corpus
 from app.consumer.schemas import ConsumerCaseFacts, ConsumerIssueCategory
 from app.consumer.service import ConsumerCaseService
-from app.consumer.statutes import CIVIL_CODE, LGPD, load_statute
 from app.schemas.rag import Chunk, RetrievedChunk
 from app.schemas.trace import RetrievalTrace, RetrievedItemTrace
 
@@ -200,13 +199,7 @@ def test_issue_label_defaults_to_a_generic_consumer_dispute() -> None:
 
 @lru_cache(maxsize=1)
 def _mixed_corpus() -> LegalCorpus:
-    return LegalCorpus(
-        (
-            *get_default_legal_corpus().provisions,
-            *_statute_provisions(load_statute(LGPD)),
-            *_statute_provisions(load_statute(CIVIL_CODE)),
-        )
-    )
+    return get_default_legal_corpus()
 
 
 def _mixed_chunk(unit_id: str) -> Chunk:

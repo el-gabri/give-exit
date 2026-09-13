@@ -1,12 +1,12 @@
 {
   "dataset_id": "consumer-legal-retrieval-seed",
-  "version": "1.1.0",
-  "description": "Developer-authored seed for offline retrieval evaluation from lay Brazilian consumer complaints to CDC provisions. It is not a production legal golden until specialist review.",
+  "version": "1.2.0",
+  "description": "Developer-authored seed for offline retrieval evaluation from lay Brazilian consumer complaints to CDC provisions, with LGPD and Civil Code complements. It is not a production legal golden until specialist review.",
   "source_url": "https://www.planalto.gov.br/ccivil_03/leis/l8078compilado.htm",
   "authoring": "developer_authored_seed",
   "review_status": "requires_legal_review",
-  "target_corpus_release_id": "br-consumer-law-2026-08-04-v3",
-  "target_corpus_sha256": "7432b446c10bb7364942ce261460900bf8d4556fd202f0cd0f83522e0a057bbf",
+  "target_corpus_release_id": "br-consumer-law-2026-09-12-v4",
+  "target_corpus_sha256": "6b18d3db4b0edb744f69fec3ff865206e22070c74ba14ba24540fcff4a68a1c3",
   "cases": [
     {
       "case_id": "produto_duravel_com_vicio",
@@ -313,6 +313,87 @@
       "relevant": [],
       "hard_negatives": ["br-cdc-art-2", "br-cdc-art-3-paragrafo-2", "br-cdc-art-42"],
       "no_applicable_ground": true
+    },
+    {
+      "case_id": "vazamento_de_dados_cadastrais",
+      "category": "personal_data",
+      "intake_category": "other",
+      "slices": ["supplier:retail", "remedy:information", "wording:lay", "law:lgpd"],
+      "complaint": "Recebi um e-mail da loja avisando que houve um vazamento de dados dos clientes. Depois disso, meu nome, CPF e endereço foram usados para abrir um crediário em outra loja.",
+      "desired_resolution": "Quero saber quais dados vazaram e que a loja responda pelos prejuízos.",
+      "relevant": [
+        {"article_id": "br-lgpd-art-46", "unit_id": "br-lgpd-art-46-caput", "grade": 3, "rationale": "Os agentes de tratamento devem adotar medidas de segurança aptas a proteger os dados pessoais de acessos não autorizados."},
+        {"article_id": "br-lgpd-art-42", "unit_id": "br-lgpd-art-42-caput", "grade": 2, "rationale": "O controlador que causar dano em razão do tratamento de dados pessoais é obrigado a repará-lo."},
+        {"article_id": "br-lgpd-art-48", "unit_id": "br-lgpd-art-48-caput", "grade": 2, "rationale": "O controlador deve comunicar ao titular incidente de segurança que possa acarretar risco ou dano relevante."},
+        {"article_id": "br-cdc-art-14", "unit_id": "br-cdc-art-14-caput", "grade": 2, "rationale": "O fornecedor responde, independentemente de culpa, por defeitos na prestação do serviço, inclusive de segurança."}
+      ],
+      "hard_negatives": ["br-lgpd-art-52", "br-cdc-art-49"]
+    },
+    {
+      "case_id": "pedido_de_exclusao_de_dados_ignorado",
+      "category": "personal_data",
+      "intake_category": "other",
+      "slices": ["supplier:app", "remedy:deletion", "wording:lay", "law:lgpd"],
+      "complaint": "Cancelei minha conta no aplicativo e pedi por e-mail para excluir meus dados pessoais. Três meses depois continuo recebendo mensagens de marketing e a empresa não responde.",
+      "desired_resolution": "Quero que apaguem meus dados e confirmem a exclusão por escrito.",
+      "relevant": [
+        {"article_id": "br-lgpd-art-18", "unit_id": "br-lgpd-art-18-inciso-vi", "grade": 3, "rationale": "O titular tem direito à eliminação dos dados pessoais tratados com o seu consentimento."},
+        {"article_id": "br-lgpd-art-18", "unit_id": "br-lgpd-art-18-inciso-ix", "grade": 2, "rationale": "O titular pode revogar o consentimento dado ao tratamento dos seus dados."}
+      ],
+      "hard_negatives": ["br-lgpd-art-55-j", "br-cdc-art-42"]
+    },
+    {
+      "case_id": "compartilhamento_de_dados_sem_consentimento",
+      "category": "personal_data",
+      "intake_category": "other",
+      "slices": ["supplier:telecom", "remedy:information", "wording:lay", "law:lgpd"],
+      "complaint": "Descobri que a operadora de telefonia repassou meu número e meu endereço para empresas parceiras sem eu ter autorizado. Agora recebo ligações de telemarketing todos os dias.",
+      "desired_resolution": "Quero que parem de compartilhar meus dados e informem com quem foram compartilhados.",
+      "relevant": [
+        {"article_id": "br-lgpd-art-18", "unit_id": "br-lgpd-art-18-inciso-vii", "grade": 3, "rationale": "O titular tem direito de saber com quais entidades o controlador compartilhou seus dados."},
+        {"article_id": "br-lgpd-art-7", "unit_id": "br-lgpd-art-7-inciso-i", "grade": 2, "rationale": "O consentimento do titular é uma das hipóteses que autorizam o tratamento de dados pessoais."},
+        {"article_id": "br-cdc-art-43", "unit_id": "br-cdc-art-43-caput", "grade": 1, "rationale": "O consumidor tem acesso às informações existentes em cadastros e dados pessoais arquivados sobre ele."}
+      ],
+      "hard_negatives": ["br-lgpd-art-52", "br-cdc-art-49"]
+    },
+    {
+      "case_id": "pagamento_em_duplicidade_nao_devolvido",
+      "category": "undue_payment",
+      "intake_category": "unauthorized_charge",
+      "slices": ["supplier:bank", "remedy:refund", "wording:lay", "law:cc"],
+      "complaint": "Paguei a mesma fatura do cartão duas vezes por engano, pelo aplicativo do banco. O banco confirma que recebeu os dois pagamentos, mas se recusa a devolver o valor pago a mais.",
+      "desired_resolution": "Quero a devolução do valor pago em duplicidade, com correção.",
+      "relevant": [
+        {"article_id": "br-cc-art-876", "unit_id": "br-cc-art-876-caput", "grade": 3, "rationale": "Quem recebeu o que não lhe era devido fica obrigado a restituir."},
+        {"article_id": "br-cc-art-884", "unit_id": "br-cc-art-884-caput", "grade": 2, "rationale": "Quem se enriquece sem justa causa à custa de outrem deve restituir o indevidamente auferido."}
+      ],
+      "hard_negatives": ["br-cc-art-42", "br-lgpd-art-42"]
+    },
+    {
+      "case_id": "atraso_na_devolucao_combinada",
+      "category": "late_refund",
+      "intake_category": "service_failure",
+      "slices": ["supplier:retail", "remedy:refund", "wording:lay", "law:cc"],
+      "complaint": "Cancelei a compra de um sofá e a loja se comprometeu por escrito a devolver o valor em dez dias. Já se passaram dois meses e o dinheiro não voltou.",
+      "desired_resolution": "Quero o valor de volta com juros e correção pelo atraso.",
+      "relevant": [
+        {"article_id": "br-cc-art-395", "unit_id": "br-cc-art-395-caput", "grade": 3, "rationale": "O devedor responde pelos prejuízos a que sua mora der causa, com juros e atualização monetária."},
+        {"article_id": "br-cc-art-406", "unit_id": "br-cc-art-406-caput", "grade": 1, "rationale": "Define a taxa legal de juros quando não houver taxa convencionada."}
+      ],
+      "hard_negatives": ["br-cdc-art-26", "br-cc-art-42"]
+    },
+    {
+      "case_id": "renuncia_antecipada_em_contrato_de_adesao",
+      "category": "adhesion_contract_clause",
+      "intake_category": "other",
+      "slices": ["supplier:service", "remedy:repair", "wording:lay", "law:cc"],
+      "complaint": "Assinei um contrato de adesão para instalar energia solar. Uma cláusula diz que renuncio a qualquer indenização se a instalação der problema, e agora o sistema não funciona.",
+      "desired_resolution": "Quero que a cláusula seja considerada sem efeito e que consertem o sistema.",
+      "relevant": [
+        {"article_id": "br-cdc-art-51", "unit_id": "br-cdc-art-51-inciso-i", "grade": 3, "rationale": "São nulas as cláusulas que impossibilitem, exonerem ou atenuem a responsabilidade do fornecedor por vícios."},
+        {"article_id": "br-cc-art-424", "unit_id": "br-cc-art-424-caput", "grade": 2, "rationale": "Nos contratos de adesão, são nulas as cláusulas de renúncia antecipada do aderente a direito resultante do negócio."}
+      ],
+      "hard_negatives": ["br-cdc-art-49", "br-lgpd-art-46"]
     }
   ]
 }
