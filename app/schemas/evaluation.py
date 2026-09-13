@@ -18,7 +18,7 @@ from pydantic import (
 
 from app.consumer.schemas import ConsumerIssueCategory
 
-_LEGAL_ID_PATTERN = re.compile(r"^br-(?:cdc|cf)-art-[a-z0-9]+(?:-[a-z0-9]+)*$")
+_LEGAL_ID_PATTERN = re.compile(r"^br-(?:cdc|cf|lgpd|cc)-art-[a-z0-9]+(?:-[a-z0-9]+)*$")
 
 MetricDirection = Literal["higher_is_better", "lower_is_better"]
 
@@ -27,7 +27,7 @@ def _validate_legal_id(value: str, *, field_name: str) -> str:
     normalized = value.strip().lower()
     if not _LEGAL_ID_PATTERN.fullmatch(normalized):
         raise ValueError(
-            f"{field_name} must be a stable lowercase CDC/CF id such as "
+            f"{field_name} must be a stable lowercase legal id such as "
             "'br-cdc-art-42-paragrafo-unico'"
         )
     return normalized

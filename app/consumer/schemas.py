@@ -61,6 +61,18 @@ class ConsumerCaseStatus(str, Enum):
 class LegalSource(str, Enum):
     FEDERAL_CONSTITUTION = "federal_constitution"
     CONSUMER_DEFENSE_CODE = "consumer_defense_code"
+    DATA_PROTECTION_LAW = "data_protection_law"
+    CIVIL_CODE = "civil_code"
+
+
+LAW_ID_BY_SOURCE: dict[LegalSource, str] = {
+    LegalSource.FEDERAL_CONSTITUTION: "br-cf",
+    LegalSource.CONSUMER_DEFENSE_CODE: "br-cdc",
+    LegalSource.DATA_PROTECTION_LAW: "br-lgpd",
+    LegalSource.CIVIL_CODE: "br-cc",
+}
+_LEGAL_ID_PATTERN = r"^br-(cf|cdc|lgpd|cc)-[a-z0-9-]+$"
+_LAW_ID_PATTERN = r"^br-(cf|cdc|lgpd|cc)$"
 
 
 class ProvisionStatus(str, Enum):
@@ -230,7 +242,7 @@ class LegalTextUnit(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    unit_id: str = Field(pattern=r"^br-(cf|cdc)-[a-z0-9-]+$")
+    unit_id: str = Field(pattern=_LEGAL_ID_PATTERN)
     kind: LegalUnitKind
     label: str = Field(min_length=1)
     text: str = Field(min_length=1)
@@ -255,7 +267,7 @@ class LegalProvision(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    provision_id: str = Field(pattern=r"^br-(cf|cdc)-[a-z0-9-]+$")
+    provision_id: str = Field(pattern=_LEGAL_ID_PATTERN)
     source: LegalSource
     source_name: str
     article: str
@@ -266,7 +278,7 @@ class LegalProvision(BaseModel):
     corpus_release_id: str
     verified_on: date
     status: ProvisionStatus = ProvisionStatus.ACTIVE
-    law_id: str | None = Field(default=None, pattern=r"^br-(cf|cdc)$")
+    law_id: str | None = Field(default=None, pattern=_LAW_ID_PATTERN)
     article_key: str | None = Field(default=None, pattern=r"^[0-9]+(?:-[a-z])?$")
     title: str | None = None
     chapter: str | None = None
@@ -285,11 +297,9 @@ class LegalProvision(BaseModel):
         elif self.content_sha256 != expected:
             raise ValueError("content_sha256 does not match summary")
         if self.law_id is None:
-            object.__setattr__(
-                self,
-                "law_id",
-                ("br-cf" if self.source is LegalSource.FEDERAL_CONSTITUTION else "br-cdc"),
-            )
+            object.__setattr__(self, "law_id", LAW_ID_BY_SOURCE[self.source])
+        if not self.provision_id.startswith(f"{self.law_id}-"):
+            raise ValueError("provision_id must start with the law id")
         if self.official_text is None:
             if self.official_text_sha256 is not None:
                 raise ValueError("official_text_sha256 requires official_text")
@@ -320,7 +330,7 @@ class LegalAuthorityCitation(BaseModel):
     content_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     content_kind: LegalContentKind
     status: ProvisionStatus = ProvisionStatus.ACTIVE
-    law_id: str | None = Field(default=None, pattern=r"^br-(cf|cdc)$")
+    law_id: str | None = Field(default=None, pattern=_LAW_ID_PATTERN)
     article_key: str | None = Field(default=None, pattern=r"^[0-9]+(?:-[a-z])?$")
     title: str | None = None
     chapter: str | None = None
@@ -328,7 +338,7 @@ class LegalAuthorityCitation(BaseModel):
     official_text: str | None = None
     official_text_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     source_snapshot_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    unit_id: str | None = Field(default=None, pattern=r"^br-(cf|cdc)-[a-z0-9-]+$")
+    unit_id: str | None = Field(default=None, pattern=_LEGAL_ID_PATTERN)
     unit_label: str | None = None
     official_excerpt: str | None = None
     official_excerpt_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
