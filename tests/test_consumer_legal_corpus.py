@@ -173,6 +173,10 @@ def test_legal_aware_chunks_never_cross_articles_and_expose_metadata() -> None:
         "title": "TÍTULO I Dos Direitos do Consumidor",
         "chapter": "CAPÍTULO V Das Práticas Comerciais",
         "section": "SEÇÃO V Da Cobrança de Dívidas",
+        "part": None,
+        "book": None,
+        "subtitle": None,
+        "subsection": None,
         "unit_id": "br-cdc-art-42-paragrafo-unico",
         "unit_kind": "paragraph",
         "paragraph": "unico",
@@ -180,7 +184,7 @@ def test_legal_aware_chunks_never_cross_articles_and_expose_metadata() -> None:
         "alinea": None,
         "status": "active",
         "content_kind": "official",
-        "chunking_version": "legal-hierarchy-v2:target=1200",
+        "chunking_version": "legal-hierarchy-v3:target=1200",
         "chunk_level": "unit",
         "lead_in_unit_ids": None,
         "official_url": CDC.source_url,
@@ -289,6 +293,8 @@ def test_corpus_revalidates_copied_models_and_hash_covers_canonical_metadata(
 
     assert LegalCorpus([changed_tags]).corpus_sha256 != baseline.corpus_sha256
     assert LegalCorpus([changed_hierarchy]).corpus_sha256 != baseline.corpus_sha256
+    changed_scope = provision.model_copy(update={"index_scope": "audit_only"})
+    assert LegalCorpus([changed_scope]).corpus_sha256 != baseline.corpus_sha256
 
     tampered = provision.model_copy(update={"summary": "resumo adulterado"})
     with pytest.raises(ValidationError, match="does not match summary"):

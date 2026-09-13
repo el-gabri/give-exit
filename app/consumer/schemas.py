@@ -11,6 +11,7 @@ import hashlib
 from datetime import date, datetime, timezone
 from decimal import Decimal
 from enum import Enum
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -283,6 +284,11 @@ class LegalProvision(BaseModel):
     title: str | None = None
     chapter: str | None = None
     section: str | None = None
+    part: str | None = None
+    book: str | None = None
+    subtitle: str | None = None
+    subsection: str | None = None
+    index_scope: Literal["indexed", "audit_only"] = "indexed"
     official_text: str | None = None
     official_text_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     source_snapshot_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
@@ -335,6 +341,10 @@ class LegalAuthorityCitation(BaseModel):
     title: str | None = None
     chapter: str | None = None
     section: str | None = None
+    part: str | None = None
+    book: str | None = None
+    subtitle: str | None = None
+    subsection: str | None = None
     official_text: str | None = None
     official_text_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     source_snapshot_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
@@ -428,6 +438,10 @@ class LegalAuthorityCitation(BaseModel):
             title=provision.title,
             chapter=provision.chapter,
             section=provision.section,
+            part=provision.part,
+            book=provision.book,
+            subtitle=provision.subtitle,
+            subsection=provision.subsection,
             official_text=provision.official_text,
             official_text_sha256=provision.official_text_sha256,
             source_snapshot_sha256=provision.source_snapshot_sha256,

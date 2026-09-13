@@ -11,6 +11,7 @@ from app.consumer.statutes.parser import (
     match_article_heading,
     parse_statute,
     parsed_text_sha256,
+    strip_article_heading,
 )
 from app.consumer.statutes.registry import CDC, CIVIL_CODE, LGPD, STATUTES
 from app.consumer.statutes.snapshot import (
@@ -51,4 +52,5 @@ __all__ = [
     "parse_statute",
     "parsed_text_sha256",
     "snapshot_path",
+    "strip_article_heading",
 ]

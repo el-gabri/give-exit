@@ -19,6 +19,7 @@ from app.consumer.statutes import (
     match_article_heading,
     parse_statute,
     parsed_text_sha256,
+    strip_article_heading,
 )
 from app.consumer.statutes.parser import _OfficialHtmlTextParser
 
@@ -263,3 +264,9 @@ def test_tags_inside_ignored_blocks_are_skipped() -> None:
     parser.handle_endtag("script")
 
     assert parser.paragraphs == []
+
+
+def test_strip_article_heading_keeps_the_rule_text() -> None:
+    assert strip_article_heading("Art. 1.358-A. Pode haver") == "Pode haver"
+    assert strip_article_heading("Art. 3 o São absolutamente") == "São absolutamente"
+    assert strip_article_heading("Texto sem cabeçalho") == "Texto sem cabeçalho"

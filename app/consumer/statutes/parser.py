@@ -171,6 +171,13 @@ def match_article_heading(paragraph: str) -> tuple[int, str | None] | None:
     return int(match.group("number").replace(".", "")), suffix.upper() if suffix else None
 
 
+def strip_article_heading(text: str) -> str:
+    """The text of a caput without its ``Art. N`` heading."""
+
+    match = _ARTICLE_RE.match(text)
+    return text[match.end() :].lstrip() if match else text
+
+
 def parse_statute(spec: StatuteSpec, paragraphs: Sequence[str]) -> tuple[ParsedArticle, ...]:
     """Parse and validate every top-level article of one statute."""
 

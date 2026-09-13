@@ -32,8 +32,10 @@ from app.consumer.statutes import (
     LoadedStatute,
     ParsedArticle,
     SnapshotManifest,
+    in_index_scope,
     load_manifest,
     load_statute,
+    strip_article_heading,
 )
 from app.schemas.document import DocumentPage, ExtractionMethod, ParsedDocument
 from app.schemas.rag import Chunk, MetadataValue, RetrievedChunk
@@ -44,7 +46,7 @@ CONSTITUTION_URL = "https://www.planalto.gov.br/ccivil_03/constituicao/constitui
 
 _SOURCE_NAME_CF = "Constituição da República Federativa do Brasil de 1988"
 _LEGACY_ID_ALIASES = {"br-cdc-art-3-p2": "br-cdc-art-3"}
-LEGAL_CHUNKING_VERSION = "legal-hierarchy-v2"
+LEGAL_CHUNKING_VERSION = "legal-hierarchy-v3"
 DEFAULT_LEGAL_CHUNK_TARGET_CHARS = 1_200
 
 
@@ -358,6 +360,11 @@ def _statute_provisions(
                 title=article.title,
                 chapter=article.chapter,
                 section=article.section,
+                part=article.part,
+                book=article.book,
+                subtitle=article.subtitle,
+                subsection=article.subsection,
+                index_scope="indexed" if in_index_scope(spec, article) else "audit_only",
                 official_text=article.official_text,
                 source_snapshot_sha256=manifest.snapshot_sha256,
                 units=tuple(article.units),
@@ -367,18 +374,18 @@ def _statute_provisions(
 
 
 def _caput_extract(article: ParsedArticle) -> str:
-    caput = article.units[0].text
-    caput = re.sub(r"^Art\.\s*\d+(?:[º°])?(?:-[A-Z])?\.?(?:\s+|$)", "", caput)
+    caput = strip_article_heading(article.units[0].text)
     if len(caput) <= 700:
         return caput
     sentence_end = caput.rfind(". ", 0, 700)
     return caput[: sentence_end + 1 if sentence_end >= 200 else 697].rstrip() + "..."
 
 
-CURATED_PROVISIONS: tuple[LegalProvision, ...] = (
-    *_CONSTITUTION_PROVISIONS,
-    *_statute_provisions(load_statute(CDC), _REVIEWED_CDC_METADATA),
-)
+def _default_provisions() -> tuple[LegalProvision, ...]:
+    return (
+        *_CONSTITUTION_PROVISIONS,
+        *_statute_provisions(load_statute(CDC), _REVIEWED_CDC_METADATA),
+    )
 
 
 class LegalCorpus:
@@ -411,6 +418,7 @@ class LegalCorpus:
         # generation resolves that document once per candidate chunk, so
         # memoizing it removes tens of full re-renders per request.
         self._parsed_document: ParsedDocument | None = None
+        self._document_id: str | None = None
         # Citations are resolved against freshly generated canonical chunks,
         # never trusted from vector-store payloads alone.  Keep one private map
         # per supported chunk size so repeated grounds do not rebuild the
@@ -436,6 +444,18 @@ class LegalCorpus:
     @property
     def corpus_sha256(self) -> str:
         return self._corpus_sha256
+
+    @property
+    def document_id(self) -> str:
+        """The corpus document id, hashed once.
+
+        ``ParsedDocument.doc_id`` joins and hashes the whole corpus text on
+        every access; chunk generation used to read it twice per chunk.
+        """
+
+        if self._document_id is None:
+            self._document_id = self.as_parsed_document().doc_id
+        return self._document_id
 
     def _validate_snapshot_provenance(self) -> None:
         for provision in self._provisions:
@@ -473,10 +493,15 @@ class LegalCorpus:
                     "verified_on": provision.verified_on.isoformat(),
                     "status": provision.status.value,
                     "hierarchy": {
+                        "part": provision.part,
+                        "book": provision.book,
                         "title": provision.title,
+                        "subtitle": provision.subtitle,
                         "chapter": provision.chapter,
                         "section": provision.section,
+                        "subsection": provision.subsection,
                     },
+                    "index_scope": provision.index_scope,
                     "summary": provision.summary,
                     "summary_sha256": provision.content_sha256,
                     "tags": sorted(set(provision.tags)),
@@ -548,7 +573,9 @@ class LegalCorpus:
         """
 
         return tuple(
-            provision for provision in self._provisions if not _is_amendment_only(provision)
+            provision
+            for provision in self._provisions
+            if not _is_amendment_only(provision) and provision.index_scope == "indexed"
         )
 
     def as_chunks(
@@ -561,11 +588,11 @@ class LegalCorpus:
 
         if target_chars < 200:
             raise ValueError("target_chars must be at least 200")
-        document = self.as_parsed_document()
+        document_id = self.document_id
         chunking_version = legal_chunking_version(target_chars)
         chunks: list[Chunk] = []
         for page_number, provision in enumerate(self._provisions, start=1):
-            if _is_amendment_only(provision):
+            if _is_amendment_only(provision) or provision.index_scope != "indexed":
                 continue
             units: Sequence[LegalTextUnit | None] = provision.units or (None,)
             for unit in units:
@@ -584,11 +611,11 @@ class LegalCorpus:
                 budget = max(_MIN_BODY_BUDGET, target_chars - len(prefix))
                 for piece_number, piece in enumerate(_split_text(body, budget), start=1):
                     unit_key = provision.provision_id if unit is None else unit.unit_id
-                    chunk_id = f"{document.doc_id}:legal:{unit_key}:part-{piece_number:02d}"
+                    chunk_id = f"{document_id}:legal:{unit_key}:part-{piece_number:02d}"
                     chunks.append(
                         Chunk(
                             chunk_id=chunk_id,
-                            doc_id=document.doc_id,
+                            doc_id=document_id,
                             text=f"{prefix}{piece}",
                             section=self._section_label(provision),
                             page_start=page_number,
@@ -610,7 +637,7 @@ class LegalCorpus:
             chunks.extend(
                 self._article_level_chunks(
                     provision,
-                    document_id=document.doc_id,
+                    document_id=document_id,
                     page_number=page_number,
                     target_chars=target_chars,
                     chunking_version=chunking_version,
@@ -707,8 +734,7 @@ class LegalCorpus:
 
     def provisions_for_chunk(self, item: Chunk | RetrievedChunk) -> tuple[LegalProvision, ...]:
         chunk = item.chunk if isinstance(item, RetrievedChunk) else item
-        document = self.as_parsed_document()
-        if chunk.doc_id != document.doc_id:
+        if chunk.doc_id != self.document_id:
             raise ValueError("chunk does not belong to this legal corpus release")
         return tuple(
             self.provision_for_page(page) for page in range(chunk.page_start, chunk.page_end + 1)
@@ -759,6 +785,10 @@ class LegalCorpus:
             "title": provision.title,
             "chapter": provision.chapter,
             "section": provision.section,
+            "part": provision.part,
+            "book": provision.book,
+            "subtitle": provision.subtitle,
+            "subsection": provision.subsection,
             "unit_id": unit.unit_id if unit else None,
             "unit_kind": unit.kind.value if unit else None,
             "paragraph": unit.paragraph if unit else None,
@@ -881,7 +911,17 @@ class LegalCorpus:
             ]
             content = "\n\n".join(active_units) or provision.official_text
         hierarchy = " > ".join(
-            item for item in (provision.title, provision.chapter, provision.section) if item
+            item
+            for item in (
+                provision.part,
+                provision.book,
+                provision.title,
+                provision.subtitle,
+                provision.chapter,
+                provision.section,
+                provision.subsection,
+            )
+            if item
         )
         return (
             f"REFERÊNCIA LEGAL {provision.provision_id.upper()}\n\n"
@@ -901,9 +941,13 @@ class LegalCorpus:
             item
             for item in (
                 provision.source_name,
+                provision.part,
+                provision.book,
                 provision.title,
+                provision.subtitle,
                 provision.chapter,
                 provision.section,
+                provision.subsection,
                 provision.article,
             )
             if item
@@ -1056,4 +1100,4 @@ def _split_text(text: str, max_chars: int) -> list[str]:
 
 @lru_cache(maxsize=1)
 def get_default_legal_corpus() -> LegalCorpus:
-    return LegalCorpus(CURATED_PROVISIONS)
+    return LegalCorpus(_default_provisions())
