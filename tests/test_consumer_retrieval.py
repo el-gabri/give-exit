@@ -2,7 +2,6 @@ import asyncio
 from typing import cast
 
 from app.consumer.retrieval import (
-    LEGAL_LEXICON,
     MAX_QUERY_CHARS,
     build_evidence_queries,
     build_legal_queries,
@@ -30,22 +29,8 @@ def test_legal_queries_are_two_and_driven_by_the_narrative() -> None:
 
     assert len(queries) == 2
     assert all("cobrou duas vezes" in query for query in queries)
-    assert LEGAL_LEXICON in queries[1]
     assert "devolução" in queries[0]
-
-
-def test_the_lexicon_is_identical_for_every_complaint() -> None:
-    """No routing: two unrelated complaints get the same injected vocabulary."""
-    charge = build_legal_queries(_facts(complaint_summary="Cobraram tarifa que não pedi."))
-    defect = build_legal_queries(_facts(complaint_summary="A geladeira parou de gelar."))
-
-    assert charge[1].endswith(LEGAL_LEXICON)
-    assert defect[1].endswith(LEGAL_LEXICON)
-
-
-def test_the_lexicon_names_no_article_numbers() -> None:
-    """Article numbers now name provisions in three statutes (ADR 0016)."""
-    assert not any(character.isdigit() for character in LEGAL_LEXICON)
+    assert "devolução" in queries[1]
 
 
 def test_no_query_is_a_constant_across_cases() -> None:
@@ -66,7 +51,7 @@ def test_retrieval_queries_are_bounded_and_whitespace_normalized() -> None:
     assert all("  " not in query for query in queries)
 
 
-def test_long_complaint_does_not_remove_resolution_or_lexicon() -> None:
+def test_long_complaint_does_not_remove_resolution() -> None:
     facts = _facts(
         complaint_summary=("relato muito longo " * 500),
         desired_resolution="Quero devolução integral comprovada.",
@@ -75,7 +60,6 @@ def test_long_complaint_does_not_remove_resolution_or_lexicon() -> None:
     queries = build_legal_queries(facts)
 
     assert all("devolução integral comprovada" in query for query in queries)
-    assert LEGAL_LEXICON in queries[1]
 
 
 def test_scope_gate_abstains_only_on_strong_non_consumer_signals() -> None:

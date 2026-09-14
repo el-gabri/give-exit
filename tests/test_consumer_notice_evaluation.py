@@ -142,28 +142,27 @@ async def test_offline_notice_baseline_on_the_seed_dataset() -> None:
     Título VI stopped being citable it was 47 grounds, 10 complementary.
     Change it deliberately.
 
-    Re-measured again on 2026-09-14 for the two-query builder with a single
-    legal lexicon (no intake category) plus the unrequested-service case
-    added to the golden set. The offline stack's dense side is a hashed
-    128-dimension embedder, effectively BM25; on it this change is blind to
-    the case it targets (0/3 relevant, 0 hard negatives), which is why exact
-    recall and the known-bad count move the way they do here. On the
-    configured JUÁ stack the same case improved instead: Civil Code arts.
-    878, 880 and 881 (the undue-payment chapter, premised on a payment that
-    never happened) stopped being cited and CDC art. 52 started being cited
-    (exact recall 0/3 -> 1/3). The three known-bad citations below come from
-    three pre-existing cases, not from the new one.
+    Re-measured on 2026-09-14 for the narrative-only builder (the fixed legal
+    lexicon appended to every query was measured to dilute the case-specific
+    signal and was removed; see app/consumer/retrieval.py). Dropping the
+    lexicon query also drops the extra chunks it fed into every notice: total
+    grounds fell from 70 to 23 and known-bad citations from 3 to 0 on this
+    offline (hashed-embedder, effectively BM25) stack. On the configured JUÁ
+    stack the one case this change targets improved similarly: Civil Code
+    arts. 878, 880 and 881 (the undue-payment chapter, premised on a payment
+    that never happened) stopped being cited and CDC art. 52 started being
+    cited (3 grounds instead of 5, same relevant hit).
     """
 
     summary = await run_notice_evaluation(load_consumer_legal_dataset(DATASET_PATH))
 
     assert summary.failed_case_count == 0
     assert summary.totals == {
-        "consumer_notice_complementary_grounds": 2,
-        "consumer_notice_grounds": 70,
-        "consumer_notice_known_bad_citations": 3,
+        "consumer_notice_complementary_grounds": 5,
+        "consumer_notice_grounds": 23,
+        "consumer_notice_known_bad_citations": 0,
     }
-    assert summary.averages["consumer_notice_exact_recall"] == 0.0
+    assert summary.averages["consumer_notice_exact_recall"] == 0.017
     assert summary.averages["consumer_notice_abstention"] == 1.0
     assert summary.averages["consumer_notice_semantic_success"] == 1.0
     assert summary.run is not None
@@ -223,7 +222,7 @@ def test_cli_writes_notice_results_and_gates_on_totals(
             "--output",
             str(output),
             "--max",
-            "consumer_notice_known_bad_citations=0",
+            "consumer_notice_known_bad_citations=-1",
         ],
     )
 
@@ -232,11 +231,14 @@ def test_cli_writes_notice_results_and_gates_on_totals(
 
     assert excinfo.value.code == 1
     payload = json.loads(output.read_text(encoding="utf-8"))
-    # Re-baselined on 2026-09-14 alongside the CI gate: the measured known-bad
-    # total on the offline (hashed-embedder) stack moved from 1 to 3 for the
-    # two-query builder. See test_offline_notice_baseline_on_the_seed_dataset
-    # for the full explanation.
-    assert payload["totals"]["consumer_notice_known_bad_citations"] == 3
+    # Re-baselined on 2026-09-14 for the narrative-only builder: the measured
+    # known-bad total on the offline (hashed-embedder) stack fell from 3 to 0
+    # (the lexicon query that fed extra, sometimes wrong, chunks into every
+    # notice is gone). The gate below is deliberately impossible (-1) so it
+    # still exercises the CLI's failure path. See
+    # test_offline_notice_baseline_on_the_seed_dataset for the full
+    # explanation.
+    assert payload["totals"]["consumer_notice_known_bad_citations"] == 0
 
 
 def test_cli_rejects_require_semantic_without_notice_mode(

@@ -49,7 +49,7 @@ _INACTIVE_STATUSES = {
 }
 _UNKNOWN_STATUSES = {"", "desconhecido", "unknown"}
 _UNIT_MARKERS = ("-caput", "-paragrafo-", "-inciso-", "-alinea-")
-QUERY_BUILDER_VERSION = "consumer-legal-two-query-v5"
+QUERY_BUILDER_VERSION = "consumer-legal-narrative-v6"
 
 
 def _threshold(raw: str) -> tuple[str, float]:

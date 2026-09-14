@@ -10,7 +10,6 @@ import pytest
 from pydantic import ValidationError
 
 from app.consumer.legal_corpus import get_default_legal_corpus
-from app.consumer.retrieval import LEGAL_LEXICON
 from app.consumer.schemas import ProvisionStatus
 from app.evaluation.consumer_golden import load_consumer_legal_dataset
 from app.evaluation.consumer_retrievers import offline_hybrid_retriever
@@ -303,11 +302,10 @@ async def test_evaluator_accepts_sync_and_async_retriever_callables() -> None:
     assert len(calls) == 4
     assert all(k == 10 for _, k in calls)
     assert sum("cobrou um pacote" in query for query, _ in calls) == 4
-    assert sum(LEGAL_LEXICON in query for query, _ in calls) == 2
     assert sync_summary.run is not None
     assert sync_summary.run.dataset_sha256 == dataset.content_sha256
     assert sync_summary.run.corpus_sha256 == get_default_legal_corpus().corpus_sha256
-    assert sync_summary.run.query_builder_version == "consumer-legal-two-query-v5"
+    assert sync_summary.run.query_builder_version == "consumer-legal-narrative-v6"
     assert sync_summary.run.queries_per_case == 2
     assert sync_summary.by_category["unauthorized_charge"].case_count == 1
     assert sync_summary.by_slice["supplier:telecom"].case_count == 1
@@ -333,9 +331,9 @@ async def test_descriptive_category_still_drives_the_reporting_breakdown() -> No
     result = summary.cases[0]
     assert result.category == "right_of_withdrawal"
     assert summary.by_category["right_of_withdrawal"].case_count == 1
-    # The category no longer reaches the query: two queries, one fixed lexicon.
+    # The category no longer reaches the query: two queries, both narrative-only.
     assert len(result.queries) == 2
-    assert result.queries[1].endswith(LEGAL_LEXICON)
+    assert "cobrou um pacote" in result.queries[1]
 
 
 def test_golden_case_rejects_an_unknown_field() -> None:

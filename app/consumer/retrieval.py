@@ -1,8 +1,11 @@
 """Deterministic retrieval-query construction for the consumer journey.
 
-The consumer's own account must drive legal retrieval.  A single fixed legal
-lexicon adds useful statutory vocabulary, but never replaces the facts
-supplied by the user.  Keeping this logic deterministic also makes retrieval
+The consumer's own account must drive legal retrieval.  No fixed vocabulary
+is injected into every query: measurement on the offline evaluation stack
+showed that a fixed lexicon appended to every query dilutes the case-specific
+signal and scored worse than no lexicon on every metric (article_recall@5,
+recall@5 and ndcg@5), with a monotonic dose-response as more generic
+vocabulary was added.  Keeping this logic deterministic also makes retrieval
 evaluation and audit replay possible without an LLM call.
 """
 
@@ -135,19 +138,6 @@ _SCOPE_CLAUSE_BOUNDARY = re.compile(
     r"(?:[.!?;\n]+|,\s+(?:contudo|entretanto|mas|porem)\s+)"
 )
 
-# One vocabulary for every complaint. The previous per-category expansions
-# routed the query by an intake label, which injected "repetição do indébito
-# pagamento em excesso" into a complaint about charges that were never paid
-# and retrieved five grounds whose shared premise did not hold. Carrying no
-# article numbers matters more since ADR 0016: "42" and "43" now name
-# provisions in three different statutes.
-LEGAL_LEXICON = (
-    "direitos básicos do consumidor informação adequada e clara prática abusiva "
-    "serviço não solicitado vício do produto ou serviço cobrança indevida "
-    "contrato de adesão cláusula abusiva reparação de danos fornecedor"
-)
-
-
 def build_legal_queries(facts: ConsumerCaseFacts) -> list[str]:
     """Build bounded, replayable legal queries from confirmed case facts."""
 
@@ -165,15 +155,12 @@ def build_legal_queries_for_case(*, complaint: str, desired_resolution: str) -> 
     bounded_complaint = _bounded_component(complaint, 1_050)
     bounded_resolution = _bounded_component(desired_resolution, 500)
     narrative = _join_non_empty(bounded_complaint, bounded_resolution)
-    # A third, vocabulary-only query is deliberately absent: with a single
-    # lexicon it would be identical for every case and would feed the same
-    # chunks into the merge of every notice.
     queries = [
         _bounded(
             "Situação de consumo relatada: "
             f"{narrative}. Localizar dispositivos legais diretamente aplicáveis."
         ),
-        _bounded(f"{narrative}. {LEGAL_LEXICON}"),
+        _bounded(narrative),
     ]
     return _unique_non_empty(queries)
 
