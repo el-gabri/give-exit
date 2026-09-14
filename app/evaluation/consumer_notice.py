@@ -188,7 +188,7 @@ class ConsumerNoticeGroundEvaluator:
             corpus_release_id=corpus.release_id,
             corpus_sha256=corpus.corpus_sha256,
             query_builder_version=QUERY_BUILDER_VERSION,
-            queries_per_case=3,
+            queries_per_case=2,
             cutoffs=(NOTICE_REQUESTED_K,),
             retrieval=retrieval,
             ground_policy_version=LEGAL_GROUND_POLICY_VERSION,

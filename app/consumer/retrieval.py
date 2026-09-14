@@ -1,9 +1,9 @@
 """Deterministic retrieval-query construction for the consumer journey.
 
-The consumer's own account must drive legal retrieval.  Category expansions
-add useful statutory vocabulary, but never replace the facts supplied by the
-user.  Keeping this logic deterministic also makes retrieval evaluation and
-audit replay possible without an LLM call.
+The consumer's own account must drive legal retrieval.  A single fixed legal
+lexicon adds useful statutory vocabulary, but never replaces the facts
+supplied by the user.  Keeping this logic deterministic also makes retrieval
+evaluation and audit replay possible without an LLM call.
 """
 
 from __future__ import annotations
@@ -141,212 +141,74 @@ _SCOPE_CLAUSE_BOUNDARY = re.compile(
     r"(?:[.!?;\n]+|,\s+(?:contudo|entretanto|mas|porem)\s+)"
 )
 
-_CATEGORY_EXPANSIONS: dict[str, str] = {
-    "unauthorized_charge": (
-        "cobrança indevida repetição do indébito pagamento em excesso artigo 42"
-    ),
-    "fraud": "fraude falha de segurança responsabilidade pelo serviço reparação",
-    "account_block": "bloqueio de acesso ou valores continuidade informação reparação",
-    "negative_credit_record": (
-        "cadastro de consumidores negativação correção de dados cobrança artigo 43"
-    ),
-    "loan_or_interest": (
-        "crédito empréstimo juros custo efetivo total informação contrato consumidor"
-    ),
-    "service_failure": ("vício de produto ou serviço qualidade adequação reparação artigos 18 20"),
-    "product_defect": "vício do produto substituição restituição abatimento artigo 18",
-    "non_delivery": "oferta descumprida entrega forçada restituição artigo 35",
-    "right_of_withdrawal": (
-        "direito de arrependimento contratação fora do estabelecimento artigo 49"
-    ),
-    "misleading_advertising": "publicidade enganosa ou abusiva oferta informação artigos 36 37 38",
-    "abusive_practice": "prática abusiva vantagem manifestamente excessiva artigo 39",
-    "abusive_collection": "cobrança de dívida ameaça constrangimento exposição artigo 42",
-    "public_utility": "serviço público adequado eficiente seguro contínuo artigo 22",
-    "consumer_safety": "proteção à saúde e segurança defeito do produto ou serviço",
-    "contract_terms": "contrato de adesão cláusula abusiva interpretação consumidor",
-    "over_indebtedness": (
-        "superendividamento crédito responsável repactuação conciliação artigos 54-A 104-A"
-    ),
-    # No article numbers: "42" and "43" now also name LGPD and Civil Code
-    # articles. The CDC terms let the CDC anchor required by ADR 0016 surface.
-    "personal_data": (
-        "tratamento de dados pessoais direitos do titular acesso correção eliminação "
-        "consentimento compartilhamento finalidade segurança do serviço incidente de "
-        "segurança vazamento informação responsabilidade reparação de danos cadastros "
-        "e dados do consumidor"
-    ),
-    "other": "direitos básicos do consumidor fornecedor produto serviço reparação",
-}
-
-_SUBCATEGORY_SIGNALS: tuple[tuple[str, tuple[str, ...]], ...] = (
-    (
-        "right_of_withdrawal",
-        (
-            "direito de arrependimento",
-            "desistir da compra",
-            "desisti da compra",
-            "sete dias",
-            "7 dias",
-        ),
-    ),
-    (
-        "non_delivery",
-        (
-            "não entreg",
-            "nao entreg",
-            "não recebi",
-            "nao recebi",
-            "entrega atrasada",
-            "falta de estoque",
-            "pedido cancelad",
-            "compra cancelad",
-        ),
-    ),
-    (
-        "product_defect",
-        (
-            "produto com defeito",
-            "produto quebr",
-            "vício do produto",
-            "vicio do produto",
-            "parou de funcionar",
-            "parou de gelar",
-        ),
-    ),
-    (
-        "misleading_advertising",
-        (
-            "publicidade enganosa",
-            "propaganda enganosa",
-            "anúncio enganoso",
-            "anuncio enganoso",
-            "condições anunciadas",
-            "condicoes anunciadas",
-            "acesso ilimitado",
-            "certificado custa",
-        ),
-    ),
-    (
-        "abusive_collection",
-        (
-            "ameaça na cobrança",
-            "ameaca na cobranca",
-            "cobrança vexatória",
-            "cobranca vexatoria",
-            "empresa de cobrança",
-            "empresa de cobranca",
-            "ameaça me expor",
-            "ameaca me expor",
-        ),
-    ),
-    (
-        "abusive_practice",
-        (
-            "venda casada",
-            "condicionou a compra",
-            "vantagem excessiva",
-            "só aprovaria se",
-            "so aprovaria se",
-            "aprovaria o financiamento se",
-            "obrigado a contratar",
-            "obrigada a contratar",
-        ),
-    ),
-    ("public_utility", ("sem água", "sem energia", "serviço essencial interromp")),
-    ("consumer_safety", ("reação alérgica", "risco à saúde", "acidente de consumo")),
-    (
-        "contract_terms",
-        (
-            "cláusula abusiva",
-            "clausula abusiva",
-            "cláusula que",
-            "clausula que",
-            "contrato ilegível",
-            "contrato ilegivel",
-            "contrato de adesão",
-            "contrato de adesao",
-            "letras minúsculas",
-            "letras minusculas",
-            "multa escondida",
-        ),
-    ),
-    (
-        "personal_data",
-        (
-            "vazamento de dados",
-            "vazaram meus dados",
-            "vazamento dos meus dados",
-            "dados vazados",
-            "compartilharam meus dados",
-            "compartilhou meus dados",
-            "repassou meus dados",
-            "repassou meu número",
-            "venderam meus dados",
-            "vendeu meus dados",
-            "excluir meus dados",
-            "apagar meus dados",
-            "exclusão dos meus dados",
-            "meus dados pessoais",
-            "proteção de dados",
-            "lgpd",
-        ),
-    ),
+# One vocabulary for every complaint. The previous per-category expansions
+# routed the query by an intake label, which injected "repetição do indébito
+# pagamento em excesso" into a complaint about charges that were never paid
+# and retrieved five grounds whose shared premise did not hold. Carrying no
+# article numbers matters more since ADR 0016: "42" and "43" now name
+# provisions in three different statutes.
+LEGAL_LEXICON = (
+    "direitos básicos do consumidor informação adequada e clara prática abusiva "
+    "serviço não solicitado vício do produto ou serviço cobrança indevida "
+    "contrato de adesão cláusula abusiva reparação de danos fornecedor"
 )
 
 
 def build_legal_queries(facts: ConsumerCaseFacts) -> list[str]:
     """Build bounded, replayable legal queries from confirmed case facts."""
 
-    category = facts.issue_category.value if facts.issue_category is not None else "other"
-    category = infer_retrieval_category(
-        category,
-        _join_non_empty(facts.complaint_summary, facts.desired_resolution),
-    )
     return build_legal_queries_for_case(
-        category=category,
         complaint=facts.complaint_summary or "",
         desired_resolution=facts.desired_resolution or "",
     )
 
 
-def build_legal_queries_for_case(
-    *, category: str, complaint: str, desired_resolution: str
-) -> list[str]:
+def build_legal_queries_for_case(*, complaint: str, desired_resolution: str) -> list[str]:
     """Build the same production queries for a golden-dataset case."""
 
     # Reserve space for every signal instead of allowing a long complaint to
-    # truncate the requested remedy or the legal/category expansion.
+    # truncate the requested remedy or the legal vocabulary.
     bounded_complaint = _bounded_component(complaint, 1_050)
     bounded_resolution = _bounded_component(desired_resolution, 500)
     narrative = _join_non_empty(bounded_complaint, bounded_resolution)
-    expansion = _bounded_component(
-        _CATEGORY_EXPANSIONS.get(category, _CATEGORY_EXPANSIONS["other"]), 320
-    )
+    # A third, vocabulary-only query is deliberately absent: with a single
+    # lexicon it would be identical for every case and would feed the same
+    # chunks into the merge of every notice.
     queries = [
         _bounded(
             "Situação de consumo relatada: "
             f"{narrative}. Localizar dispositivos legais diretamente aplicáveis."
         ),
-        _bounded(f"{narrative}. {expansion}"),
-        # Keep one authority-focused query free from the long lay narrative.
-        # In the pinned offline benchmark this prevents generic terms in the
-        # complaint from drowning out explicit legal anchors such as arts. 18,
-        # 35, 42, 43 and 49.  The strategy is versioned by the evaluator, so a
-        # future wording change cannot silently move the reported baseline.
-        _bounded(expansion),
+        _bounded(f"{narrative}. {LEGAL_LEXICON}"),
     ]
     return _unique_non_empty(queries)
 
 
-def infer_retrieval_category(category: str, complaint: str) -> str:
-    """Map a short lay intake taxonomy to a more precise retrieval expansion."""
-
-    normalized = _clean(complaint).casefold()
-    for subcategory, signals in _SUBCATEGORY_SIGNALS:
-        if any(signal in normalized for signal in signals):
-            return subcategory
-    return category if category in _CATEGORY_EXPANSIONS else "other"
+# A concrete category still names a real consumer relationship for the scope
+# gate even though it no longer selects a query expansion. This is the same
+# set of keys the removed per-category expansion table carried (minus the
+# catch-all "other"); is_consumer_scope's behavior is unchanged by Task 2.
+_KNOWN_CONSUMER_CATEGORIES = frozenset(
+    {
+        "unauthorized_charge",
+        "fraud",
+        "account_block",
+        "negative_credit_record",
+        "loan_or_interest",
+        "service_failure",
+        "product_defect",
+        "non_delivery",
+        "right_of_withdrawal",
+        "misleading_advertising",
+        "abusive_practice",
+        "abusive_collection",
+        "public_utility",
+        "consumer_safety",
+        "contract_terms",
+        "over_indebtedness",
+        "personal_data",
+    }
+)
 
 
 def is_consumer_scope(*, category: str | None, complaint: str) -> bool:
@@ -381,7 +243,7 @@ def is_consumer_scope(*, category: str | None, complaint: str) -> bool:
             _clause_has_consumer_relationship(clause)
             for clause in _scope_clauses(normalized_complaint)
         )
-    if normalized_category in _CATEGORY_EXPANSIONS and normalized_category != "other":
+    if normalized_category in _KNOWN_CONSUMER_CATEGORIES:
         return True
     return has_strong_consumer_signal or has_weak_consumer_signal or not has_non_consumer_signal
 

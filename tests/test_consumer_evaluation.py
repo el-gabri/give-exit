@@ -10,6 +10,7 @@ import pytest
 from pydantic import ValidationError
 
 from app.consumer.legal_corpus import get_default_legal_corpus
+from app.consumer.retrieval import LEGAL_LEXICON
 from app.consumer.schemas import ConsumerIssueCategory, ProvisionStatus
 from app.evaluation.consumer_golden import load_consumer_legal_dataset
 from app.evaluation.consumer_retrievers import offline_hybrid_retriever
@@ -298,18 +299,18 @@ async def test_evaluator_accepts_sync_and_async_retriever_callables() -> None:
 
     assert sync_summary.cases[0].score("consumer_recall@5") == 0.5
     assert async_summary.cases[0].score("consumer_recall@5") == 0.5
-    assert len(sync_summary.cases[0].queries) == 3
-    assert len(sync_summary.cases[0].query_sha256) == 3
+    assert len(sync_summary.cases[0].queries) == 2
+    assert len(sync_summary.cases[0].query_sha256) == 2
     assert sync_summary.cases[0].retrieved_hits[0].retrieval_id == ("br-cdc-art-42-paragrafo-unico")
-    assert len(calls) == 6
+    assert len(calls) == 4
     assert all(k == 10 for _, k in calls)
     assert sum("cobrou um pacote" in query for query, _ in calls) == 4
-    assert sum("artigo 42" in query for query, _ in calls) == 4
+    assert sum(LEGAL_LEXICON in query for query, _ in calls) == 2
     assert sync_summary.run is not None
     assert sync_summary.run.dataset_sha256 == dataset.content_sha256
     assert sync_summary.run.corpus_sha256 == get_default_legal_corpus().corpus_sha256
-    assert sync_summary.run.query_builder_version == "consumer-legal-three-query-v4"
-    assert sync_summary.run.queries_per_case == 3
+    assert sync_summary.run.query_builder_version == "consumer-legal-two-query-v5"
+    assert sync_summary.run.queries_per_case == 2
     assert sync_summary.by_category["unauthorized_charge"].case_count == 1
     assert sync_summary.by_slice["supplier:telecom"].case_count == 1
     assert sync_summary.metric_case_counts["consumer_recall@5"] == 1
@@ -317,11 +318,15 @@ async def test_evaluator_accepts_sync_and_async_retriever_callables() -> None:
     assert sync_summary.metric_directions["consumer_hard_negative_rate@5"] == "lower_is_better"
 
 
-async def test_evaluator_uses_production_intake_category_for_queries() -> None:
+async def test_evaluator_ignores_both_categories_when_building_queries() -> None:
+    """Category no longer routes queries; it is reporting metadata only.
+
+    Neither the golden dataset's fine ``category`` nor the production-shaped
+    ``intake_category`` selects a query expansion any more -- every case gets
+    the same fixed lexicon.
+    """
     case = _case().model_copy(
         update={
-            # The fine category remains useful for reporting, but it is not a
-            # category the guided production intake can submit.
             "category": "right_of_withdrawal",
             "intake_category": ConsumerIssueCategory.UNAUTHORIZED_CHARGE,
         }
@@ -329,7 +334,7 @@ async def test_evaluator_uses_production_intake_category_for_queries() -> None:
     dataset = ConsumerLegalGoldenDataset(
         dataset_id="intake-category-fixture",
         version="1.0.0",
-        description="Fixture proving production-equivalent query construction.",
+        description="Fixture proving category no longer drives query construction.",
         source_url="https://www.planalto.gov.br/ccivil_03/leis/l8078compilado.htm",
         authoring="developer_authored_seed",
         review_status="requires_legal_review",
@@ -341,8 +346,9 @@ async def test_evaluator_uses_production_intake_category_for_queries() -> None:
     result = summary.cases[0]
     assert result.category == "right_of_withdrawal"
     assert summary.by_category["right_of_withdrawal"].case_count == 1
-    assert any("artigo 42" in query for query in result.queries)
-    assert all("artigo 49" not in query for query in result.queries)
+    assert len(result.queries) == 2
+    assert LEGAL_LEXICON in result.queries[1]
+    assert not any(character.isdigit() for query in result.queries for character in query)
 
 
 def test_golden_case_rejects_non_production_intake_category() -> None:

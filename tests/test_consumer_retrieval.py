@@ -2,10 +2,10 @@ import asyncio
 from typing import cast
 
 from app.consumer.retrieval import (
+    LEGAL_LEXICON,
     MAX_QUERY_CHARS,
     build_evidence_queries,
     build_legal_queries,
-    infer_retrieval_category,
     is_consumer_scope,
 )
 from app.consumer.schemas import ConsumerCaseFacts, ConsumerIssueCategory
@@ -26,14 +26,35 @@ def _facts(**updates: object) -> ConsumerCaseFacts:
     return ConsumerCaseFacts.model_validate(payload)
 
 
-def test_legal_queries_are_driven_by_consumer_narrative() -> None:
+def test_legal_queries_are_two_and_driven_by_the_narrative() -> None:
     queries = build_legal_queries(_facts())
 
-    assert len(queries) == 3
-    assert all("cobrou duas vezes" in query for query in queries[:2])
-    assert "cobrou duas vezes" not in queries[2]
-    assert any("artigo 42" in query for query in queries)
-    assert any("devolução" in query for query in queries)
+    assert len(queries) == 2
+    assert all("cobrou duas vezes" in query for query in queries)
+    assert LEGAL_LEXICON in queries[1]
+    assert "devolução" in queries[0]
+
+
+def test_the_lexicon_is_identical_for_every_complaint() -> None:
+    """No routing: two unrelated complaints get the same injected vocabulary."""
+    charge = build_legal_queries(_facts(complaint_summary="Cobraram tarifa que não pedi."))
+    defect = build_legal_queries(_facts(complaint_summary="A geladeira parou de gelar."))
+
+    assert charge[1].endswith(LEGAL_LEXICON)
+    assert defect[1].endswith(LEGAL_LEXICON)
+
+
+def test_the_lexicon_names_no_article_numbers() -> None:
+    """Article numbers now name provisions in three statutes (ADR 0016)."""
+    assert not any(character.isdigit() for character in LEGAL_LEXICON)
+
+
+def test_no_query_is_a_constant_across_cases() -> None:
+    """A case-independent query would feed every notice the same chunks."""
+    first = build_legal_queries(_facts(complaint_summary="Cobrança em duplicidade."))
+    second = build_legal_queries(_facts(complaint_summary="Produto nunca entregue."))
+
+    assert not set(first) & set(second)
 
 
 def test_retrieval_queries_are_bounded_and_whitespace_normalized() -> None:
@@ -46,7 +67,7 @@ def test_retrieval_queries_are_bounded_and_whitespace_normalized() -> None:
     assert all("  " not in query for query in queries)
 
 
-def test_long_complaint_does_not_remove_resolution_or_category_expansion() -> None:
+def test_long_complaint_does_not_remove_resolution_or_lexicon() -> None:
     facts = _facts(
         complaint_summary=("relato muito longo " * 500),
         desired_resolution="Quero devolução integral comprovada.",
@@ -54,9 +75,8 @@ def test_long_complaint_does_not_remove_resolution_or_category_expansion() -> No
 
     queries = build_legal_queries(facts)
 
-    assert all("devolução integral comprovada" in query for query in queries[:2])
-    assert "artigo 42" in queries[1]
-    assert "artigo 42" in queries[2]
+    assert all("devolução integral comprovada" in query for query in queries)
+    assert LEGAL_LEXICON in queries[1]
 
 
 def test_scope_gate_abstains_only_on_strong_non_consumer_signals() -> None:
@@ -162,75 +182,6 @@ def test_scope_gate_abstains_only_on_strong_non_consumer_signals() -> None:
     )
 
 
-def test_lay_intake_category_is_refined_for_legal_retrieval() -> None:
-    facts = _facts(
-        issue_category=ConsumerIssueCategory.SERVICE_FAILURE,
-        complaint_summary="Comprei pela internet e desisti da compra em sete dias.",
-    )
-
-    assert infer_retrieval_category("service_failure", facts.complaint_summary or "") == (
-        "right_of_withdrawal"
-    )
-    assert "artigo 49" in build_legal_queries(facts)[1]
-
-
-def test_retrieval_category_uses_confirmed_real_world_phrasing() -> None:
-    cases = (
-        (
-            ConsumerIssueCategory.SERVICE_FAILURE,
-            "A geladeira nova parou de gelar depois de dez dias.",
-            "Quero o dinheiro de volta.",
-            "substituição restituição abatimento",
-        ),
-        (
-            ConsumerIssueCategory.SERVICE_FAILURE,
-            "A loja cancelou a compra alegando falta de estoque.",
-            "Quero receber o produto anunciado.",
-            "entrega forçada",
-        ),
-        (
-            ConsumerIssueCategory.OTHER,
-            "Recebi o tênis há cinco dias, mas não gostei do modelo.",
-            "Quero desistir da compra.",
-            "direito de arrependimento",
-        ),
-        (
-            ConsumerIssueCategory.OTHER,
-            "A propaganda prometia acesso ilimitado, mas ele dura três meses.",
-            "Quero cancelar sem multa.",
-            "publicidade enganosa",
-        ),
-        (
-            ConsumerIssueCategory.LOAN_OR_INTEREST,
-            "A loja só aprovaria o financiamento se eu contratasse o seguro.",
-            "Quero retirar o seguro.",
-            "vantagem manifestamente excessiva",
-        ),
-        (
-            ConsumerIssueCategory.UNAUTHORIZED_CHARGE,
-            "A empresa de cobrança liga para colegas e ameaça me expor.",
-            "Quero que parem as ameaças.",
-            "ameaça constrangimento",
-        ),
-        (
-            ConsumerIssueCategory.OTHER,
-            "A cláusula que impede cancelamento estava em letras minúsculas.",
-            "Quero cancelar sem a multa escondida.",
-            "contrato de adesão",
-        ),
-    )
-
-    for intake_category, complaint, resolution, expected_anchor in cases:
-        queries = build_legal_queries(
-            _facts(
-                issue_category=intake_category,
-                complaint_summary=complaint,
-                desired_resolution=resolution,
-            )
-        )
-        assert expected_anchor in queries[-1]
-
-
 def test_evidence_queries_include_claim_and_requested_resolution() -> None:
     queries = build_evidence_queries(_facts())
 
@@ -296,23 +247,3 @@ def test_concrete_category_cannot_bypass_the_consumer_scope_gate() -> None:
     )
 
 
-def test_personal_data_complaints_get_data_protection_vocabulary() -> None:
-    facts = _facts(
-        issue_category=ConsumerIssueCategory.OTHER,
-        complaint_summary="A loja teve um vazamento de dados e usaram meu CPF num crediário.",
-        desired_resolution="Quero saber quais dados vazaram.",
-    )
-
-    queries = build_legal_queries(facts)
-
-    assert infer_retrieval_category("other", "Vazaram meus dados pessoais") == "personal_data"
-    assert "tratamento de dados pessoais" in queries[2]
-    assert "segurança do serviço" in queries[2]
-    assert not any(character.isdigit() for character in queries[2])
-
-
-def test_specific_consumer_signals_still_win_over_personal_data() -> None:
-    assert (
-        infer_retrieval_category("other", "Houve venda casada e usaram meus dados pessoais.")
-        == "abusive_practice"
-    )

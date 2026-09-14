@@ -49,7 +49,7 @@ _INACTIVE_STATUSES = {
 }
 _UNKNOWN_STATUSES = {"", "desconhecido", "unknown"}
 _UNIT_MARKERS = ("-caput", "-paragrafo-", "-inciso-", "-alinea-")
-QUERY_BUILDER_VERSION = "consumer-legal-three-query-v4"
+QUERY_BUILDER_VERSION = "consumer-legal-two-query-v5"
 
 
 def _threshold(raw: str) -> tuple[str, float]:
@@ -373,7 +373,7 @@ class ConsumerLegalRetrievalEvaluator:
             corpus_release_id=corpus.release_id,
             corpus_sha256=corpus.corpus_sha256,
             query_builder_version=QUERY_BUILDER_VERSION,
-            queries_per_case=3,
+            queries_per_case=2,
             cutoffs=self._cutoffs,
             retrieval=retrieval,
         )
