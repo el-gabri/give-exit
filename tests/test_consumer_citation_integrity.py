@@ -490,14 +490,22 @@ def test_clean_chunk_quote_strips_the_marker_anywhere_in_the_text() -> None:
     assert _clean_chunk_quote(text) == "Cobranca de R$ 10,00 nao reconhecida."
 
 
-async def test_lexical_only_retrieval_is_declared_in_the_notice(
+async def test_lexical_only_retrieval_now_abstains_instead_of_drafting_a_notice(
     notice_client: httpx.AsyncClient, monkeypatch
 ) -> None:
-    """A draft built without semantic retrieval must say so where a reader looks.
+    """Lexical-only retrieval abstains instead of emitting a degraded notice.
 
-    Degradation used to live only inside the per-query audit records, so a
-    lexical-only notice was indistinguishable from a hybrid one in both the API
-    response and the UI.
+    Before the issue category was removed, lexical-only mode on this fixture
+    still cleared select_legal_grounds's retrieval-agreement gate with three
+    queries, so a notice was produced with
+    retrieval_degraded_modes == ["lexical_only"] and a warning. With the
+    two-query builder and a single legal lexicon, lexical-only mode no longer
+    clears that gate here: legal_grounds comes back empty, the pre-existing
+    "grounding insufficient" guard in ConsumerService._generate_notice fires
+    (it already returned ConsumerRetrievalError -> 503 on two other guard
+    paths), and the API refuses to draft a notice it cannot support. Refusing
+    is the safe direction, so this test now proves the abstention instead of
+    the degraded-notice fields that used to be present.
     """
     from app.rag import pipeline as pipeline_module
     from app.rag.resilience import EmbeddingUnavailableError
@@ -510,10 +518,10 @@ async def test_lexical_only_retrieval_is_declared_in_the_notice(
     monkeypatch.setattr(
         pipeline_module.QueryEmbeddingGuard, "embed", _unavailable, raising=True
     )
-    notice = (await notice_client.post(f"/consumer/cases/{case_id}/notice", headers=headers)).json()
+    response = await notice_client.post(f"/consumer/cases/{case_id}/notice", headers=headers)
 
-    assert notice["retrieval_degraded_modes"] == ["lexical_only"]
-    assert any("busca semântica" in warning for warning in notice["warnings"])
+    assert response.status_code == 503
+    assert "suporte verificável em fundamentos jurídicos" in response.json()["detail"]
 
 
 async def test_delivered_notice_carries_no_retrieval_identifiers(

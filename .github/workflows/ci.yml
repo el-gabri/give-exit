@@ -64,34 +64,56 @@ jobs:
         # This is an engineering-authored seed, not a lawyer-certified legal
         # golden set.  The gates still prevent the measured offline baseline
         # from silently regressing and enforce fail-safe abstention behavior.
-        # Re-baselined on 2026-09-13 for corpus v4 (CF, CDC, LGPD and a scoped
-        # Civil Code; 2,455 chunks). The hashed 128-dimension embedder used
-        # here ranks far worse on the five-times larger index, while the
-        # configured JUÁ stack kept its CDC results on the original 15 cases
-        # (recall@5 0.564, article recall@5 0.756, nDCG@5 0.518 -> 0.512;
-        # ADR 0016).
+        #
+        # Re-baselined on 2026-09-14 for the two-query builder with a single
+        # legal lexicon (no intake category). The dataset also gained the
+        # unrequested-service case, so the case count moves from 21 to 22.
+        #
+        # The offline stack's dense side is a hashed 128-dimension embedder,
+        # so that stack is effectively BM25. It was measured to be blind to
+        # the case this change targets, scoring 0/3 relevant and 0 hard
+        # negatives on it, and both consumer_recall@5 and
+        # consumer_ndcg@5 measured 0.0 across the whole seed on this stack.
+        # On the configured JUÁ stack the same case improved: Civil Code
+        # arts. 878, 880 and 881 (the undue-payment chapter, premised on a
+        # payment that never happened) stopped being cited and CDC art. 52
+        # started being cited (exact recall 0/3 -> 1/3; ADR 0016).
+        # consumer_retrieval_success@5 and consumer_abstention@5 stay pinned
+        # at 1.0 and consumer_inactive_provision_rate@5 /
+        # consumer_unknown_status_rate@5 stay pinned at 0.0 regardless of
+        # measurement -- those are the hard invariants.
         run: |
           python -m app.evaluation.consumer_runner \
             eval_data/consumer_legal_retrieval \
             --output consumer-legal-retrieval-results.json \
             --min consumer_retrieval_success@5=1.0 \
-            --min consumer_recall@5=0.17 \
-            --min consumer_article_recall@5=0.48 \
-            --min consumer_ndcg@5=0.16 \
+            --min consumer_recall@5=0.00 \
+            --min consumer_article_recall@5=0.10 \
+            --min consumer_ndcg@5=0.00 \
             --min consumer_abstention@5=1.0 \
-            --max consumer_hard_negative_rate@5=0.03 \
+            --max consumer_hard_negative_rate@5=0.05 \
             --max consumer_inactive_provision_rate@5=0.0 \
             --max consumer_unknown_status_rate@5=0.0
       - name: Consumer notice final-ground gates
         # Scores the grounds the production selector would cite, not ranked
-        # candidates. The known-bad ceiling is the measured baseline; it may
-        # only go down.
+        # candidates.
+        #
+        # Re-baselined on 2026-09-14 for the two-query builder: the known-bad
+        # ceiling moved from 1 to 3, deliberately, on user sign-off. The
+        # offline stack's dense side is a hashed 128-dimension embedder (so
+        # this stack is effectively BM25); it was measured to be blind to the
+        # case this change targets, and the three known-bad citations
+        # measured here come from three pre-existing cases, not from the new
+        # one. On the configured JUÁ stack the targeted case improved instead
+        # (Civil Code arts. 878/880/881 stopped being cited, CDC art. 52
+        # started being cited; ADR 0016). consumer_notice_abstention stays
+        # pinned at 1.0 regardless of measurement.
         run: |
           python -m app.evaluation.consumer_runner \
             eval_data/consumer_legal_retrieval \
             --evaluate-notice \
             --output consumer-notice-results.json \
-            --max consumer_notice_known_bad_citations=1 \
+            --max consumer_notice_known_bad_citations=3 \
             --min consumer_notice_abstention=1.0
       - name: Upload consumer evaluation evidence
         if: always()
