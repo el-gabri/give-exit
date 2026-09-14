@@ -79,21 +79,20 @@ deterministically; invalid output falls back safely. Embeddings are independent.
   deterministic policy controls eligibility and remains marked
   `requires_legal_review`.
 - Eligibility is a property of the document, not of the consumer's answers.
-  The issue category shapes the retrieval queries but never restricts which
-  articles may be cited: it is a lay self-classification, one report often
-  spans several problems, and a wrong pick must not deny somebody a notice.
-  What an individual extrajudicial notice cannot rest on is excluded by the
-  statute's own structure — the CDC chapters on criminal offences,
-  administrative sanctions, collective litigation and the national
+  Intake collects no issue category; retrieval queries are built from the
+  complaint and the requested remedy alone, with no injected vocabulary
+  (ADR 0018). What an individual extrajudicial notice cannot rest on is
+  excluded by the statute's own structure — the CDC chapters on criminal
+  offences, administrative sanctions, collective litigation and the national
   consumer-protection system. The LGPD chapters on processing by public
   bodies, administrative sanctions, the national authority and final
   provisions are excluded in the same way, and so is the Civil Code's title on
   specific contract types (Título VI of the law of obligations), which
   retrieval matched to unrelated complaints.
-- The load-bearing precision control is retrieval agreement, not the category:
-  an article becomes a ground only when dense and lexical retrieval both
-  ranked it (or, in degraded mode, when two independent queries corroborate
-  it in their top three).
+- The load-bearing precision control is retrieval agreement: an article
+  becomes a ground only when dense and lexical retrieval both ranked it (or,
+  in degraded mode, when two independent queries corroborate it in their top
+  three).
 - Notice citations are reconstructed from retrieved evidence and canonical
   legal metadata; they are not trusted model-generated citation strings.
 - An evidence citation names exactly one file and one page. A retrieved chunk
