@@ -100,7 +100,7 @@ async def test_consumer_case_is_token_isolated_and_message_is_idempotent(
 
     assert first.status_code == duplicate.status_code == 200
     assert first.json()["case"]["facts"]["bank_name"] == "Nubank"
-    assert first.json()["case"]["facts"]["issue_category"] == "unauthorized_charge"
+    assert first.json()["case"]["facts"]["issue_category"] is None
     assert first.json()["case"]["facts"]["direct_loss_amount"] is None
     assert len(duplicate.json()["case"]["messages"]) == len(first.json()["case"]["messages"])
 

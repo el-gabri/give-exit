@@ -786,7 +786,7 @@ class ConsumerCaseService:
             messages=record.messages,
             facts=record.facts,
             missing_fields=missing,
-            recommended_documents=recommended_documents(record.facts.issue_category),
+            recommended_documents=recommended_documents(),
             documents=[item.public for item in record.documents],
             ready_for_notice=ready,
             facts_confirmed=record.facts_confirmed,
