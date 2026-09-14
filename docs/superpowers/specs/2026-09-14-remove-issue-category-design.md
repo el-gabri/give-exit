@@ -218,7 +218,7 @@ set and `_sync_fact_widgets`. `FACT_LABELS` loses its `issue_category` entry, an
 from `dataset.json`. `category` stays as descriptive metadata for the `by_category` breakdown only;
 nothing reads it to build a query. `consumer_runner._run_case` and `consumer_notice` stop passing it.
 
-Dataset version 1.1.0 → 2.0.0, with a new `dataset_sha256`. The CI gates are re-baselined on the
+Dataset version 1.2.0 → 2.0.0, with a new `dataset_sha256`. The CI gates are re-baselined on the
 measured post-change values; section 9 lists which.
 
 ### 6.9 The Bradesco golden case
@@ -282,7 +282,7 @@ machine. "It does not fit here" is a valid outcome and is recorded, not worked a
 |---|---|---|
 | `QUERY_BUILDER_VERSION` | `consumer-legal-three-query-v4` | `consumer-legal-two-query-v5` |
 | `queries_per_case` | 3 | 2 |
-| dataset version | 1.1.0 | 2.0.0 |
+| dataset version | 1.2.0 | 2.0.0 |
 | `dataset_sha256` | `b2b45282…` | recomputed |
 | corpus release | `br-consumer-law-2026-09-12-v4` | unchanged |
 | chunking version | `legal-hierarchy-v3:target=1200` | unchanged |
