@@ -591,7 +591,7 @@ class ConsumerCaseService:
 
         legal_results, legal_traces = await self._rag.retrieve_many_with_traces(
             legal_queries,
-            doc_id=self._legal_corpus.as_parsed_document().doc_id,
+            doc_id=self._legal_corpus.document_id,
             agent="consumer_legal_authorities",
             k=8,
             mode="hybrid",
@@ -725,7 +725,7 @@ class ConsumerCaseService:
             indexed = await self._rag.list_document_ids()
         except TypeError:
             return 0
-        keep = {self._legal_corpus.as_parsed_document().doc_id}
+        keep = {self._legal_corpus.document_id}
         keep |= self._store.indexed_document_ids()
         orphans = sorted(indexed - keep)
         for doc_id in orphans:

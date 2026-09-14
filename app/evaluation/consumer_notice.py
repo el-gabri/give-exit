@@ -166,7 +166,7 @@ class ConsumerNoticeGroundEvaluator:
 
     async def run(self, dataset: ConsumerLegalGoldenDataset) -> EvaluationSummary:
         corpus = validate_consumer_legal_labels(dataset, corpus=self._corpus)
-        doc_id = corpus.as_parsed_document().doc_id
+        doc_id = corpus.document_id
         cases = [await self._run_case(case, doc_id) for case in dataset.cases]
         configuration = self._pipeline.retrieval_configuration(
             requested_k=NOTICE_REQUESTED_K,

@@ -62,7 +62,7 @@ class _LazyConsumerRetriever:
             if self._pipeline is None or self._doc_id is None:
                 corpus = get_default_legal_corpus()
                 self._pipeline = await prepare_evaluation_pipeline(self._factory, corpus)
-                self._doc_id = corpus.as_parsed_document().doc_id
+                self._doc_id = corpus.document_id
                 self._corpus = corpus
         assert self._pipeline is not None and self._doc_id is not None
         return self._pipeline, self._doc_id

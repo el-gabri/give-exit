@@ -29,7 +29,7 @@ class LegalIndexResult:
 async def legal_corpus_is_indexed(rag: RagPipeline, corpus: LegalCorpus) -> bool:
     """Check persistence and restore the corpus chunking version for audit traces."""
 
-    doc_id = corpus.as_parsed_document().doc_id
+    doc_id = corpus.document_id
     if doc_id not in await rag.list_document_ids():
         return False
     generation_id: str | None = None
@@ -70,7 +70,7 @@ async def preindex_legal_corpus(
     """Materialize the immutable corpus once and verify the persisted document."""
 
     chunks = corpus.as_chunks()
-    doc_id = corpus.as_parsed_document().doc_id
+    doc_id = corpus.document_id
     if not force and await legal_corpus_is_indexed(rag, corpus):
         manager = (
             EmbeddingGenerationManager(rag, corpus)
@@ -122,7 +122,7 @@ async def adopt_legal_corpus_index(
     )
     return LegalIndexResult(
         action="indexed",
-        doc_id=corpus.as_parsed_document().doc_id,
+        doc_id=corpus.document_id,
         chunks=len(corpus.as_chunks()),
         generation_id=manifest.generation_id,
         manifest_path=manager.manifest_path,

@@ -340,7 +340,7 @@ class EmbeddingGenerationManager:
 
     @property
     def _document_id(self) -> str:
-        return self._corpus.as_parsed_document().doc_id
+        return self._corpus.document_id
 
     def _new_manifest(
         self,
@@ -601,7 +601,7 @@ def _generation_id(
         "index_name": index_name,
         "corpus_release_id": corpus.release_id,
         "corpus_sha256": corpus.corpus_sha256,
-        "document_id": corpus.as_parsed_document().doc_id,
+        "document_id": corpus.document_id,
         "chunking_version": LEGAL_CHUNKING_IDENTITY,
         "chunks_sha256": chunks_sha256(chunks),
         "contract": contract.document_identity(),

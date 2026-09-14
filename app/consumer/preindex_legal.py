@@ -97,7 +97,7 @@ async def _run(
         source = create_vector_store_for_index(settings, index_name=adopt_source_index)
         if not isinstance(source, DocumentExportingVectorStore):
             raise TypeError("o backend configurado não permite exportar o índice legado")
-        entries = await source.export_document(corpus.as_parsed_document().doc_id)
+        entries = await source.export_document(corpus.document_id)
         if not entries:
             raise ValueError(f"o índice legado está vazio: {adopt_source_index}")
         result = await adopt_legal_corpus_index(

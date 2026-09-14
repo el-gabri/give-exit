@@ -12,7 +12,7 @@ import re
 import threading
 import unicodedata
 from collections import Counter
-from collections.abc import Mapping
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
@@ -65,6 +65,7 @@ class InMemoryVectorStore:
     def __init__(self, *, index_name: str = "memory") -> None:
         self._rows: dict[str, tuple[Chunk, list[float]]] = {}
         self._index_name = index_name
+        self._lexical_tokens = _LexicalTokenCache()
 
     @property
     def index_name(self) -> str:
@@ -73,6 +74,7 @@ class InMemoryVectorStore:
     async def upsert(self, chunks: list[Chunk], vectors: list[list[float]]) -> None:
         for chunk, vector in zip(chunks, vectors, strict=True):
             self._rows[chunk.chunk_id] = (chunk, vector)
+        self._lexical_tokens.forget({chunk.doc_id for chunk in chunks})
 
     async def replace_document(self, chunks: list[Chunk], vectors: list[list[float]]) -> None:
         if not chunks:
@@ -88,6 +90,7 @@ class InMemoryVectorStore:
             chunk_id: row for chunk_id, row in self._rows.items() if row[0].doc_id != doc_id
         }
         self._rows = {**retained, **replacement}
+        self._lexical_tokens.forget({doc_id})
 
     async def query(self, vector: list[float], doc_id: str, k: int) -> list[RetrievedChunk]:
         candidates = [
@@ -100,7 +103,10 @@ class InMemoryVectorStore:
 
     async def lexical_query(self, query: str, doc_id: str, k: int) -> list[RetrievedChunk]:
         chunks = [chunk for chunk, _ in self._rows.values() if chunk.doc_id == doc_id]
-        return _bm25_rank(query, chunks, k)
+        tokenizer = self._lexical_tokens.tokenizer(doc_id)
+        ranked = _bm25_rank(query, chunks, k, tokenize=tokenizer)
+        self._lexical_tokens.remember(doc_id, tokenizer)
+        return ranked
 
     async def list_document_ids(self) -> set[str]:
         return {chunk.doc_id for chunk, _ in self._rows.values()}
@@ -117,6 +123,7 @@ class InMemoryVectorStore:
 
     async def delete_document(self, doc_id: str) -> None:
         self._rows = {cid: row for cid, row in self._rows.items() if row[0].doc_id != doc_id}
+        self._lexical_tokens.forget({doc_id})
 
 
 class ChromaVectorStore:
@@ -143,6 +150,7 @@ class ChromaVectorStore:
             # embedding function stored in collection configuration.
             embedding_function=None,
         )
+        self._lexical_tokens = _LexicalTokenCache()
 
     @property
     def index_name(self) -> str:
@@ -158,6 +166,7 @@ class ChromaVectorStore:
             )
 
         await asyncio.to_thread(_upsert)
+        self._lexical_tokens.forget({chunk.doc_id for chunk in chunks})
 
     async def replace_document(self, chunks: list[Chunk], vectors: list[list[float]]) -> None:
         """Upsert first, then remove stale ids so provider failure preserves old data."""
@@ -183,6 +192,7 @@ class ChromaVectorStore:
                 self._collection.delete(ids=stale_ids)
 
         await asyncio.to_thread(_replace)
+        self._lexical_tokens.forget({doc_id})
 
     async def query(self, vector: list[float], doc_id: str, k: int) -> list[RetrievedChunk]:
         def _query() -> list[RetrievedChunk]:
@@ -213,6 +223,8 @@ class ChromaVectorStore:
         return await asyncio.to_thread(_query)
 
     async def lexical_query(self, query: str, doc_id: str, k: int) -> list[RetrievedChunk]:
+        tokenizer = self._lexical_tokens.tokenizer(doc_id)
+
         def _query() -> list[RetrievedChunk]:
             result = self._collection.get(
                 where={"doc_id": doc_id},
@@ -227,9 +239,11 @@ class ChromaVectorStore:
                     strict=True,
                 )
             ]
-            return _bm25_rank(query, chunks, k)
+            return _bm25_rank(query, chunks, k, tokenize=tokenizer)
 
-        return await asyncio.to_thread(_query)
+        ranked = await asyncio.to_thread(_query)
+        self._lexical_tokens.remember(doc_id, tokenizer)
+        return ranked
 
     async def list_document_ids(self) -> set[str]:
         def _list() -> set[str]:
@@ -244,6 +258,7 @@ class ChromaVectorStore:
 
     async def delete_document(self, doc_id: str) -> None:
         await asyncio.to_thread(self._collection.delete, where={"doc_id": doc_id})
+        self._lexical_tokens.forget({doc_id})
 
     async def export_entries(self) -> list[tuple[Chunk, list[float]]]:
         """Return stored chunks and vectors for an explicit backend migration.
@@ -686,7 +701,56 @@ _PORTUGUESE_STOPWORDS = frozenset(
 )
 
 
-def _bm25_rank(query: str, chunks: list[Chunk], k: int) -> list[RetrievedChunk]:
+class _SearchTokenizer:
+    """Tokenizes the chunks of one lexical search, reusing cached tokens."""
+
+    def __init__(self, cached: Mapping[str, tuple[str, ...]], writes: int) -> None:
+        self._cached = cached
+        self.writes = writes
+        self.used: dict[str, tuple[str, ...]] = {}
+
+    def __call__(self, chunk: Chunk) -> tuple[str, ...]:
+        tokens = self._cached.get(chunk.text)
+        if tokens is None:
+            tokens = tuple(portuguese_lexical_tokens(chunk.text))
+        self.used[chunk.text] = tokens
+        return tokens
+
+
+class _LexicalTokenCache:
+    """Chunk tokens one store keeps between lexical searches, per document.
+
+    Tokenizing every chunk dominated each lexical query. Tokens are keyed by
+    chunk text, so they cannot go stale. Every write through the store drops
+    the documents it wrote, so text a case deletion removed from the index
+    does not outlive it here, and a search that raced any write does not
+    store its tokens.
+    """
+
+    def __init__(self) -> None:
+        self._documents: dict[str, dict[str, tuple[str, ...]]] = {}
+        self._writes = 0
+
+    def tokenizer(self, doc_id: str) -> _SearchTokenizer:
+        return _SearchTokenizer(self._documents.get(doc_id, {}), self._writes)
+
+    def remember(self, doc_id: str, tokenizer: _SearchTokenizer) -> None:
+        if tokenizer.used and tokenizer.writes == self._writes:
+            self._documents[doc_id] = tokenizer.used
+
+    def forget(self, doc_ids: Iterable[str]) -> None:
+        self._writes += 1
+        for doc_id in doc_ids:
+            self._documents.pop(doc_id, None)
+
+
+def _bm25_rank(
+    query: str,
+    chunks: list[Chunk],
+    k: int,
+    *,
+    tokenize: Callable[[Chunk], Sequence[str]],
+) -> list[RetrievedChunk]:
     """Small deterministic BM25 implementation with no runtime dependency."""
     if k < 1 or not chunks:
         return []
@@ -694,9 +758,10 @@ def _bm25_rank(query: str, chunks: list[Chunk], k: int) -> list[RetrievedChunk]:
     if not query_terms:
         return []
 
-    documents = [portuguese_lexical_tokens(chunk.text) for chunk in chunks]
+    documents = [tokenize(chunk) for chunk in chunks]
+    vocabularies = [set(document) for document in documents]
     document_frequency = {
-        term: sum(term in set(document) for document in documents) for term in query_terms
+        term: sum(term in vocabulary for vocabulary in vocabularies) for term in query_terms
     }
     average_length = sum(len(document) for document in documents) / len(documents)
     k1 = 1.5
