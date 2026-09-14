@@ -193,8 +193,12 @@ def strongly_supported_chunk_ids(traces: list[RetrievalTrace]) -> frozenset[str]
     For reciprocal-rank fusion, a score above the best possible contribution
     from either single channel proves that both dense and lexical retrieval
     contributed. Reranker and other score scales have no portable absolute
-    threshold, so they require the same chunk to rank in the top three for at
-    least two independently constructed queries.
+    threshold, so they require the same chunk to rank in the top three for
+    both queries built from the narrative. Those two queries are two
+    framings of the same narrative, not independently constructed
+    formulations: query 2 is the bare complaint/remedy text, a strict subset
+    of query 1's wording. Re-deriving this gate for genuinely independent
+    queries is a follow-up (see ADR 0018).
 
     With the category allowlist gone this is the load-bearing precision
     control: an article reaches a notice because two independent retrieval

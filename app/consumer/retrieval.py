@@ -151,7 +151,7 @@ def build_legal_queries_for_case(*, complaint: str, desired_resolution: str) -> 
     """Build the same production queries for a golden-dataset case."""
 
     # Reserve space for every signal instead of allowing a long complaint to
-    # truncate the requested remedy or the legal vocabulary.
+    # truncate the requested remedy.
     bounded_complaint = _bounded_component(complaint, 1_050)
     bounded_resolution = _bounded_component(desired_resolution, 500)
     narrative = _join_non_empty(bounded_complaint, bounded_resolution)

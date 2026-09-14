@@ -27,8 +27,7 @@ async def main():
         raise RuntimeError("active generation not ready; refusing to build it")
     dataset = load_consumer_legal_dataset(Path("eval_data/consumer_legal_retrieval"))
     case = next(c for c in dataset.cases if c.case_id == "cobranca_indevida_ja_paga")
-    facts = ConsumerCaseFacts(issue_category=case.intake_category,
-                              complaint_summary=case.complaint,
+    facts = ConsumerCaseFacts(complaint_summary=case.complaint,
                               desired_resolution=case.desired_resolution)
     results, traces = await rag.retrieve_many_with_traces(
         build_legal_queries(facts), doc_id=corpus.as_parsed_document().doc_id,

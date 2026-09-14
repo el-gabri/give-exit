@@ -91,8 +91,10 @@ deterministically; invalid output falls back safely. Embeddings are independent.
   retrieval matched to unrelated complaints.
 - The load-bearing precision control is retrieval agreement: an article
   becomes a ground only when dense and lexical retrieval both ranked it (or,
-  in degraded mode, when two independent queries corroborate it in their top
-  three).
+  in degraded mode, when the same chunk corroborates in the top three of
+  both queries built from the narrative — two framings of the same
+  narrative, not independently constructed queries; query 2 is the bare
+  complaint/remedy text, a strict subset of query 1's wording).
 - Notice citations are reconstructed from retrieved evidence and canonical
   legal metadata; they are not trusted model-generated citation strings.
 - An evidence citation names exactly one file and one page. A retrieved chunk

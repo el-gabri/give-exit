@@ -34,6 +34,13 @@ it argues the supplier's side.
 | D8 | Scope gate | `is_consumer_scope` loses its `category` parameter. The narrative already decides, and the code already checks the narrative first. |
 | D9 | Golden coverage | The Bradesco case enters the dataset as part of this change, not after it. |
 
+> **Post-execution note (2026-09-14): D2 was reversed.** Measurement (section 4
+> and the two-query dose-response test) showed the fixed `LEGAL_LEXICON`
+> scored worse than injecting no vocabulary at all on the offline stack. The
+> shipped query builder injects no vocabulary into either query. See
+> [ADR 0018](../../adr/0018-narrative-only-consumer-intake.md) for the
+> measured comparison and the decision actually taken.
+
 ## 3. Non-goals
 
 - Replacing the category with an LLM classifier, or with any other per-case routing.
@@ -290,6 +297,15 @@ machine. "It does not fit here" is a valid outcome and is recorded, not worked a
 
 CI gates to re-baseline on measured values: `consumer_recall@5`, `consumer_article_recall@5`,
 `consumer_ndcg@5`, `consumer_hard_negative_rate@5`, and the notice known-bad ceiling.
+
+> **Post-execution note (2026-09-14): identifiers above are superseded.**
+> Following D2's reversal (section 2), the shipped query builder injects no
+> `LEGAL_LEXICON` and `QUERY_BUILDER_VERSION` became `consumer-legal-narrative-v6`,
+> not `consumer-legal-two-query-v5`. A reader validating this branch against
+> this spec's exit criteria should check the shipped identifiers and
+> [ADR 0018](../../adr/0018-narrative-only-consumer-intake.md), not the `v5`
+> value recorded here — the branch did not fail to hit this table's target;
+> the target itself changed during execution.
 
 ## 10. Risks
 

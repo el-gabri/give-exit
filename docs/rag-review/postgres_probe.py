@@ -54,8 +54,7 @@ async def main():
     service._legal_corpus = corpus
     output = {"entries": len(entries), "cases": []}
     for case in dataset.cases:
-        facts = ConsumerCaseFacts(issue_category=case.intake_category,
-                                  complaint_summary=case.complaint,
+        facts = ConsumerCaseFacts(complaint_summary=case.complaint,
                                   desired_resolution=case.desired_resolution)
         results, traces = await pipeline.retrieve_many_with_traces(
             build_legal_queries(facts), doc_id=doc_id, agent="consumer_legal_authorities", k=8)
@@ -65,7 +64,7 @@ async def main():
                                 "traces": [t.model_dump(mode="json") for t in traces]})
     dense_ms, lexical_ms = [], []
     query = build_legal_queries(ConsumerCaseFacts(
-        issue_category="unauthorized_charge", complaint_summary="Paguei cobrança em duplicidade.",
+        complaint_summary="Paguei cobrança em duplicidade.",
         desired_resolution="Quero restituição."))[0]
     for _ in range(10):
         started = time.perf_counter()

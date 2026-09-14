@@ -242,8 +242,12 @@ def test_article_outside_the_notice_scope_is_not_cited() -> None:
         assert service._legal_grounds(results, _facts(), _traces(results)) == [], provision_id
 
 
-def test_catch_all_category_can_still_produce_a_notice() -> None:
-    """'other' used to have an empty allowlist, so it always failed."""
+def test_eligible_supported_results_produce_a_notice() -> None:
+    """Eligible, retrieval-supported results are enough to produce grounds.
+
+    No intake label gates this: there is no allowlist keyed by category to
+    trip on.
+    """
     service = _service()
     chunks = _corpus_chunks(3)
     results = [[RetrievedChunk(chunk=chunk, score=0.03) for chunk in chunks]]

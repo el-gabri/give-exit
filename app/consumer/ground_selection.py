@@ -51,11 +51,9 @@ def select_legal_grounds(
 
     if not is_consumer_scope(complaint=facts.complaint_summary or ""):
         return []
-    # The issue category shapes the retrieval queries (see
-    # build_legal_queries) but no longer decides which articles may be
-    # cited: a consumer who picks the wrong type, or the catch-all
-    # "other", must still be able to reach the authorities their own
-    # report supports.
+    # Retrieval queries are built from the narrative alone (see
+    # build_legal_queries); no intake label routes or gates which articles
+    # may be cited.
     strongly_supported = support(traces or [])
     if not strongly_supported:
         return []

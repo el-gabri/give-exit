@@ -91,6 +91,20 @@ This change trades breadth for precision, and the trade is not free.
   of this ADR six months from now should not be surprised that recall is
   lower than it used to be: it is, measurably, and that is the cost of this
   design, not an oversight.
+- (-) **The largest measured cost: `consumer_notice_exact_recall` fell about
+  ninefold, 0.149 → 0.017, on the offline stack.**
+  (`tests/test_consumer_notice_evaluation.py:165` now;
+  `8387881:tests/test_consumer_notice_evaluation.py:155` before.) This is the
+  notice-level metric closest to "did the notice cite a provision the golden
+  set labelled relevant" — at 0.017
+  the offline notices almost never do. Put plainly: notices got shorter
+  *and* their hit rate on labelled-relevant provisions collapsed by roughly
+  nine times. That combination is consistent with retrieval being weaker
+  overall on this stack, not merely more selective about what it cites. This
+  is the cost most likely to matter to a reader six months out, and it is
+  not softened here: on the metric that most directly checks whether a
+  notice cites what it should, this design measurably underperforms what it
+  replaced.
 - (-) **A fixed lexicon was tried and made things worse, not better.** With
   one lexicon string appended to every query, offline `article_recall@5` was
   0.100 and `recall@5` was 0.000 — worse than appending nothing — with 3

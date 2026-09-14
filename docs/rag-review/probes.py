@@ -59,7 +59,6 @@ async def main():
     degraded = RagPipeline(BrokenEmbedder(), store)
     for case in dataset.cases:
         facts = ConsumerCaseFacts(
-            issue_category=case.intake_category,
             complaint_summary=case.complaint,
             desired_resolution=case.desired_resolution,
         )
@@ -90,8 +89,7 @@ async def main():
 
     proof = output["proofs"]
     first_case = dataset.cases[0]
-    first_facts = ConsumerCaseFacts(issue_category=first_case.intake_category,
-                                   complaint_summary=first_case.complaint,
+    first_facts = ConsumerCaseFacts(complaint_summary=first_case.complaint,
                                    desired_resolution=first_case.desired_resolution)
     first_query = build_legal_queries(first_facts)[0]
     first_vector = await MockEmbeddingClient().embed_query(first_query)
@@ -118,9 +116,9 @@ async def main():
         "both_channels_rank32": 2 / 92, "minimum_ratio": (2 / 92) / (2 / 61),
         "rrf_floor_excludes_supported_default": False,
     }
-    facts = ConsumerCaseFacts(issue_category="unauthorized_charge",
-                              complaint_summary="A loja cobrou duas vezes a compra.",
-                              desired_resolution="Quero a devolução do valor pago em duplicidade.")
+    facts = ConsumerCaseFacts(
+        complaint_summary="A loja cobrou duas vezes a compra.",
+        desired_resolution="Quero a devolução do valor pago em duplicidade.")
     targets = [c for c in chunks if c.metadata.get("unit_id") in
                {"br-cdc-art-5-inciso-i", "br-cdc-art-104-a-paragrafo-5"}]
     # Exercise the true pipeline and RRF against a controlled channel fixture.
@@ -150,7 +148,7 @@ async def main():
         "Paguei assistência para consertar a geladeira, mas não resolveram.",
         "Comprei um produto e a loja se recusa a me dar assistência gratuita.",
     ]:
-        custom_facts = ConsumerCaseFacts(issue_category="other", complaint_summary=complaint,
+        custom_facts = ConsumerCaseFacts(complaint_summary=complaint,
                                          desired_resolution="Quero a solução do problema.")
         custom_results, custom_traces = await degraded.retrieve_many_with_traces(
             build_legal_queries(custom_facts), doc_id=chunks[0].doc_id,
@@ -182,7 +180,7 @@ async def main():
         "chunks": [c.model_dump() for c in SectionAwareChunker().chunk(document(receipt))],
     }
     queries = build_legal_queries_for_case(
-        category="unauthorized_charge", complaint=("Histórico de atendimento. " * 120),
+        complaint=("Histórico de atendimento. " * 120),
         desired_resolution="Quero a devolução dos valores pagos.",
     )
     proof["long_queries"] = {
