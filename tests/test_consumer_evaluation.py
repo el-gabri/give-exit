@@ -138,7 +138,7 @@ def test_seed_dataset_is_separate_versioned_and_explicitly_unreviewed() -> None:
     assert dataset.authoring == "developer_authored_seed"
     assert dataset.review_status == "requires_legal_review"
     assert dataset.source_url.endswith("/l8078compilado.htm")
-    assert len(dataset.cases) == 21
+    assert len(dataset.cases) == 22
     assert len({case.category for case in dataset.cases}) >= 12
     assert sum(case.no_applicable_ground for case in dataset.cases) == 2
     assert all(case.slices for case in dataset.cases)
@@ -351,6 +351,14 @@ def test_dataset_version_is_two_zero_zero() -> None:
     dataset = load_consumer_legal_dataset(DATASET_PATH)
 
     assert dataset.version == "2.0.0"
+
+
+def test_dataset_covers_an_unrequested_service_charge() -> None:
+    dataset = load_consumer_legal_dataset(DATASET_PATH)
+    case = next(c for c in dataset.cases if c.case_id == "cobranca_de_servico_nao_solicitado")
+
+    assert any(item.article_id == "br-cdc-art-39" for item in case.relevant)
+    assert "br-cc-art-880" in case.hard_negatives
 
 
 async def test_evaluator_isolates_provider_failure_in_case_result() -> None:

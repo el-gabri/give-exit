@@ -603,6 +603,43 @@
         "br-cdc-art-49",
         "br-lgpd-art-46"
       ]
+    },
+    {
+      "case_id": "cobranca_de_servico_nao_solicitado",
+      "category": "abusive_practice",
+      "slices": [
+        "supplier:bank",
+        "remedy:revision",
+        "wording:lay"
+      ],
+      "complaint": "Estou recebendo cobranças indevidas do banco por juros do cheque especial. Cobram também um serviço de manutenção de conta corrente que eu não solicitei. Registrei reclamação no SAC e nada foi corrigido. Ainda não paguei nada do que está sendo cobrado.",
+      "desired_resolution": "Quero a revisão da dívida com a exclusão dos encargos que não contratei e que não haja negativação.",
+      "relevant": [
+        {
+          "article_id": "br-cdc-art-39",
+          "unit_id": "br-cdc-art-39-inciso-iii",
+          "grade": 3,
+          "rationale": "Fornecer serviço sem solicitação prévia é prática abusiva; é a hipótese literal da tarifa de manutenção não contratada."
+        },
+        {
+          "article_id": "br-cdc-art-6",
+          "unit_id": "br-cdc-art-6-inciso-iii",
+          "grade": 2,
+          "rationale": "A cobrança não discrimina a composição do débito, violando o direito à informação adequada e clara."
+        },
+        {
+          "article_id": "br-cdc-art-52",
+          "unit_id": null,
+          "grade": 2,
+          "rationale": "Juros de cheque especial exigem informação prévia sobre encargos e custo efetivo total."
+        }
+      ],
+      "hard_negatives": [
+        "br-cc-art-878",
+        "br-cc-art-880",
+        "br-cc-art-881",
+        "br-cdc-art-54-g"
+      ]
     }
   ]
 }
