@@ -6,10 +6,11 @@ after the consumer explicitly confirms the corresponding fact.
 
 from __future__ import annotations
 
-import hashlib
 import re
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
+
+from app.core.hashing import sha256_hex
 
 _MONEY_RE = re.compile(
     r"R\$\s*(\d{1,3}(?:\.\d{3})*(?:,\d{1,2})?|\d+(?:[.,]\d{1,2})?)",
@@ -35,7 +36,7 @@ def extract_brl_mentions(text: str, *, context_chars: int = 100) -> list[Monetar
         start = max(0, match.start() - context_chars)
         end = min(len(text), match.end() + context_chars)
         quote = " ".join(text[start:end].split())[:300]
-        quote_sha256 = hashlib.sha256(quote.encode("utf-8")).hexdigest()
+        quote_sha256 = sha256_hex(quote)
         key = (amount, quote_sha256)
         if key in seen:
             continue

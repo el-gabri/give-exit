@@ -7,7 +7,6 @@ authority merely because it was retrieved by the same RAG pipeline.
 
 from __future__ import annotations
 
-import hashlib
 from datetime import date, datetime, timezone
 from decimal import Decimal
 from enum import Enum
@@ -16,6 +15,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.core.config import NoticeComposer
+from app.core.hashing import sha256_hex
 from app.llm.base import LLMCallMetadata
 from app.schemas.document import ExtractionMethod
 from app.schemas.security import PromptInjectionAssessment
@@ -239,7 +239,7 @@ class LegalTextUnit(BaseModel):
 
     @model_validator(mode="after")
     def _set_and_validate_hash(self) -> LegalTextUnit:
-        expected = hashlib.sha256(self.text.encode("utf-8")).hexdigest()
+        expected = sha256_hex(self.text)
         if self.content_sha256 is None:
             object.__setattr__(self, "content_sha256", expected)
         elif self.content_sha256 != expected:
@@ -281,7 +281,7 @@ class LegalProvision(BaseModel):
 
     @model_validator(mode="after")
     def _set_and_validate_hash(self) -> LegalProvision:
-        expected = hashlib.sha256(self.summary.encode("utf-8")).hexdigest()
+        expected = sha256_hex(self.summary)
         if self.content_sha256 is None:
             object.__setattr__(self, "content_sha256", expected)
         elif self.content_sha256 != expected:
@@ -294,7 +294,7 @@ class LegalProvision(BaseModel):
             if self.official_text_sha256 is not None:
                 raise ValueError("official_text_sha256 requires official_text")
         else:
-            official_hash = hashlib.sha256(self.official_text.encode("utf-8")).hexdigest()
+            official_hash = sha256_hex(self.official_text)
             if self.official_text_sha256 is None:
                 object.__setattr__(self, "official_text_sha256", official_hash)
             elif self.official_text_sha256 != official_hash:
@@ -303,6 +303,15 @@ class LegalProvision(BaseModel):
         if len(unit_ids) != len(set(unit_ids)):
             raise ValueError("legal provision contains duplicate unit ids")
         return self
+
+
+def _require_matching_hash(text: str | None, digest: str | None, *, name: str) -> None:
+    """``{name}_sha256`` may only accompany ``name`` and must then match it."""
+    if text is None:
+        if digest is not None:
+            raise ValueError(f"{name}_sha256 requires {name}")
+    elif digest != sha256_hex(text):
+        raise ValueError(f"{name}_sha256 does not match {name}")
 
 
 class LegalAuthorityCitation(BaseModel):
@@ -342,35 +351,20 @@ class LegalAuthorityCitation(BaseModel):
 
     @model_validator(mode="after")
     def _validate_content_hashes(self) -> LegalAuthorityCitation:
-        summary_hash = hashlib.sha256(self.summary.encode("utf-8")).hexdigest()
-        if self.content_sha256 != summary_hash:
+        if self.content_sha256 != sha256_hex(self.summary):
             raise ValueError("content_sha256 does not match cited legal summary")
-
-        if self.official_text is None:
-            if self.official_text_sha256 is not None:
-                raise ValueError("official_text_sha256 requires official_text")
-        else:
-            official_hash = hashlib.sha256(self.official_text.encode("utf-8")).hexdigest()
-            if self.official_text_sha256 != official_hash:
-                raise ValueError("official_text_sha256 does not match official_text")
-
-        if self.official_excerpt is None:
-            if self.official_excerpt_sha256 is not None:
-                raise ValueError("official_excerpt_sha256 requires official_excerpt")
-        else:
-            excerpt_hash = hashlib.sha256(self.official_excerpt.encode("utf-8")).hexdigest()
-            if self.official_excerpt_sha256 != excerpt_hash:
-                raise ValueError("official_excerpt_sha256 does not match official_excerpt")
-
+        _require_matching_hash(
+            self.official_text, self.official_text_sha256, name="official_text"
+        )
+        _require_matching_hash(
+            self.official_excerpt, self.official_excerpt_sha256, name="official_excerpt"
+        )
         if self.unit_id is not None and self.official_excerpt is None:
             raise ValueError("unit_id requires an official_excerpt")
-        if self.content_kind is LegalContentKind.EDITORIAL and (
-            self.official_text is not None or self.official_excerpt is not None
-        ):
+        has_official_content = self.official_text is not None or self.official_excerpt is not None
+        if self.content_kind is LegalContentKind.EDITORIAL and has_official_content:
             raise ValueError("editorial citations cannot contain official text")
-        if self.content_kind is LegalContentKind.OFFICIAL and (
-            self.official_text is None and self.official_excerpt is None
-        ):
+        if self.content_kind is LegalContentKind.OFFICIAL and not has_official_content:
             raise ValueError("official citations require official text")
         return self
 

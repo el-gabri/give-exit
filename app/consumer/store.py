@@ -12,7 +12,6 @@ map is reachable by any caller holding one token.
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import hmac
 import secrets
 import time
@@ -27,6 +26,7 @@ from app.consumer.schemas import (
     ConsumerMessage,
     ConsumerNotice,
 )
+from app.core.hashing import sha256_hex
 from app.schemas.document import ParsedDocument
 
 DEFAULT_MAX_ACTIVE_CASES = 500
@@ -190,4 +190,4 @@ class ConsumerCaseStore:
 
 
 def _token_digest(case_id: str, token: str) -> str:
-    return hashlib.sha256(f"{case_id}:{token}".encode()).hexdigest()
+    return sha256_hex(f"{case_id}:{token}")

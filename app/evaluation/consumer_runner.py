@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import hashlib
 import importlib
 import inspect
 import math
@@ -20,11 +19,13 @@ from typing import cast
 from app.consumer.legal_corpus import LegalCorpus
 from app.consumer.retrieval import build_legal_queries, is_consumer_scope
 from app.consumer.schemas import ConsumerCaseFacts
+from app.core.hashing import sha256_hex
 from app.evaluation.consumer_golden import (
     load_consumer_legal_dataset,
     validate_consumer_legal_labels,
 )
 from app.schemas.evaluation import (
+    LEGAL_UNIT_MARKERS,
     CaseResult,
     ConsumerLegalGoldenCase,
     ConsumerLegalGoldenDataset,
@@ -48,7 +49,6 @@ _INACTIVE_STATUSES = {
     "vetoed",
 }
 _UNKNOWN_STATUSES = {"", "desconhecido", "unknown"}
-_UNIT_MARKERS = ("-caput", "-paragrafo-", "-inciso-", "-alinea-")
 QUERY_BUILDER_VERSION = "consumer-legal-narrative-v6"
 
 
@@ -95,7 +95,7 @@ def check_consumer_gates(
 
 def _article_id_from_stable_id(stable_id: str) -> str:
     marker_positions = [
-        position for marker in _UNIT_MARKERS if (position := stable_id.find(marker)) >= 0
+        position for marker in LEGAL_UNIT_MARKERS if (position := stable_id.find(marker)) >= 0
     ]
     return stable_id[: min(marker_positions)] if marker_positions else stable_id
 
@@ -491,7 +491,7 @@ def _merge_normalized_hits(
 
 
 def query_hashes(queries: Sequence[str]) -> tuple[str, ...]:
-    return tuple(hashlib.sha256(query.encode("utf-8")).hexdigest() for query in queries)
+    return tuple(sha256_hex(query) for query in queries)
 
 
 def _failed_case_metrics(

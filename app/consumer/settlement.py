@@ -1,7 +1,5 @@
 """Transparent settlement scenarios for consumer extrajudicial notices."""
 
-import hashlib
-import json
 from decimal import ROUND_HALF_UP, Decimal
 
 from app.consumer.schemas import (
@@ -9,6 +7,7 @@ from app.consumer.schemas import (
     SettlementInputs,
     SettlementScenario,
 )
+from app.core.hashing import canonical_json_sha256
 
 
 class SettlementCalculator:
@@ -87,14 +86,7 @@ class SettlementCalculator:
                 str(private_reservation) if private_reservation is not None else None
             ),
         }
-        calculation_sha256 = hashlib.sha256(
-            json.dumps(
-                calculation_payload,
-                ensure_ascii=False,
-                separators=(",", ":"),
-                sort_keys=True,
-            ).encode("utf-8")
-        ).hexdigest()
+        calculation_sha256 = canonical_json_sha256(calculation_payload)
 
         return SettlementScenario(
             methodology_version=self.METHODOLOGY_VERSION,

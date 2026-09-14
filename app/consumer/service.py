@@ -71,6 +71,7 @@ from app.consumer.store import (
     ConsumerCaseStore,
     StoredEvidence,
 )
+from app.core.hashing import sha256_hex
 from app.core.logging import get_logger
 from app.ingestion.service import DocumentIngestionService
 from app.rag.pipeline import RagPipeline
@@ -326,7 +327,7 @@ class ConsumerCaseService:
         if len(record.documents) >= self._max_documents_per_case:
             raise ConsumerEvidenceLimitError(self._max_documents_per_case)
         document = await self._ingestion.ingest(path, require_text=True)
-        content_sha256 = hashlib.sha256(document.full_text.encode()).hexdigest()
+        content_sha256 = sha256_hex(document.full_text)
         try:
             assessment, _ = await self._detector.scan(document)
         except Exception as exc:
@@ -905,7 +906,7 @@ class ConsumerCaseService:
                     page=original_page,
                     quote=quote,
                     chunk_id=chunk.chunk_id,
-                    content_sha256=hashlib.sha256(chunk.text.encode("utf-8")).hexdigest(),
+                    content_sha256=sha256_hex(chunk.text),
                 )
             )
             if len(citations) >= 8:
@@ -931,7 +932,7 @@ def _extract_monetary_references(
             material = f"{source_sha256}:{page.number}:{mention.amount}:{mention.quote_sha256}"
             references.append(
                 EvidenceMonetaryReference(
-                    reference_id=hashlib.sha256(material.encode("utf-8")).hexdigest()[:24],
+                    reference_id=sha256_hex(material)[:24],
                     amount=mention.amount,
                     page=page.number,
                     quote=mention.quote,
@@ -997,7 +998,7 @@ def _confirmed_fact_sources(
         SettlementComponentSource(
             source_type=MonetarySourceType.CONSUMER_CONFIRMED,
             quote=source_excerpt,
-            quote_sha256=hashlib.sha256(source_excerpt.encode("utf-8")).hexdigest(),
+            quote_sha256=sha256_hex(source_excerpt),
         )
     ]
 

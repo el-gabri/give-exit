@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import hashlib
 import time
 from collections import OrderedDict
 from dataclasses import dataclass
 
+from app.core.hashing import sha256_hex
 from app.core.logging import get_logger
 from app.rag.embeddings import (
     EmbeddingBackend,
@@ -166,7 +166,7 @@ class QueryEmbeddingGuard:
     def _cached_vector(self, query: str, *, now: float) -> list[float] | None:
         if self._cache_ttl_seconds <= 0 or self._cache_max_entries <= 0:
             return None
-        key = _query_fingerprint(query)
+        key = sha256_hex(query)
         cached = self._cache.get(key)
         if cached is None:
             return None
@@ -180,12 +180,8 @@ class QueryEmbeddingGuard:
     def _store_cache(self, query: str, vector: list[float], *, now: float) -> None:
         if self._cache_ttl_seconds <= 0 or self._cache_max_entries <= 0:
             return
-        key = _query_fingerprint(query)
+        key = sha256_hex(query)
         self._cache[key] = (now + self._cache_ttl_seconds, list(vector))
         self._cache.move_to_end(key)
         while len(self._cache) > self._cache_max_entries:
             self._cache.popitem(last=False)
-
-
-def _query_fingerprint(query: str) -> str:
-    return hashlib.sha256(query.encode("utf-8")).hexdigest()

@@ -10,7 +10,6 @@ to the wrong article.
 
 from __future__ import annotations
 
-import hashlib
 import re
 import unicodedata
 from collections.abc import Mapping, Sequence
@@ -19,6 +18,7 @@ from html.parser import HTMLParser
 
 from app.consumer.schemas import LegalTextUnit, LegalUnitKind, ProvisionStatus
 from app.consumer.statutes.spec import StatuteSpec
+from app.core.hashing import sha256_hex
 
 STATUTE_PARSER_VERSION = "planalto-statute-parser-v1"
 HIERARCHY_LEVELS = ("part", "book", "title", "subtitle", "chapter", "section", "subsection")
@@ -160,7 +160,7 @@ def extract_paragraphs(html: str) -> list[str]:
 def parsed_text_sha256(paragraphs: Sequence[str]) -> str:
     """Hash of the extracted text; stable across downloads of the same law."""
 
-    return hashlib.sha256("\n".join(paragraphs).encode("utf-8")).hexdigest()
+    return sha256_hex("\n".join(paragraphs))
 
 
 def match_article_heading(paragraph: str) -> tuple[int, str | None] | None:

@@ -24,6 +24,7 @@ from app.consumer.embedding_artifacts import (
     float32_vector,
     vectors_sha256,
 )
+from app.core.hashing import sha256_hex
 from app.core.logging import get_logger
 from app.schemas.embedding import (
     EmbeddingContract,
@@ -44,10 +45,6 @@ _REUSABLE_STATUSES = frozenset(
 
 class ReuseCanaryError(RuntimeError):
     """Reused vectors do not match what the current model produces."""
-
-
-def text_sha256(text: str) -> str:
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
 def cosine(left: Sequence[float], right: Sequence[float]) -> float:
@@ -120,7 +117,7 @@ class ReusableVectorIndex:
                     )
                     continue
                 for chunk, vector in entries:
-                    key = text_sha256(chunk.text)
+                    key = sha256_hex(chunk.text)
                     if key in vectors:
                         continue
                     vectors[key] = ReusedVector(
@@ -138,7 +135,7 @@ class ReusableVectorIndex:
         return len(self._vectors)
 
     def lookup(self, text: str) -> ReusedVector | None:
-        return self._vectors.get(text_sha256(text))
+        return self._vectors.get(sha256_hex(text))
 
     def require(self, text: str) -> ReusedVector:
         hit = self.lookup(text)

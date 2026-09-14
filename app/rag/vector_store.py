@@ -6,7 +6,6 @@ adapter would need to provide.
 """
 
 import asyncio
-import hashlib
 import json
 import math
 import re
@@ -17,6 +16,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
+from app.core.hashing import sha256_hex
 from app.schemas.rag import Chunk, RetrievedChunk
 
 
@@ -612,7 +612,7 @@ def versioned_collection_name(
 ) -> str:
     """Build a stable Chroma-safe namespace for one incompatible vector space."""
     raw = f"{corpus_version}:{embedding_model}"
-    digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()[:12]
+    digest = sha256_hex(raw)[:12]
     slug = re.sub(r"[^a-z0-9]+", "-", raw.casefold()).strip("-")[:40]
     return f"{prefix}-{slug or 'index'}-{digest}"
 

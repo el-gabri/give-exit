@@ -15,7 +15,6 @@ from typing import Any, Literal
 
 from app.consumer.embedding_artifacts import (
     atomic_write,
-    canonical_json_bytes,
     chunk_ids_sha256,
     chunks_sha256,
     float32_vector,
@@ -28,8 +27,8 @@ from app.consumer.vector_reuse import (
     ReusableVectorIndex,
     ReuseCanaryError,
     cosine,
-    text_sha256,
 )
+from app.core.hashing import canonical_json_bytes, canonical_json_sha256, sha256_hex
 from app.core.logging import get_logger
 from app.rag.embeddings import validate_embedding_vectors
 from app.rag.pipeline import RagPipeline
@@ -197,7 +196,7 @@ class EmbeddingGenerationManager:
 
         reused_texts = sorted(
             {
-                (text_sha256(chunk.text), chunk.text)
+                (sha256_hex(chunk.text), chunk.text)
                 for _, chunks in pending
                 for chunk in chunks
                 if reuse_index.lookup(chunk.text) is not None
@@ -608,7 +607,7 @@ def _generation_id(
         "contract": contract.document_identity(),
         "shard_size": shard_size,
     }
-    return hashlib.sha256(canonical_json_bytes(payload)).hexdigest()[:16]
+    return canonical_json_sha256(payload)[:16]
 
 
 def _shards(chunks: list[Chunk], size: int) -> list[list[Chunk]]:

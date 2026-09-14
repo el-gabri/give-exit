@@ -6,7 +6,6 @@ injected - agents never know which vector database is running.
 """
 
 import asyncio
-import hashlib
 import time
 import uuid
 from collections import defaultdict
@@ -15,6 +14,7 @@ from pathlib import Path
 from typing import cast
 
 from app.core.config import RetrievalMode
+from app.core.hashing import sha256_hex
 from app.core.logging import get_logger
 from app.rag.chunking import SectionAwareChunker
 from app.rag.embeddings import (
@@ -110,6 +110,11 @@ class RagPipeline:
         self._embedding_query_instruction = (
             str(query_instruction).strip() if query_instruction else None
         )
+        self._embedding_query_instruction_sha256 = (
+            sha256_hex(self._embedding_query_instruction)
+            if self._embedding_query_instruction is not None
+            else None
+        )
         self._vector_store_name = type(store).__name__
         self._index_name = str(getattr(store, "index_name", type(store).__name__))
         self._reranker_name = (
@@ -160,11 +165,6 @@ class RagPipeline:
     def embedding_contract_configuration(self) -> dict[str, str | int | bool | None]:
         """Return the document/query vector contract without loading model weights."""
 
-        instruction_hash = (
-            hashlib.sha256(self._embedding_query_instruction.encode("utf-8")).hexdigest()
-            if self._embedding_query_instruction is not None
-            else None
-        )
         return {
             "model_repository": self._embedding_model,
             "model_revision": self._embedding_model_revision,
@@ -176,7 +176,7 @@ class RagPipeline:
             "query_formatter_version": str(
                 getattr(self._embedder, "query_format_version", "unknown")
             ),
-            "query_instruction_sha256": instruction_hash,
+            "query_instruction_sha256": self._embedding_query_instruction_sha256,
             "require_model_revision": self._embedding_require_model_revision,
         }
 
@@ -195,11 +195,6 @@ class RagPipeline:
             doc_id or "", self._chunker.index_version
         )
         candidate_k = self._candidate_k(requested_k, effective_mode)
-        instruction_hash = (
-            hashlib.sha256(self._embedding_query_instruction.encode("utf-8")).hexdigest()
-            if self._embedding_query_instruction is not None
-            else None
-        )
         return {
             "retrieval_mode": effective_mode.value,
             "requested_k": requested_k,
@@ -211,7 +206,7 @@ class RagPipeline:
                 doc_id or ""
             ),
             "embedding_query_instruction": self._embedding_query_instruction,
-            "embedding_query_instruction_sha256": instruction_hash,
+            "embedding_query_instruction_sha256": self._embedding_query_instruction_sha256,
             "vector_store": self._vector_store_name,
             "index_version": f"{chunking_version}:{self._base_index_version}",
             "rrf_constant": (
@@ -704,7 +699,7 @@ class RagPipeline:
             doc_id=doc_id,
             query_index=query_index,
             query=query,
-            query_sha256=hashlib.sha256(query.encode("utf-8")).hexdigest(),
+            query_sha256=sha256_hex(query),
             requested_k=requested_k,
             candidate_k=candidate_k,
             candidate_multiplier=self._candidate_multiplier,
@@ -714,11 +709,7 @@ class RagPipeline:
             embedding_model_revision=self._embedding_model_revision,
             embedding_generation_id=self._document_embedding_generation_ids.get(doc_id),
             embedding_query_instruction=self._embedding_query_instruction,
-            embedding_query_instruction_sha256=(
-                hashlib.sha256(self._embedding_query_instruction.encode("utf-8")).hexdigest()
-                if self._embedding_query_instruction is not None
-                else None
-            ),
+            embedding_query_instruction_sha256=self._embedding_query_instruction_sha256,
             vector_store=self._vector_store_name,
             index_version=(
                 f"{self._document_chunking_versions.get(doc_id, self._chunker.index_version)}:"
@@ -752,7 +743,7 @@ class RagPipeline:
                     page_start=item.chunk.page_start,
                     page_end=item.chunk.page_end,
                     score=item.score,
-                    content_sha256=hashlib.sha256(item.chunk.text.encode("utf-8")).hexdigest(),
+                    content_sha256=sha256_hex(item.chunk.text),
                     source_metadata=item.chunk.metadata,
                     source_url=_metadata_text(item.chunk.metadata, "official_url", "source_url"),
                     source_release_id=_metadata_text(

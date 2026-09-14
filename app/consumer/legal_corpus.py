@@ -10,8 +10,6 @@ visibly separate from the official text in every page and citation.
 
 from __future__ import annotations
 
-import hashlib
-import json
 import re
 from collections.abc import Mapping, Sequence
 from datetime import date
@@ -40,6 +38,7 @@ from app.consumer.statutes import (
     load_statute,
     strip_article_heading,
 )
+from app.core.hashing import canonical_json_sha256, sha256_hex
 from app.schemas.document import DocumentPage, ExtractionMethod, ParsedDocument
 from app.schemas.rag import Chunk, MetadataValue, RetrievedChunk
 
@@ -532,13 +531,7 @@ class LegalCorpus:
                 for position, provision in enumerate(self._provisions, start=1)
             ],
         }
-        canonical = json.dumps(
-            payload,
-            ensure_ascii=False,
-            sort_keys=True,
-            separators=(",", ":"),
-        ).encode("utf-8")
-        return hashlib.sha256(canonical).hexdigest()
+        return canonical_json_sha256(payload)
 
     def get(self, provision_id: str) -> LegalProvision:
         canonical_id = _LEGACY_ID_ALIASES.get(provision_id, provision_id)
@@ -831,14 +824,11 @@ class LegalCorpus:
         provision = self.provision_for_chunk(chunk)
         unit = self.unit_for_chunk(chunk)
         official_excerpt = self._canonical_chunk_body(chunk, provision, unit)
-        official_excerpt_sha256 = hashlib.sha256(
-            official_excerpt.encode("utf-8")
-        ).hexdigest()
         return LegalAuthorityCitation.from_provision(
             provision,
             unit=unit,
             official_excerpt=official_excerpt,
-            official_excerpt_sha256=official_excerpt_sha256,
+            official_excerpt_sha256=sha256_hex(official_excerpt),
             chunk_id=chunk.chunk_id,
             retrieval_rank=retrieval_rank,
             retrieval_score=score,

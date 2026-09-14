@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
-import json
 import re
 from collections.abc import Callable
 from typing import Literal
@@ -16,7 +14,11 @@ from pydantic import (
     model_validator,
 )
 
+from app.core.hashing import canonical_json_sha256
+
 _LEGAL_ID_PATTERN = re.compile(r"^br-(?:cdc|cf|lgpd|cc)-art-[a-z0-9]+(?:-[a-z0-9]+)*$")
+# The id fragments that mark a subdivision of an article rather than the article.
+LEGAL_UNIT_MARKERS = ("-caput", "-paragrafo-", "-inciso-", "-alinea-")
 
 MetricDirection = Literal["higher_is_better", "lower_is_better"]
 
@@ -237,9 +239,7 @@ class ConsumerLegalRelevance(BaseModel):
     @classmethod
     def _article_id_is_stable(cls, value: str) -> str:
         normalized = _validate_legal_id(value, field_name="article_id")
-        if any(
-            marker in normalized for marker in ("-caput", "-paragrafo-", "-inciso-", "-alinea-")
-        ):
+        if any(marker in normalized for marker in LEGAL_UNIT_MARKERS):
             raise ValueError("article_id must identify the article, not a subdivision")
         return normalized
 
@@ -357,13 +357,7 @@ class ConsumerLegalGoldenDataset(BaseModel):
     @property
     def content_sha256(self) -> str:
         """Hash the canonical semantic payload, independent of JSON formatting."""
-        canonical = json.dumps(
-            self.model_dump(mode="json"),
-            ensure_ascii=False,
-            separators=(",", ":"),
-            sort_keys=True,
-        )
-        return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+        return canonical_json_sha256(self.model_dump(mode="json"))
 
 
 class ConsumerLegalRetrievalHit(BaseModel):

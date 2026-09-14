@@ -8,23 +8,12 @@ those rules live here.
 from __future__ import annotations
 
 import hashlib
-import json
 import os
 import struct
 from pathlib import Path
-from typing import Any
 
+from app.core.hashing import canonical_json_bytes, canonical_json_sha256, sha256_hex
 from app.schemas.rag import Chunk
-
-
-def canonical_json_bytes(value: Any) -> bytes:
-    return json.dumps(
-        value,
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
-        allow_nan=False,
-    ).encode("utf-8")
 
 
 def float32_vector(vector: list[float]) -> list[float]:
@@ -38,7 +27,7 @@ def float32_vector(vector: list[float]) -> list[float]:
 
 
 def chunk_ids_sha256(chunks: list[Chunk]) -> str:
-    return hashlib.sha256("\n".join(chunk.chunk_id for chunk in chunks).encode("utf-8")).hexdigest()
+    return sha256_hex("\n".join(chunk.chunk_id for chunk in chunks))
 
 
 def chunks_sha256(chunks: list[Chunk]) -> str:
@@ -50,8 +39,7 @@ def chunks_sha256(chunks: list[Chunk]) -> str:
 
 
 def vectors_sha256(vectors: list[list[float]]) -> str:
-    canonical = [float32_vector(vector) for vector in vectors]
-    return hashlib.sha256(canonical_json_bytes(canonical)).hexdigest()
+    return canonical_json_sha256([float32_vector(vector) for vector in vectors])
 
 
 def atomic_write(path: Path, data: bytes) -> None:

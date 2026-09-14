@@ -26,6 +26,7 @@ from app.evaluation.consumer_retrievers import (
 from app.evaluation.consumer_runner import QUERY_BUILDER_VERSION, query_hashes
 from app.rag.pipeline import RagPipeline
 from app.schemas.evaluation import (
+    LEGAL_UNIT_MARKERS,
     CaseResult,
     ConsumerLegalGoldenCase,
     ConsumerLegalGoldenDataset,
@@ -40,7 +41,6 @@ NOTICE_REQUESTED_K = 8
 # Sources that may only complement the CDC in a notice. None exist until the
 # LGPD and the Civil Code enter the corpus; the count is reported from now on.
 COMPLEMENTARY_LAW_IDS = frozenset({"br-lgpd", "br-cc"})
-_UNIT_MARKERS = ("-caput", "-paragrafo-", "-inciso-", "-alinea-")
 
 NoticePipelineName = Literal["offline", "configured"]
 
@@ -68,7 +68,7 @@ def is_known_bad_citation(
 
 
 def _is_unit_id(stable_id: str) -> bool:
-    return any(marker in stable_id for marker in _UNIT_MARKERS)
+    return any(marker in stable_id for marker in LEGAL_UNIT_MARKERS)
 
 
 def notice_ground_metrics(
