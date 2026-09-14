@@ -79,10 +79,7 @@ class InMemoryVectorStore:
     async def replace_document(self, chunks: list[Chunk], vectors: list[list[float]]) -> None:
         if not chunks:
             return
-        doc_ids = {chunk.doc_id for chunk in chunks}
-        if len(doc_ids) != 1:
-            raise ValueError("replace_document requires exactly one doc_id")
-        [doc_id] = doc_ids
+        doc_id = _single_doc_id(chunks)
         replacement = {
             chunk.chunk_id: (chunk, vector) for chunk, vector in zip(chunks, vectors, strict=True)
         }
@@ -157,15 +154,7 @@ class ChromaVectorStore:
         return self._index_name
 
     async def upsert(self, chunks: list[Chunk], vectors: list[list[float]]) -> None:
-        def _upsert() -> None:
-            self._collection.upsert(
-                ids=[c.chunk_id for c in chunks],
-                embeddings=vectors,
-                documents=[c.text for c in chunks],
-                metadatas=[_chunk_metadata(c) for c in chunks],
-            )
-
-        await asyncio.to_thread(_upsert)
+        await asyncio.to_thread(self._upsert_sync, chunks, vectors)
         self._lexical_tokens.forget({chunk.doc_id for chunk in chunks})
 
     async def replace_document(self, chunks: list[Chunk], vectors: list[list[float]]) -> None:
@@ -173,26 +162,26 @@ class ChromaVectorStore:
 
         if not chunks:
             return
-        doc_ids = {chunk.doc_id for chunk in chunks}
-        if len(doc_ids) != 1:
-            raise ValueError("replace_document requires exactly one doc_id")
-        [doc_id] = doc_ids
+        doc_id = _single_doc_id(chunks)
 
         def _replace() -> None:
             existing = self._collection.get(where={"doc_id": doc_id}, include=[])
             existing_ids = set(existing["ids"])
-            self._collection.upsert(
-                ids=[chunk.chunk_id for chunk in chunks],
-                embeddings=vectors,
-                documents=[chunk.text for chunk in chunks],
-                metadatas=[_chunk_metadata(chunk) for chunk in chunks],
-            )
+            self._upsert_sync(chunks, vectors)
             stale_ids = sorted(existing_ids - {chunk.chunk_id for chunk in chunks})
             if stale_ids:
                 self._collection.delete(ids=stale_ids)
 
         await asyncio.to_thread(_replace)
         self._lexical_tokens.forget({doc_id})
+
+    def _upsert_sync(self, chunks: list[Chunk], vectors: list[list[float]]) -> None:
+        self._collection.upsert(
+            ids=[chunk.chunk_id for chunk in chunks],
+            embeddings=vectors,
+            documents=[chunk.text for chunk in chunks],
+            metadatas=[_chunk_metadata(chunk) for chunk in chunks],
+        )
 
     async def query(self, vector: list[float], doc_id: str, k: int) -> list[RetrievedChunk]:
         def _query() -> list[RetrievedChunk]:
@@ -267,52 +256,36 @@ class ChromaVectorStore:
         request handling never needs to read raw embeddings from persistence.
         """
 
-        def _export() -> list[tuple[Chunk, list[float]]]:
-            result = self._collection.get(
-                include=["documents", "metadatas", "embeddings"],
-            )
-            documents = result["documents"]
-            metadatas = result["metadatas"]
-            embeddings = result["embeddings"]
-            if documents is None or metadatas is None or embeddings is None:
-                raise RuntimeError("Chroma omitted entries required for migration")
-            return [
-                (
-                    _restore_chunk(chunk_id, text, metadata),
-                    [float(value) for value in embedding],
-                )
-                for chunk_id, text, metadata, embedding in zip(
-                    result["ids"], documents, metadatas, embeddings, strict=True
-                )
-            ]
-
-        return await asyncio.to_thread(_export)
+        return await asyncio.to_thread(self._stored_entries, None, "migration")
 
     async def export_document(self, doc_id: str) -> list[tuple[Chunk, list[float]]]:
         """Export one isolated document with its stored vectors."""
 
-        def _export() -> list[tuple[Chunk, list[float]]]:
-            result = self._collection.get(
-                where={"doc_id": doc_id},
-                include=["documents", "metadatas", "embeddings"],
-            )
-            documents = result["documents"]
-            metadatas = result["metadatas"]
-            embeddings = result["embeddings"]
-            if documents is None or metadatas is None or embeddings is None:
-                raise RuntimeError("Chroma omitted entries required for document export")
-            entries = [
-                (
-                    _restore_chunk(chunk_id, text, metadata),
-                    [float(value) for value in embedding],
-                )
-                for chunk_id, text, metadata, embedding in zip(
-                    result["ids"], documents, metadatas, embeddings, strict=True
-                )
-            ]
-            return sorted(entries, key=lambda item: item[0].chunk_id)
+        entries = await asyncio.to_thread(self._stored_entries, doc_id, "document export")
+        return sorted(entries, key=lambda item: item[0].chunk_id)
 
-        return await asyncio.to_thread(_export)
+    def _stored_entries(
+        self, doc_id: str | None, purpose: str
+    ) -> list[tuple[Chunk, list[float]]]:
+        """Stored chunks and vectors of one document, or of the whole collection."""
+        result = self._collection.get(
+            where={"doc_id": doc_id} if doc_id is not None else None,
+            include=["documents", "metadatas", "embeddings"],
+        )
+        documents = result["documents"]
+        metadatas = result["metadatas"]
+        embeddings = result["embeddings"]
+        if documents is None or metadatas is None or embeddings is None:
+            raise RuntimeError(f"Chroma omitted entries required for {purpose}")
+        return [
+            (
+                _restore_chunk(chunk_id, text, metadata),
+                [float(value) for value in embedding],
+            )
+            for chunk_id, text, metadata, embedding in zip(
+                result["ids"], documents, metadatas, embeddings, strict=True
+            )
+        ]
 
 
 class PostgresVectorStore:
@@ -322,8 +295,9 @@ class PostgresVectorStore:
     by the versioned index namespace. It deliberately uses an unconstrained
     ``vector`` column: a namespace is immutable for one embedding space, while
     different namespaces can safely have different dimensions in one table.
-    The Consumer corpus is small (460 chunks), so exact search is both fast
-    and avoids an index that could silently mix incompatible dimensions.
+    The Consumer corpus is small (a few thousand chunks), so exact search is
+    both fast and avoids an index that could silently mix incompatible
+    dimensions.
     """
 
     TABLE = "give_exit_vector_chunks"
@@ -350,10 +324,7 @@ class PostgresVectorStore:
         rows = _postgres_rows(chunks, vectors, namespace=self._index_name)
         if not rows:
             return
-        doc_ids = {chunk.doc_id for chunk in chunks}
-        if len(doc_ids) != 1:
-            raise ValueError("replace_document requires exactly one doc_id")
-        await asyncio.to_thread(self._replace_document_sync, next(iter(doc_ids)), rows)
+        await asyncio.to_thread(self._replace_document_sync, _single_doc_id(chunks), rows)
 
     async def query(self, vector: list[float], doc_id: str, k: int) -> list[RetrievedChunk]:
         if k < 1:
@@ -466,12 +437,17 @@ class PostgresVectorStore:
                 """,
                 (vector, self._index_name, doc_id, vector, k),
             )
-            return [
-                RetrievedChunk(
-                    chunk=_restore_postgres_chunk(chunk_id, content, payload), score=float(score)
-                )
-                for chunk_id, content, payload, score in cursor.fetchall()
-            ]
+            return self._retrieved(cursor.fetchall())
+
+    @staticmethod
+    def _retrieved(rows: list[tuple[Any, ...]]) -> list[RetrievedChunk]:
+        return [
+            RetrievedChunk(
+                chunk=_restore_postgres_chunk(chunk_id, content, payload),
+                score=float(score),
+            )
+            for chunk_id, content, payload, score in rows
+        ]
 
     def _lexical_query_sync(self, query: str, doc_id: str, k: int) -> list[RetrievedChunk]:
         self._ensure_schema_sync()
@@ -495,13 +471,7 @@ class PostgresVectorStore:
                 """,
                 (query, self._index_name, doc_id, k),
             )
-            return [
-                RetrievedChunk(
-                    chunk=_restore_postgres_chunk(chunk_id, content, payload),
-                    score=float(score),
-                )
-                for chunk_id, content, payload, score in cursor.fetchall()
-            ]
+            return self._retrieved(cursor.fetchall())
 
     def _export_document_sync(self, doc_id: str) -> list[tuple[Chunk, list[float]]]:
         self._ensure_schema_sync()
@@ -554,6 +524,14 @@ ON CONFLICT (namespace, chunk_id) DO UPDATE SET
     chunk_payload = EXCLUDED.chunk_payload,
     embedding = EXCLUDED.embedding
 """
+
+
+def _single_doc_id(chunks: list[Chunk]) -> str:
+    doc_ids = {chunk.doc_id for chunk in chunks}
+    if len(doc_ids) != 1:
+        raise ValueError("replace_document requires exactly one doc_id")
+    [doc_id] = doc_ids
+    return doc_id
 
 
 def _postgres_rows(
