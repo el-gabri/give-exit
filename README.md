@@ -47,7 +47,7 @@ FastAPI /consumer/cases API
         |
         +--> PostgreSQL/Chroma hybrid RAG
         |      +--> accepted case evidence
-        |      +--> versioned CDC + selected CF provisions
+        |      +--> versioned CDC, LGPD, scoped Civil Code + selected CF
         |      +--> dense retrieval + lexical ranking + reciprocal-rank fusion
         |      +--> optional cross-encoder reranking
         |
@@ -64,9 +64,13 @@ deterministically; invalid output falls back safely. Embeddings are independent.
 
 ## Legal grounding and citations
 
-- The CDC is ingested from a pinned Planalto snapshot with a manifest and
-  content hashes.
+- The CDC, the LGPD and the Civil Code are ingested from pinned Planalto
+  snapshots by one generic statute parser, with manifests pinning raw and
+  extracted-text hashes. Only the Civil Code's general part and law of
+  obligations are indexed; its other books stay in the corpus for audit.
 - Selected constitutional provisions are versioned in the legal corpus.
+- LGPD and Civil Code grounds complement the CDC: at most three per notice,
+  only beside a CDC ground, and none under lexical-only retrieval.
 - Statutory chunks preserve law, article, subdivision, official URL, release,
   status and source hashes.
 - Legal retrieval is hybrid because exact article references and institutional
@@ -81,7 +85,11 @@ deterministically; invalid output falls back safely. Embeddings are independent.
   What an individual extrajudicial notice cannot rest on is excluded by the
   statute's own structure — the CDC chapters on criminal offences,
   administrative sanctions, collective litigation and the national
-  consumer-protection system.
+  consumer-protection system. The LGPD chapters on processing by public
+  bodies, administrative sanctions, the national authority and final
+  provisions are excluded in the same way, and so is the Civil Code's title on
+  specific contract types (Título VI of the law of obligations), which
+  retrieval matched to unrelated complaints.
 - The load-bearing precision control is retrieval agreement, not the category:
   an article becomes a ground only when dense and lexical retrieval both
   ranked it (or, in degraded mode, when two independent queries corroborate
@@ -270,7 +278,7 @@ python -m app.consumer.preindex_legal --check
 The first JUÁ CPU run can take tens of minutes or hours, depending on the
 hardware and chunk sizes. Each completed shard is durable, so an interrupted
 run can be restarted with the same command. Once complete, the API reuses the
-472 persisted legal chunks instead of recomputing them inside a notice request.
+2,455 persisted legal chunks instead of recomputing them inside a notice request.
 Use `--force` only for a deliberate rebuild.
 
 A new corpus release reuses the vectors of every chunk whose text did not
@@ -290,6 +298,17 @@ python -m app.consumer.preindex_legal `
 
 The manifest labels this provenance as `adopted_existing_vectors`; attestation
 does not retroactively prove metadata that the legacy run failed to record.
+
+Statute snapshots are refreshed explicitly, never at runtime:
+
+```powershell
+python -m app.consumer.update_statute_snapshot --law lgpd
+```
+
+The refresher records the user agent it used, writes nothing when the
+extracted text is unchanged, and writes new snapshots as `pending_review`;
+compare a sample of articles with the official page before promoting a
+snapshot and building a new corpus release.
 
 At query time, embedding calls have a timeout, concurrency bound, short-lived
 query-hash cache and circuit breaker. The concurrency bound is a queue, not a
@@ -416,6 +435,9 @@ diff rather than as a full-repo CI step.
   exported notices yet.
 - The constitutional corpus contains selected provisions, not the complete
   Constitution.
+- Only the Civil Code's general part and law of obligations are indexed; that
+  scope, the LGPD eligibility rules and the new golden cases still need
+  specialist review.
 - Legal sources, policy labels and evaluation judgments require independent
   legal review before public production use.
 

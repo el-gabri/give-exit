@@ -39,7 +39,7 @@ FastAPI /consumer/cases
         +--> upload limitado --> extração/OCR --> segurança de documento
         +--> PostgreSQL/Chroma + dense + busca textual + RRF
         |      +--> evidências aceitas
-        |      +--> CDC versionado + dispositivos selecionados da CF
+        |      +--> CDC, LGPD e Código Civil (escopo limitado) + dispositivos da CF
         +--> política jurídica e cenário financeiro determinísticos
         +--> notificação auditável --> Markdown / PDF / DOCX
 ```
@@ -52,8 +52,15 @@ de forma determinística; saída inválida aciona o compositor determinístico.
 
 ## Fontes e citações
 
-- O CDC vem de snapshot fixado do Planalto, acompanhado de manifesto e hashes.
+- CDC, LGPD e Código Civil vêm de snapshots fixados do Planalto, lidos por um
+  único parser de leis, com manifestos que fixam os hashes do arquivo e do texto
+  extraído. Do Código Civil só a Parte Geral e o Livro I da Parte Especial entram
+  no índice; os demais livros ficam no corpus para auditoria.
 - Dispositivos constitucionais selecionados são versionados no corpus.
+- Fundamentos da LGPD e do Código Civil complementam o CDC: no máximo três por
+  notificação, só ao lado de um fundamento do CDC e nenhum em recuperação apenas
+  lexical. O Título VI do Livro I da Parte Especial do Código Civil (espécies
+  de contrato) é indexado, mas não é citado.
 - Os chunks preservam lei, artigo, subdivisão, URL oficial, release, vigência e
   hashes de origem.
 - A recuperação jurídica combina semântica e correspondência lexical exata.
@@ -174,7 +181,7 @@ python -m app.consumer.preindex_legal --check
 O primeiro comando pode levar dezenas de minutos ou horas com o JUÁ em CPU,
 dependendo do hardware e do tamanho dos chunks. Cada shard concluído é durável;
 reiniciar o mesmo comando continua do último shard verificado. Depois de
-concluído, a API reutiliza os 472 chunks persistidos. Use `--force` somente para
+concluído, a API reutiliza os 2.455 chunks persistidos. Use `--force` somente para
 uma reconstrução deliberada.
 
 Um novo release do corpus reaproveita os vetores de todo chunk cujo texto não
@@ -194,6 +201,17 @@ python -m app.consumer.preindex_legal `
 
 O manifesto registra `adopted_existing_vectors`; essa atestação não vira prova
 retroativa de metadados que a execução antiga não registrou.
+
+Os snapshots das leis são atualizados explicitamente, nunca em tempo de execução:
+
+```powershell
+python -m app.consumer.update_statute_snapshot --law lgpd
+```
+
+O refresher registra o user agent usado, não grava nada quando o texto extraído
+não mudou e grava snapshots novos como `pending_review`; confira artigos por
+amostragem na página oficial antes de promover o snapshot e de gerar um novo
+release do corpus.
 
 Nas consultas, timeout, limite de concorrência, cache por hash e circuit breaker
 protegem o modelo local. Se ele falhar, o modo híbrido pode degradar para busca
@@ -268,6 +286,9 @@ sucesso da recuperação semântica.
   de PII nos documentos exportados.
 - O corpus constitucional contém dispositivos selecionados, não a Constituição
   completa.
+- Do Código Civil só a Parte Geral e o Livro I da Parte Especial são indexados;
+  esse escopo, as regras de elegibilidade da LGPD e os novos casos do golden
+  ainda exigem revisão jurídica especializada.
 - Corpus, políticas e labels de avaliação exigem revisão jurídica independente
   antes de uso público em produção.
 

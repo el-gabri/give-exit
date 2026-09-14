@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Accepted · Amended by [ADR 0016](0016-multi-statute-consumer-corpus.md)
 
 ## Context
 

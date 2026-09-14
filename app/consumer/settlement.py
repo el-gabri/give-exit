@@ -127,8 +127,8 @@ class SettlementCalculator:
                 "Na etapa extrajudicial, o custo do cenário sem acordo é zero por padrão; "
                 "custas, honorários, demora e riscos de eventual processo não são inferidos.",
                 "O cálculo não estima chance de vitória, indenização judicial ou valor devido.",
-                "A Constituição e o CDC não fornecem, por si sós, probabilidades ou tabelas "
-                "de indenização para o caso concreto.",
+                "As normas citadas (CDC, Constituição, LGPD e Código Civil) não fornecem, "
+                "por si sós, probabilidades ou tabelas de indenização para o caso concreto.",
                 "Revise fatos, provas, prazos e estratégia com profissional habilitado antes "
                 "do envio.",
             ],

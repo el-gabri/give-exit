@@ -83,8 +83,9 @@ def render_consumer_app(api_url: str, api_key: str | None = None) -> None:
         "com proposta de acordo — não uma ação judicial."
     )
     st.info(
-        "A ferramenta prepara um rascunho com referências à Constituição e ao "
-        "Código de Defesa do Consumidor. Revise o documento com um advogado antes "
+        "A ferramenta prepara um rascunho com referências ao Código de Defesa do "
+        "Consumidor e, quando pertinentes, à Constituição, à LGPD e ao Código Civil. "
+        "Revise o documento com um advogado antes "
         "de enviá-lo, sobretudo quando houver prazo, dano urgente ou valor relevante.",
         icon=":material/info:",
     )

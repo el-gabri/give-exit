@@ -1,6 +1,6 @@
 # ADR 0012: Bounded consumer extrajudicial-notice assistant
 
-Status: accepted · Date: 2026-08-04 · Amended: 2026-08-24
+Status: accepted · Date: 2026-08-04 · Amended: 2026-08-24 · Amended by [ADR 0016](0016-multi-statute-consumer-corpus.md)
 
 ## Context
 
