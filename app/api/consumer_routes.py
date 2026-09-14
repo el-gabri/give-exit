@@ -23,7 +23,6 @@ from app.api.uploads import UploadTooLargeError, write_upload_in_chunks
 from app.consumer.schemas import (
     ConsumerCaseSnapshot,
     ConsumerEvidence,
-    ConsumerIssueCategory,
     ConsumerNotice,
 )
 from app.consumer.service import (
@@ -79,7 +78,6 @@ class ConsumerFactsPatch(BaseModel):
 
     consumer_name: str | None = Field(default=None, max_length=200)
     bank_name: str | None = Field(default=None, max_length=200)
-    issue_category: ConsumerIssueCategory | None = None
     complaint_summary: str | None = Field(default=None, max_length=10_000)
     incident_date_or_period: str | None = Field(default=None, max_length=500)
     prior_protocols: list[str] | None = None

@@ -8,7 +8,7 @@ from app.consumer.retrieval import (
     build_legal_queries,
     is_consumer_scope,
 )
-from app.consumer.schemas import ConsumerCaseFacts, ConsumerIssueCategory
+from app.consumer.schemas import ConsumerCaseFacts
 from app.consumer.service import ConsumerCaseService
 from app.ingestion.service import DocumentIngestionService
 from app.llm.mock_client import MockLLMClient
@@ -18,7 +18,6 @@ from app.security.prompt_injection import PromptInjectionDetector
 
 def _facts(**updates: object) -> ConsumerCaseFacts:
     payload: dict[str, object] = {
-        "issue_category": ConsumerIssueCategory.UNAUTHORIZED_CHARGE,
         "complaint_summary": "A empresa cobrou duas vezes a mesma compra.",
         "desired_resolution": "Quero a devolução do valor pago em duplicidade.",
     }

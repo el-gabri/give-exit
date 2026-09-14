@@ -5,7 +5,7 @@ import hashlib
 from app.consumer.ground_selection import MAX_GROUND_CANDIDATES, MIN_GROUND_SCORE_RATIO
 from app.consumer.legal_corpus import get_default_legal_corpus
 from app.consumer.legal_policy import provision_is_eligible
-from app.consumer.schemas import ConsumerCaseFacts, ConsumerIssueCategory
+from app.consumer.schemas import ConsumerCaseFacts
 from app.consumer.service import ConsumerCaseService
 from app.ingestion.service import DocumentIngestionService
 from app.llm.mock_client import MockLLMClient
@@ -28,12 +28,10 @@ def _service() -> ConsumerCaseService:
 
 def _facts(
     *,
-    category: ConsumerIssueCategory = ConsumerIssueCategory.UNAUTHORIZED_CHARGE,
     complaint: str = "A empresa cobrou duas vezes a mesma compra.",
 ) -> ConsumerCaseFacts:
     return ConsumerCaseFacts.model_validate(
         {
-            "issue_category": category,
             "complaint_summary": complaint,
             "desired_resolution": "Quero a devolução do valor pago em duplicidade.",
         }
@@ -132,7 +130,6 @@ def test_low_scoring_top_article_does_not_bypass_the_absolute_support_gate() -> 
 def test_candidates_beyond_the_window_are_ignored() -> None:
     service = _service()
     facts = _facts(
-        category=ConsumerIssueCategory.OTHER,
         complaint="O contrato de adesão está ilegível e contém cláusula abusiva oculta.",
     )
     chunks = _corpus_chunks(MAX_GROUND_CANDIDATES + 2, facts)
@@ -245,30 +242,11 @@ def test_article_outside_the_notice_scope_is_not_cited() -> None:
         assert service._legal_grounds(results, _facts(), _traces(results)) == [], provision_id
 
 
-def test_issue_category_does_not_filter_the_authorities() -> None:
-    """A mistyped category, or the catch-all, must not block a ground.
-
-    The issue type is a lay self-classification: it steers the retrieval
-    queries, but it cannot decide which articles a consumer is allowed to
-    invoke. Art. 49 used to be citable only under right_of_withdrawal.
-    """
-    service = _service()
-    results = [[RetrievedChunk(chunk=_chunk_for("br-cdc-art-49"), score=0.03)]]
-
-    for category in (
-        ConsumerIssueCategory.UNAUTHORIZED_CHARGE,
-        ConsumerIssueCategory.OTHER,
-    ):
-        facts = _facts().model_copy(update={"issue_category": category})
-        grounds = service._legal_grounds(results, facts, _traces(results))
-        assert [g.authority.provision_id for g in grounds] == ["br-cdc-art-49"], category
-
-
 def test_catch_all_category_can_still_produce_a_notice() -> None:
     """'other' used to have an empty allowlist, so it always failed."""
     service = _service()
     chunks = _corpus_chunks(3)
     results = [[RetrievedChunk(chunk=chunk, score=0.03) for chunk in chunks]]
-    facts = _facts().model_copy(update={"issue_category": ConsumerIssueCategory.OTHER})
+    facts = _facts()
 
     assert service._legal_grounds(results, facts, _traces(results))

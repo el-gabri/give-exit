@@ -10,7 +10,7 @@ from app.consumer.ground_selection import (
     select_legal_grounds,
 )
 from app.consumer.legal_corpus import LegalCorpus, get_default_legal_corpus
-from app.consumer.schemas import ConsumerCaseFacts, ConsumerIssueCategory
+from app.consumer.schemas import ConsumerCaseFacts
 from app.consumer.service import ConsumerCaseService
 from app.schemas.rag import Chunk, RetrievedChunk
 from app.schemas.trace import RetrievalTrace, RetrievedItemTrace
@@ -21,7 +21,6 @@ def _facts(
 ) -> ConsumerCaseFacts:
     return ConsumerCaseFacts.model_validate(
         {
-            "issue_category": ConsumerIssueCategory.UNAUTHORIZED_CHARGE,
             "complaint_summary": complaint,
             "desired_resolution": "Quero a devolução do valor pago em duplicidade.",
         }

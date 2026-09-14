@@ -22,19 +22,6 @@ from app.schemas.security import PromptInjectionAssessment
 from app.schemas.trace import RetrievalTrace
 
 
-class ConsumerIssueCategory(str, Enum):
-    """Consumer complaint categories supported by the guided intake."""
-
-    UNAUTHORIZED_CHARGE = "unauthorized_charge"
-    FRAUD = "fraud"
-    ACCOUNT_BLOCK = "account_block"
-    NEGATIVE_CREDIT_RECORD = "negative_credit_record"
-    LOAN_OR_INTEREST = "loan_or_interest"
-    SERVICE_FAILURE = "service_failure"
-    OVER_INDEBTEDNESS = "over_indebtedness"
-    OTHER = "other"
-
-
 class ConsumerMessageRole(str, Enum):
     USER = "user"
     ASSISTANT = "assistant"
@@ -122,7 +109,6 @@ class ConsumerCaseFacts(BaseModel):
         max_length=200,
         description="Legacy API name for the supplier, company or institution",
     )
-    issue_category: ConsumerIssueCategory | None = None
     complaint_summary: str | None = Field(default=None, max_length=10_000)
     incident_date_or_period: str | None = Field(default=None, max_length=500)
     prior_protocols: list[str] = Field(default_factory=list)
@@ -170,7 +156,6 @@ class ConsumerCaseFacts(BaseModel):
         required = {
             "bank_name": self.bank_name,
             "consumer_name": self.consumer_name,
-            "issue_category": self.issue_category,
             "complaint_summary": self.complaint_summary,
             "incident_date_or_period": self.incident_date_or_period,
             "desired_resolution": self.desired_resolution,
@@ -183,7 +168,6 @@ class ConsumerIntakeExtraction(BaseModel):
 
     consumer_name: str | None = None
     bank_name: str | None = None
-    issue_category: ConsumerIssueCategory | None = None
     complaint_summary: str | None = None
     incident_date_or_period: str | None = None
     prior_protocols: list[str] | None = None

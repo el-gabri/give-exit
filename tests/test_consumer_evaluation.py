@@ -338,12 +338,12 @@ async def test_descriptive_category_still_drives_the_reporting_breakdown() -> No
     assert result.queries[1].endswith(LEGAL_LEXICON)
 
 
-def test_golden_case_rejects_an_intake_category() -> None:
-    """The field is gone; a dataset that still carries it must fail loudly."""
+def test_golden_case_rejects_an_unknown_field() -> None:
+    """Removed fields are gone; a dataset that still carries one must fail loudly."""
     payload = _case().model_dump(mode="json")
-    payload["intake_category"] = "unauthorized_charge"
+    payload["unexpected_field"] = "unauthorized_charge"
 
-    with pytest.raises(ValidationError, match="intake_category"):
+    with pytest.raises(ValidationError, match="unexpected_field"):
         ConsumerLegalGoldenCase.model_validate(payload)
 
 

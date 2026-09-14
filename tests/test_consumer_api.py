@@ -100,7 +100,6 @@ async def test_consumer_case_is_token_isolated_and_message_is_idempotent(
 
     assert first.status_code == duplicate.status_code == 200
     assert first.json()["case"]["facts"]["bank_name"] == "Nubank"
-    assert first.json()["case"]["facts"]["issue_category"] is None
     assert first.json()["case"]["facts"]["direct_loss_amount"] is None
     assert len(duplicate.json()["case"]["messages"]) == len(first.json()["case"]["messages"])
 
@@ -113,7 +112,6 @@ async def test_full_consumer_notice_lifecycle(
     facts = {
         "consumer_name": "Pessoa Consumidora",
         "bank_name": "Banco Exemplo",
-        "issue_category": "unauthorized_charge",
         "complaint_summary": (
             "Foi debitada uma cobrança não reconhecida e o atendimento não resolveu."
         ),
@@ -256,6 +254,20 @@ async def test_legacy_requested_compensation_is_rejected(
     assert "extra_forbidden" in response.text
 
 
+async def test_facts_patch_rejects_the_removed_issue_category(
+    consumer_client: httpx.AsyncClient,
+) -> None:
+    case_id, token = await _new_case(consumer_client)
+
+    response = await consumer_client.patch(
+        f"/consumer/cases/{case_id}/facts",
+        headers=_headers(token),
+        json={"issue_category": "unauthorized_charge"},
+    )
+
+    assert response.status_code == 422
+
+
 async def test_clear_non_consumer_dispute_cannot_generate_cdc_notice(
     consumer_client: httpx.AsyncClient,
 ) -> None:
@@ -264,7 +276,6 @@ async def test_clear_non_consumer_dispute_cannot_generate_cdc_notice(
     facts = {
         "consumer_name": "Pessoa Trabalhadora",
         "bank_name": "Empresa Empregadora",
-        "issue_category": "other",
         "complaint_summary": (
             "Meu empregador não pagou meu salário nem o vale-transporte deste mês."
         ),
@@ -308,7 +319,6 @@ async def test_documented_value_requires_confirmation_and_keeps_financial_proven
     facts = {
         "consumer_name": "Pessoa Consumidora",
         "bank_name": "Loja Exemplo",
-        "issue_category": "service_failure",
         # This test is about financial provenance, not retrieval. On the
         # 2,455-chunk corpus the offline hashed embedder only corroborates a
         # CDC ground for a complaint this specific; the one-liner found none.

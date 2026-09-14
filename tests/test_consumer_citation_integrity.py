@@ -143,7 +143,6 @@ async def _case_with_documents(
         json={
             "consumer_name": "Maria Souza",
             "bank_name": "Loja Exemplo",
-            "issue_category": "unauthorized_charge",
             "complaint_summary": "A Loja Exemplo cobrou R$ 250,00 na fatura sem autorizacao.",
             "incident_date_or_period": "10/03/2026",
             "desired_resolution": "Quero o estorno integral da cobranca indevida.",
@@ -565,13 +564,12 @@ async def test_notice_has_addressing_and_signature_blocks(
 
 def test_multiline_request_stays_one_list_item() -> None:
     """A newline inside a bullet silently drops the marker for the rest."""
-    from app.consumer.schemas import ConsumerCaseFacts, ConsumerIssueCategory
+    from app.consumer.schemas import ConsumerCaseFacts
     from app.consumer.service import _render_notice_markdown, _requests
 
     facts = ConsumerCaseFacts(
         consumer_name="Gabriel",
         bank_name="Bradesco",
-        issue_category=ConsumerIssueCategory.UNAUTHORIZED_CHARGE,
         complaint_summary="Cobrancas indevidas.",
         incident_date_or_period="09/06/2026",
         desired_resolution="ressarcimento do valor cobrado\nretirada de negativacao",
