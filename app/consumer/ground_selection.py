@@ -66,11 +66,7 @@ def select_legal_grounds(
     service can resolve it at call time and experiments can replace it.
     """
 
-    category = facts.issue_category.value if facts.issue_category else "other"
-    if not is_consumer_scope(
-        category=category,
-        complaint=facts.complaint_summary or "",
-    ):
+    if not is_consumer_scope(complaint=facts.complaint_summary or ""):
         return []
     # The issue category shapes the retrieval queries (see
     # build_legal_queries) but no longer decides which articles may be

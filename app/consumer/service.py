@@ -797,15 +797,7 @@ class ConsumerCaseService:
 
     def _readiness_missing(self, record: ConsumerCaseRecord) -> list[str]:
         missing = list(record.facts.missing_fields())
-        category = (
-            record.facts.issue_category.value
-            if record.facts.issue_category is not None
-            else "other"
-        )
-        if not is_consumer_scope(
-            category=category,
-            complaint=record.facts.complaint_summary or "",
-        ):
+        if not is_consumer_scope(complaint=record.facts.complaint_summary or ""):
             missing.append("consumer_relationship")
         if not self._has_accepted_evidence(record):
             missing.append("accepted_evidence")

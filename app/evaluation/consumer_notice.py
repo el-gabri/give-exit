@@ -205,7 +205,6 @@ class ConsumerNoticeGroundEvaluator:
         grounds: list[LegalGround] = []
         try:
             if not is_consumer_scope(
-                category=case.intake_category.value,
                 complaint=case.complaint,
             ):
                 outcome = "scope_gate_abstained"

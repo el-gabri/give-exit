@@ -390,7 +390,6 @@ class ConsumerLegalRetrievalEvaluator:
                 desired_resolution=case.desired_resolution,
             )
             if not is_consumer_scope(
-                category=case.intake_category.value,
                 complaint=facts.complaint_summary or "",
             ):
                 retrieval_outcome = "scope_gate_abstained"

@@ -81,103 +81,84 @@ def test_long_complaint_does_not_remove_resolution_or_lexicon() -> None:
 
 def test_scope_gate_abstains_only_on_strong_non_consumer_signals() -> None:
     assert not is_consumer_scope(
-        category="no_consumer_relationship",
         complaint="Meu vizinho bloqueia a garagem.",
     )
     assert not is_consumer_scope(
-        category="other",
         complaint="Meu empregador não pagou meu salário nem o vale-transporte.",
     )
     assert not is_consumer_scope(
-        category="other",
         complaint=(
             "A empresa onde trabalho está há dois meses sem pagar meu salário e "
             "também não depositou o vale-transporte combinado."
         ),
     )
     assert not is_consumer_scope(
-        category="unauthorized_charge",
         complaint=(
             "A empresa não fez o pagamento do meu salário previsto no contrato "
             "de trabalho."
         ),
     )
     assert not is_consumer_scope(
-        category="other",
         complaint="Meu empregador nao pagou meu salario na loja em que trabalho.",
     )
     assert not is_consumer_scope(
-        category="other",
         complaint="Meu empregador não liberou o seguro-desemprego nem pagou meu salário.",
     )
     assert not is_consumer_scope(
-        category="other",
         complaint="O empregador alterou meu cartão de ponto e não pagou as horas extras.",
     )
     assert not is_consumer_scope(
-        category="other",
         complaint="Meu empregador não fez a entrega do EPI exigido para o trabalho.",
     )
     assert is_consumer_scope(
-        category="other",
         complaint="A loja não entregou o produto que comprei.",
     )
     assert is_consumer_scope(
-        category="product_defect",
         complaint="O aparelho parou de funcionar.",
     )
     assert is_consumer_scope(
-        category="other",
         complaint=(
             "A loja onde trabalho fez uma cobrança no meu cartão por uma compra "
             "que eu não fiz."
         ),
     )
     assert not is_consumer_scope(
-        category="other",
         complaint=(
             "Meu empregador fez uma cobrança indevida no contracheque e não pagou "
             "meu salário."
         ),
     )
     assert not is_consumer_scope(
-        category="other",
         complaint="Comprei o uniforme obrigatório e meu empregador não me reembolsou.",
     )
     assert is_consumer_scope(
-        category="other",
         complaint="O banco bloqueou minha conta-salário e não libera meu salário.",
     )
     assert not is_consumer_scope(
-        category="other",
         complaint=(
             "Meu empregador fez uma cobrança sobre o banco de horas e não pagou "
             "meu salário."
         ),
     )
     assert not is_consumer_scope(
-        category="other",
         complaint=(
             "O banco fica perto do meu trabalho. Meu empregador bloqueou minha conta "
             "no sistema de ponto e não pagou meu salário."
         ),
     )
     assert is_consumer_scope(
-        category="other",
         complaint=(
             "Meu empregador não pagou meu salário. A operadora cancelou meu serviço "
             "de internet."
         ),
     )
     assert not is_consumer_scope(
-        category="other",
         complaint=(
             "Comprei o uniforme obrigatório na loja em que trabalho, mas meu "
             "empregador não me reembolsou o salário."
         ),
     )
     assert not is_consumer_scope(
-        category="other",
         complaint="A companhia não depositou meu sala\u0301rio.",
     )
 
@@ -224,26 +205,20 @@ async def test_notice_source_retrieval_does_not_compete_for_one_embedding_slot()
     assert probe.agents == ["consumer_legal_authorities", "consumer_case_evidence"]
 
 
-def test_concrete_category_cannot_bypass_the_consumer_scope_gate() -> None:
-    """The narrative decides scope, not the inferred category.
-
-    The intake taxonomy is keyword-inferred from the same free text, so a
-    labour dispute easily lands in a concrete consumer category. Letting the
-    category short-circuit the check made this gate unreachable for every value
-    except "other".
-    """
+def test_scope_gate_decides_from_the_narrative_alone() -> None:
+    """No category exists any more; the narrative is the only input."""
     assert not is_consumer_scope(
-        category="service_failure",
         complaint="Meu empregador não pagou meu salário nem registrou a hora extra.",
     )
     assert not is_consumer_scope(
-        category="unauthorized_charge",
         complaint="Meu empregador descontou o vale-transporte do meu salário.",
     )
-    # A genuine consumer narrative in the same category still passes.
+    assert not is_consumer_scope(complaint="Meu vizinho construiu um muro no meu terreno.")
     assert is_consumer_scope(
-        category="service_failure",
         complaint="A operadora cobrou pelo serviço de internet que nunca funcionou.",
+    )
+    assert is_consumer_scope(
+        complaint="O banco bloqueou minha conta bancária e não libera meu saldo.",
     )
 
 

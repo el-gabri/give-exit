@@ -17,15 +17,9 @@ MAX_QUERY_CHARS = 2_000
 
 # The intake is intentionally permissive, but a few domains are clearly not
 # consumer relationships.  This deterministic gate is conservative: it only
-# abstains on an explicit out-of-scope category or on strong negative signals
-# without any supplier/product/service signal.  Ambiguous cases remain
-# eligible for human review instead of being silently rejected.
-_OUT_OF_SCOPE_CATEGORIES = {
-    "employment",
-    "labor",
-    "neighbor_dispute",
-    "no_consumer_relationship",
-}
+# abstains on strong negative signals without any supplier/product/service
+# signal.  Ambiguous cases remain eligible for human review instead of being
+# silently rejected.
 # These signals describe a concrete consumer transaction, product, service or
 # charge.  They may legitimately coexist with words from another legal domain
 # (for example, an employer may also make an unauthorized card charge).
@@ -184,44 +178,15 @@ def build_legal_queries_for_case(*, complaint: str, desired_resolution: str) -> 
     return _unique_non_empty(queries)
 
 
-# A concrete category still names a real consumer relationship for the scope
-# gate even though it no longer selects a query expansion. This is the same
-# set of keys the removed per-category expansion table carried (minus the
-# catch-all "other"); is_consumer_scope's behavior is unchanged by Task 2.
-_KNOWN_CONSUMER_CATEGORIES = frozenset(
-    {
-        "unauthorized_charge",
-        "fraud",
-        "account_block",
-        "negative_credit_record",
-        "loan_or_interest",
-        "service_failure",
-        "product_defect",
-        "non_delivery",
-        "right_of_withdrawal",
-        "misleading_advertising",
-        "abusive_practice",
-        "abusive_collection",
-        "public_utility",
-        "consumer_safety",
-        "contract_terms",
-        "over_indebtedness",
-        "personal_data",
-    }
-)
-
-
-def is_consumer_scope(*, category: str | None, complaint: str) -> bool:
+def is_consumer_scope(*, complaint: str) -> bool:
     """Return whether a case can safely use the consumer-law corpus.
 
     This is a high-precision abstention rule, not a legal merits classifier.
     It prevents known non-consumer disputes from being dressed in CDC grounds
-    while leaving uncertain cases for human review.
+    while leaving uncertain cases for human review. The narrative is the only
+    input: the intake taxonomy that used to short-circuit this gate was
+    keyword-inferred from this same text, so it could never contradict it.
     """
-
-    normalized_category = _clean(category).casefold()
-    if normalized_category in _OUT_OF_SCOPE_CATEGORIES:
-        return False
 
     normalized_complaint = _scope_normalize(complaint)
     has_strong_consumer_signal = _scope_contains_any(
@@ -233,18 +198,11 @@ def is_consumer_scope(*, category: str | None, complaint: str) -> bool:
     has_non_consumer_signal = _scope_contains_any(
         normalized_complaint, _NON_CONSUMER_SIGNALS
     )
-    # The narrative is checked before the category, not after it. The intake
-    # taxonomy is inferred from the same free text by keyword, so a labour or
-    # inheritance dispute easily lands in a concrete consumer category; letting
-    # the category short-circuit the check made this gate unreachable for every
-    # value except "other".
     if has_non_consumer_signal:
         return any(
             _clause_has_consumer_relationship(clause)
             for clause in _scope_clauses(normalized_complaint)
         )
-    if normalized_category in _KNOWN_CONSUMER_CATEGORIES:
-        return True
     return has_strong_consumer_signal or has_weak_consumer_signal or not has_non_consumer_signal
 
 
