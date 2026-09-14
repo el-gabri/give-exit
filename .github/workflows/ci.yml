@@ -64,16 +64,22 @@ jobs:
         # This is an engineering-authored seed, not a lawyer-certified legal
         # golden set.  The gates still prevent the measured offline baseline
         # from silently regressing and enforce fail-safe abstention behavior.
+        # Re-baselined on 2026-09-13 for corpus v4 (CF, CDC, LGPD and a scoped
+        # Civil Code; 2,455 chunks). The hashed 128-dimension embedder used
+        # here ranks far worse on the five-times larger index, while the
+        # configured JUÁ stack kept its CDC results on the original 15 cases
+        # (recall@5 0.564, article recall@5 0.756, nDCG@5 0.518 -> 0.512;
+        # ADR 0016).
         run: |
           python -m app.evaluation.consumer_runner \
             eval_data/consumer_legal_retrieval \
             --output consumer-legal-retrieval-results.json \
             --min consumer_retrieval_success@5=1.0 \
-            --min consumer_recall@5=0.29 \
-            --min consumer_article_recall@5=0.75 \
-            --min consumer_ndcg@5=0.25 \
+            --min consumer_recall@5=0.17 \
+            --min consumer_article_recall@5=0.48 \
+            --min consumer_ndcg@5=0.16 \
             --min consumer_abstention@5=1.0 \
-            --max consumer_hard_negative_rate@5=0.07 \
+            --max consumer_hard_negative_rate@5=0.03 \
             --max consumer_inactive_provision_rate@5=0.0 \
             --max consumer_unknown_status_rate@5=0.0
       - name: Consumer notice final-ground gates
@@ -85,7 +91,7 @@ jobs:
             eval_data/consumer_legal_retrieval \
             --evaluate-notice \
             --output consumer-notice-results.json \
-            --max consumer_notice_known_bad_citations=4 \
+            --max consumer_notice_known_bad_citations=1 \
             --min consumer_notice_abstention=1.0
       - name: Upload consumer evaluation evidence
         if: always()

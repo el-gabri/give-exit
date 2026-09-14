@@ -309,7 +309,13 @@ async def test_documented_value_requires_confirmation_and_keeps_financial_proven
         "consumer_name": "Pessoa Consumidora",
         "bank_name": "Loja Exemplo",
         "issue_category": "service_failure",
-        "complaint_summary": "O produto não foi entregue e o atendimento não resolveu.",
+        # This test is about financial provenance, not retrieval. On the
+        # 2,455-chunk corpus the offline hashed embedder only corroborates a
+        # CDC ground for a complaint this specific; the one-liner found none.
+        "complaint_summary": (
+            "Comprei um produto na Loja Exemplo e ele não foi entregue no prazo "
+            "prometido; o atendimento não resolveu."
+        ),
         "incident_date_or_period": "julho de 2026",
         "desired_resolution": "reembolso integral",
     }
