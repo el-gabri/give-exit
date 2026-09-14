@@ -27,6 +27,7 @@ from app.consumer.schemas import (
 from app.consumer.statutes import (
     CDC,
     CIVIL_CODE,
+    HIERARCHY_LEVELS,
     LGPD,
     STATUTE_PARSER_VERSION,
     STATUTES,
@@ -496,15 +497,9 @@ class LegalCorpus:
                     "official_url": provision.official_url,
                     "verified_on": provision.verified_on.isoformat(),
                     "status": provision.status.value,
-                    "hierarchy": {
-                        "part": provision.part,
-                        "book": provision.book,
-                        "title": provision.title,
-                        "subtitle": provision.subtitle,
-                        "chapter": provision.chapter,
-                        "section": provision.section,
-                        "subsection": provision.subsection,
-                    },
+                    "hierarchy": dict(
+                        zip(HIERARCHY_LEVELS, _hierarchy(provision), strict=True)
+                    ),
                     "index_scope": provision.index_scope,
                     "summary": provision.summary,
                     "summary_sha256": provision.content_sha256,
@@ -573,11 +568,7 @@ class LegalCorpus:
         citation label to a different law's words.
         """
 
-        return tuple(
-            provision
-            for provision in self._provisions
-            if not _is_amendment_only(provision) and provision.index_scope == "indexed"
-        )
+        return tuple(provision for provision in self._provisions if _is_retrievable(provision))
 
     def as_chunks(
         self,
@@ -593,48 +584,24 @@ class LegalCorpus:
         chunking_version = legal_chunking_version(target_chars)
         chunks: list[Chunk] = []
         for page_number, provision in enumerate(self._provisions, start=1):
-            if _is_amendment_only(provision) or provision.index_scope != "indexed":
+            if not _is_retrievable(provision):
                 continue
             units: Sequence[LegalTextUnit | None] = provision.units or (None,)
             for unit in units:
-                if unit is not None and unit.kind in _AMENDMENT_KINDS:
-                    continue
-                if (
-                    unit is not None
-                    and not include_inactive
-                    and unit.status is not ProvisionStatus.ACTIVE
+                if unit is not None and (
+                    unit.kind in _AMENDMENT_KINDS or not _in_force(unit, include_inactive)
                 ):
                     continue
-                body = provision.official_text or provision.summary if unit is None else unit.text
-                lead_in = self._lead_in_text(provision, unit)
-                header = self._chunk_header(provision, unit)
-                prefix = f"{header}\n\n{lead_in}\n" if lead_in else f"{header}\n\n"
-                budget = max(_MIN_BODY_BUDGET, target_chars - len(prefix))
-                for piece_number, piece in enumerate(_split_text(body, budget), start=1):
-                    unit_key = provision.provision_id if unit is None else unit.unit_id
-                    chunk_id = f"{document_id}:legal:{unit_key}:part-{piece_number:02d}"
-                    chunks.append(
-                        Chunk(
-                            chunk_id=chunk_id,
-                            doc_id=document_id,
-                            text=f"{prefix}{piece}",
-                            section=self._section_label(provision),
-                            page_start=page_number,
-                            page_end=page_number,
-                            metadata=self._legal_metadata(
-                                provision,
-                                unit,
-                                page=page_number,
-                                chunking_version=chunking_version,
-                                chunk_level="unit" if unit is not None else "provision",
-                                lead_in_unit_ids=_joined_unit_ids(
-                                    self._lead_in_units(provision, unit)
-                                    if unit is not None
-                                    else ()
-                                ),
-                            ),
-                        )
+                chunks.extend(
+                    self._unit_chunks(
+                        provision,
+                        unit,
+                        document_id=document_id,
+                        page_number=page_number,
+                        target_chars=target_chars,
+                        chunking_version=chunking_version,
                     )
+                )
             chunks.extend(
                 self._article_level_chunks(
                     provision,
@@ -646,6 +613,47 @@ class LegalCorpus:
                 )
             )
         return chunks
+
+    def _unit_chunks(
+        self,
+        provision: LegalProvision,
+        unit: LegalTextUnit | None,
+        *,
+        document_id: str,
+        page_number: int,
+        target_chars: int,
+        chunking_version: str,
+    ) -> list[Chunk]:
+        """Split one normative unit, or a provision without units, under its prefix."""
+
+        body = provision.official_text or provision.summary if unit is None else unit.text
+        prefix = _chunk_prefix(
+            self._chunk_header(provision, unit), self._lead_in_text(provision, unit)
+        )
+        budget = max(_MIN_BODY_BUDGET, target_chars - len(prefix))
+        unit_key = provision.provision_id if unit is None else unit.unit_id
+        lead_in_unit_ids = _joined_unit_ids(
+            self._lead_in_units(provision, unit) if unit is not None else ()
+        )
+        return [
+            Chunk(
+                chunk_id=f"{document_id}:legal:{unit_key}:part-{piece_number:02d}",
+                doc_id=document_id,
+                text=f"{prefix}{piece}",
+                section=self._section_label(provision),
+                page_start=page_number,
+                page_end=page_number,
+                metadata=self._legal_metadata(
+                    provision,
+                    unit,
+                    page=page_number,
+                    chunking_version=chunking_version,
+                    chunk_level="unit" if unit is not None else "provision",
+                    lead_in_unit_ids=lead_in_unit_ids,
+                ),
+            )
+            for piece_number, piece in enumerate(_split_text(body, budget), start=1)
+        ]
 
     def _article_level_chunks(
         self,
@@ -667,21 +675,20 @@ class LegalCorpus:
         subdivisions = sum(
             1
             for unit in provision.units
-            if unit.kind in _LEAD_IN_KINDS
-            and (include_inactive or unit.status is ProvisionStatus.ACTIVE)
+            if unit.kind in _LEAD_IN_KINDS and _in_force(unit, include_inactive)
         )
         if subdivisions < ARTICLE_LEVEL_MIN_SUBDIVISIONS:
             return []
         parts = self._article_text_parts(provision, include_inactive=include_inactive)
         if not parts:
             return []
-        header = self._chunk_header(provision, None)
-        budget = max(_MIN_BODY_BUDGET, target_chars - len(header) - 2)
+        prefix = _chunk_prefix(self._chunk_header(provision, None), "")
+        budget = max(_MIN_BODY_BUDGET, target_chars - len(prefix))
         return [
             Chunk(
                 chunk_id=f"{document_id}:legal:{provision.provision_id}:article:part-{index:02d}",
                 doc_id=document_id,
-                text=f"{header}\n\n{piece}",
+                text=f"{prefix}{piece}",
                 section=self._section_label(provision),
                 page_start=page_number,
                 page_end=page_number,
@@ -706,8 +713,7 @@ class LegalCorpus:
         parts = [
             unit.text
             for unit in provision.units
-            if unit.kind not in _AMENDMENT_KINDS
-            and (include_inactive or unit.status is ProvisionStatus.ACTIVE)
+            if unit.kind not in _AMENDMENT_KINDS and _in_force(unit, include_inactive)
         ]
         if parts:
             return parts
@@ -734,7 +740,7 @@ class LegalCorpus:
         return self._provisions[page - 1]
 
     def provisions_for_chunk(self, item: Chunk | RetrievedChunk) -> tuple[LegalProvision, ...]:
-        chunk = item.chunk if isinstance(item, RetrievedChunk) else item
+        chunk = _as_chunk(item)
         if chunk.doc_id != self.document_id:
             raise ValueError("chunk does not belong to this legal corpus release")
         return tuple(
@@ -750,7 +756,7 @@ class LegalCorpus:
     def unit_for_chunk(self, item: Chunk | RetrievedChunk) -> LegalTextUnit | None:
         """Return the normative unit for an ``as_chunks`` result, when present."""
 
-        chunk = item.chunk if isinstance(item, RetrievedChunk) else item
+        chunk = _as_chunk(item)
         provision = self.provision_for_chunk(chunk)
         for unit in provision.units:
             if f":legal:{unit.unit_id}:part-" in chunk.chunk_id:
@@ -760,7 +766,7 @@ class LegalCorpus:
     def metadata_for_chunk(self, item: Chunk | RetrievedChunk) -> dict[str, MetadataValue]:
         """Return embedded metadata or reconstruct it for legacy chunks."""
 
-        chunk = item.chunk if isinstance(item, RetrievedChunk) else item
+        chunk = _as_chunk(item)
         if chunk.metadata:
             return dict(chunk.metadata)
         provision = self.provision_for_chunk(chunk)
@@ -818,7 +824,7 @@ class LegalCorpus:
         *,
         retrieval_rank: int | None = None,
     ) -> LegalAuthorityCitation:
-        retrieved_chunk = item.chunk if isinstance(item, RetrievedChunk) else item
+        retrieved_chunk = _as_chunk(item)
         score = item.score if isinstance(item, RetrievedChunk) else None
         chunk = self._canonical_chunk_for_citation(retrieved_chunk)
         provision = self.provision_for_chunk(chunk)
@@ -888,7 +894,7 @@ class LegalCorpus:
         header_unit = unit if chunk_level == "unit" else None
         header = self._chunk_header(provision, header_unit)
         lead_in = self._lead_in_text(provision, unit) if chunk_level == "unit" and unit else ""
-        prefix = f"{header}\n\n{lead_in}\n" if lead_in else f"{header}\n\n"
+        prefix = _chunk_prefix(header, lead_in)
         if not chunk.text.startswith(prefix):  # pragma: no cover - generator invariant
             raise ValueError("canonical legal chunk has an invalid retrieval prefix")
         body = chunk.text[len(prefix) :]
@@ -908,19 +914,7 @@ class LegalCorpus:
                 unit.text for unit in provision.units if unit.status is ProvisionStatus.ACTIVE
             ]
             content = "\n\n".join(active_units) or provision.official_text
-        hierarchy = " > ".join(
-            item
-            for item in (
-                provision.part,
-                provision.book,
-                provision.title,
-                provision.subtitle,
-                provision.chapter,
-                provision.section,
-                provision.subsection,
-            )
-            if item
-        )
+        hierarchy = " > ".join(item for item in _hierarchy(provision) if item)
         return (
             f"REFERÊNCIA LEGAL {provision.provision_id.upper()}\n\n"
             f"Citação: {provision.citation_label}\n"
@@ -935,21 +929,8 @@ class LegalCorpus:
 
     @staticmethod
     def _section_label(provision: LegalProvision) -> str:
-        return " > ".join(
-            item
-            for item in (
-                provision.source_name,
-                provision.part,
-                provision.book,
-                provision.title,
-                provision.subtitle,
-                provision.chapter,
-                provision.section,
-                provision.subsection,
-                provision.article,
-            )
-            if item
-        )
+        labels = (provision.source_name, *_hierarchy(provision), provision.article)
+        return " > ".join(label for label in labels if label)
 
     @classmethod
     def _chunk_header(cls, provision: LegalProvision, unit: LegalTextUnit | None) -> str:
@@ -1042,6 +1023,29 @@ def _is_amendment_only(provision: LegalProvision) -> bool:
 
 def _joined_unit_ids(units: Sequence[LegalTextUnit]) -> str | None:
     return ",".join(unit.unit_id for unit in units) or None
+
+
+def _as_chunk(item: Chunk | RetrievedChunk) -> Chunk:
+    return item.chunk if isinstance(item, RetrievedChunk) else item
+
+
+def _is_retrievable(provision: LegalProvision) -> bool:
+    """Indexed provisions, except those that only transcribe another statute."""
+    return provision.index_scope == "indexed" and not _is_amendment_only(provision)
+
+
+def _in_force(unit: LegalTextUnit, include_inactive: bool) -> bool:
+    return include_inactive or unit.status is ProvisionStatus.ACTIVE
+
+
+def _chunk_prefix(header: str, lead_in: str) -> str:
+    """The retrieval context before a chunk's official text; citations strip it."""
+    return f"{header}\n\n{lead_in}\n" if lead_in else f"{header}\n\n"
+
+
+def _hierarchy(provision: LegalProvision) -> tuple[str | None, ...]:
+    """The provision's divisions, from part down to subsection."""
+    return tuple(getattr(provision, level) for level in HIERARCHY_LEVELS)
 
 
 def _pack_units(parts: Sequence[str], max_chars: int) -> list[str]:

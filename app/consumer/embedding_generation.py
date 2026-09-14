@@ -134,36 +134,14 @@ class EmbeddingGenerationManager:
         except Exception as exc:
             manifest.status = EmbeddingGenerationStatus.FAILED
             manifest.error = f"{type(exc).__name__}: {exc}"
-            manifest.updated_at = _now()
             self._save_manifest(manifest)
             raise
 
-        chunks, vectors = self._load_complete_generation(manifest)
-        manifest.status = EmbeddingGenerationStatus.VALIDATED
-        manifest.validated_at = _now()
-        manifest.updated_at = _now()
-        self._save_manifest(manifest)
-
-        await self._rag.index_precomputed_chunks(chunks, vectors)
-        persisted = await self._rag.export_document(self._document_id)
-        persisted_vectors = validated_vectors_for_chunks(
-            self._chunks,
-            persisted,
-            expected_dimension=manifest.contract.output_dimension,
+        _, vectors = self._load_complete_generation(manifest)
+        self._mark_validated(manifest)
+        return await self._activate(
+            manifest, vectors, mismatch="persisted vectors do not match the validated generation"
         )
-        if not _persisted_vectors_match(vectors, persisted_vectors):
-            raise RuntimeError("persisted vectors do not match the validated generation")
-        self._rag.register_indexed_document(
-            self._document_id,
-            chunking_version=LEGAL_CHUNKING_IDENTITY,
-            embedding_generation_id=self._generation_id,
-        )
-        manifest.status = EmbeddingGenerationStatus.ACTIVE
-        manifest.activated_at = _now()
-        manifest.updated_at = _now()
-        manifest.error = None
-        self._save_manifest(manifest)
-        return manifest
 
     def _pending_shards(
         self,
@@ -263,7 +241,6 @@ class EmbeddingGenerationManager:
         manifest.reuse_sources = sorted(
             {*manifest.reuse_sources, *(hit.generation_id for hit in hits if hit is not None)}
         )
-        manifest.updated_at = _now()
         manifest.error = None
         self._save_manifest(manifest)
         logger.info(
@@ -313,20 +290,34 @@ class EmbeddingGenerationManager:
                 self._write_shard(shard_index, chunks, shard_vectors)
             )
         manifest.completed_chunk_count = len(self._chunks)
+        self._mark_validated(manifest)
+        return await self._activate(
+            manifest, vectors, mismatch="persisted vectors do not match the adopted generation"
+        )
+
+    def _mark_validated(self, manifest: EmbeddingGenerationManifest) -> None:
         manifest.status = EmbeddingGenerationStatus.VALIDATED
         manifest.validated_at = _now()
-        manifest.updated_at = _now()
         self._save_manifest(manifest)
+
+    async def _activate(
+        self,
+        manifest: EmbeddingGenerationManifest,
+        vectors: list[list[float]],
+        *,
+        mismatch: str,
+    ) -> EmbeddingGenerationManifest:
+        """Import validated vectors, check the store's copy, then mark the generation active."""
 
         await self._rag.index_precomputed_chunks(self._chunks, vectors)
         persisted = await self._rag.export_document(self._document_id)
         persisted_vectors = validated_vectors_for_chunks(
             self._chunks,
             persisted,
-            expected_dimension=dimension,
+            expected_dimension=manifest.contract.output_dimension,
         )
         if not _persisted_vectors_match(vectors, persisted_vectors):
-            raise RuntimeError("persisted vectors do not match the adopted generation")
+            raise RuntimeError(mismatch)
         self._rag.register_indexed_document(
             self._document_id,
             chunking_version=LEGAL_CHUNKING_IDENTITY,
@@ -334,7 +325,7 @@ class EmbeddingGenerationManager:
         )
         manifest.status = EmbeddingGenerationStatus.ACTIVE
         manifest.activated_at = _now()
-        manifest.updated_at = _now()
+        manifest.error = None
         self._save_manifest(manifest)
         return manifest
 
