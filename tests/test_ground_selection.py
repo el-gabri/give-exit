@@ -7,7 +7,6 @@ from functools import lru_cache
 
 from app.consumer.ground_selection import (
     chunk_query_occurrences,
-    issue_label,
     select_legal_grounds,
 )
 from app.consumer.legal_corpus import LegalCorpus, get_default_legal_corpus
@@ -192,9 +191,16 @@ def test_failed_traces_do_not_count_as_query_support() -> None:
     assert chunk_query_occurrences([ok, failed]) == {chunk.chunk_id: 1}
 
 
-def test_issue_label_defaults_to_a_generic_consumer_dispute() -> None:
-    assert issue_label(ConsumerCaseFacts()) == "controvérsia de consumo"
-    assert issue_label(_facts()) == "cobrança não reconhecida ou indevida"
+def test_ground_rationale_does_not_name_an_issue_category() -> None:
+    corpus = get_default_legal_corpus()
+    chunk = _chunk_for_unit("br-cdc-art-42-paragrafo-unico")
+    results = [[RetrievedChunk(chunk=chunk, score=0.03)]]
+    grounds = select_legal_grounds(corpus, _facts(), results, [_trace(results[0])])
+
+    assert grounds
+    for ground in grounds:
+        assert "a partir do relato do consumidor" in ground.application_to_facts
+        assert "cobrança não reconhecida" not in ground.application_to_facts
 
 
 @lru_cache(maxsize=1)

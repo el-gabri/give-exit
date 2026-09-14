@@ -32,24 +32,7 @@ MAX_GROUND_CANDIDATES = 8
 MIN_GROUND_SCORE_RATIO = 0.5
 MAX_LEGAL_GROUNDS = 8
 
-CATEGORY_LABELS: dict[str, str] = {
-    "unauthorized_charge": "cobrança não reconhecida ou indevida",
-    "fraud": "fraude, golpe ou compra não reconhecida",
-    "account_block": "bloqueio de conta, acesso ou valores",
-    "negative_credit_record": "registro negativo de crédito",
-    "loan_or_interest": "empréstimo, financiamento ou juros",
-    "service_failure": "problema com produto ou serviço",
-    "over_indebtedness": "superendividamento",
-    "other": "controvérsia de consumo",
-}
-
 SupportGate = Callable[[list[RetrievalTrace]], frozenset[str]]
-
-
-def issue_label(facts: ConsumerCaseFacts) -> str:
-    """Lay description of the confirmed issue, used in notice prose."""
-
-    return CATEGORY_LABELS[facts.issue_category.value if facts.issue_category else "other"]
 
 
 def select_legal_grounds(
@@ -86,7 +69,6 @@ def select_legal_grounds(
         chunk_query_occurrences(traces or []),
     )
 
-    issue = issue_label(facts)
     provision_candidates.sort(key=lambda item: (item[0], item[3].chunk.chunk_id))
     lexical_only = any(trace.degraded_mode == "lexical_only" for trace in traces or [])
     window = precedence_window(
@@ -106,9 +88,10 @@ def select_legal_grounds(
                     authority=authority,
                     application_to_facts=(
                         f"O texto oficial em {provision.citation_label} foi localizado "
-                        f"pela política de recuperação para {issue}. Sua aplicabilidade "
-                        "ao caso não foi decidida pelo sistema e deve ser validada por "
-                        "profissional habilitado contra os fatos e documentos citados."
+                        "pela política de recuperação a partir do relato do consumidor. "
+                        "Sua aplicabilidade ao caso não foi decidida pelo sistema e deve "
+                        "ser validada por profissional habilitado contra os fatos e "
+                        "documentos citados."
                     ),
                 ),
             )

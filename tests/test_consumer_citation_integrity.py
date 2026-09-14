@@ -192,6 +192,19 @@ async def test_internal_page_marker_never_reaches_the_notice(
     assert case_id[:8].upper() not in markdown
 
 
+async def test_notice_has_no_subject_line(notice_client: httpx.AsyncClient) -> None:
+    case_id, headers = await _case_with_documents(
+        notice_client, [("fatura_loja.pdf", FATURA)]
+    )
+
+    await notice_client.post(f"/consumer/cases/{case_id}/notice", headers=headers)
+    markdown = (
+        await notice_client.get(f"/consumer/cases/{case_id}/notice.md", headers=headers)
+    ).text
+
+    assert "**Assunto:**" not in markdown
+
+
 def test_evidence_page_marker_is_always_recognised_as_a_heading() -> None:
     """Section detection is what keeps one chunk inside one evidence page.
 

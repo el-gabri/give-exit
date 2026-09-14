@@ -23,8 +23,8 @@ from app.consumer.composer import (
     NoticeDraftComposer,
     NoticeProse,
 )
-from app.consumer.ground_selection import issue_label, select_legal_grounds
 from app.consumer.ground_selection import merge_results as _merge_results
+from app.consumer.ground_selection import select_legal_grounds
 from app.consumer.intake import (
     extract_explicit_facts,
     merge_explicit_facts,
@@ -1311,7 +1311,6 @@ def _render_notice_markdown(
 ) -> str:
     name = facts.consumer_name or "[PREENCHER NOME DO(A) CONSUMIDOR(A)]"
     supplier = facts.bank_name or "[PREENCHER EMPRESA, FORNECEDOR OU INSTITUIÇÃO]"
-    subject = issue_label(facts)
     protocols = (
         ", ".join(_single_line(item) for item in facts.prior_protocols)
         or "nenhum protocolo informado"
@@ -1326,8 +1325,6 @@ def _render_notice_markdown(
         "",
         f"**Notificante:** {_single_line(name)}",
         "[PREENCHER CPF E ENDEREÇO DO(A) NOTIFICANTE]",
-        "",
-        f"**Assunto:** {subject}",
         "",
         "## 1. Finalidade",
         "",
