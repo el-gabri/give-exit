@@ -136,19 +136,20 @@ def test_no_ground_cases_score_abstention_and_degradation() -> None:
 
 
 async def test_offline_notice_baseline_on_the_seed_dataset() -> None:
-    """Re-measured on 2026-09-12 with the LGPD and the Civil Code in the corpus.
+    """Re-measured on 2026-09-13 with the LGPD and the Civil Code in the corpus.
 
     On the CF+CDC corpus and the 15-case seed it was 79 grounds, 4 known-bad
-    citations and exact recall 0.333 (measured 2026-09-07). Change it
-    deliberately.
+    citations and exact recall 0.333 (measured 2026-09-07). Before Civil Code
+    Título VI stopped being citable it was 47 grounds, 10 complementary.
+    Change it deliberately.
     """
 
     summary = await run_notice_evaluation(load_consumer_legal_dataset(DATASET_PATH))
 
     assert summary.failed_case_count == 0
     assert summary.totals == {
-        "consumer_notice_complementary_grounds": 10,
-        "consumer_notice_grounds": 47,
+        "consumer_notice_complementary_grounds": 9,
+        "consumer_notice_grounds": 46,
         "consumer_notice_known_bad_citations": 1,
     }
     assert summary.averages["consumer_notice_exact_recall"] == 0.149

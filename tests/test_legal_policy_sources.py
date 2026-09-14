@@ -85,3 +85,33 @@ def test_complementary_grounds_need_a_cdc_anchor() -> None:
 
     assert [item for _, item in enforce_cdc_anchor([civil, cdc])] == ["cc", "cdc"]
     assert [item for _, item in enforce_cdc_anchor([civil, cf])] == ["cf"]
+
+
+def test_civil_code_specific_contract_types_are_not_citable() -> None:
+    especial = {"part": "PARTE ESPECIAL", "book": "LIVRO I DO DIREITO DAS OBRIGAÇÕES"}
+
+    assert not provision_is_eligible(
+        _provision(
+            LegalSource.CIVIL_CODE,
+            633,
+            title="TÍTULO VI Das Várias Espécies de Contrato",
+            **especial,
+        )
+    )
+    assert provision_is_eligible(
+        _provision(
+            LegalSource.CIVIL_CODE,
+            876,
+            title="TÍTULO VII Dos Atos Unilaterais",
+            **especial,
+        )
+    )
+    assert provision_is_eligible(
+        _provision(
+            LegalSource.CIVIL_CODE,
+            3,
+            part="PARTE GERAL",
+            book="LIVRO I DAS PESSOAS",
+            title="TÍTULO I DAS PESSOAS NATURAIS",
+        )
+    )

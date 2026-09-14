@@ -22,9 +22,12 @@ not depend on anyone predicting which article a given complaint needs.
 
 The LGPD and the Civil Code follow the same idea (ADR 0016). LGPD chapters
 on public bodies, administrative sanctions, the national authority and final
-provisions are excluded; the Civil Code is limited by its index scope. Both are
-complementary: at most three of their grounds, only beside a CDC ground, and
-none when retrieval fell back to lexical-only search.
+provisions are excluded. The Civil Code is limited by its index scope, and
+Título VI of its law of obligations (the specific contract types: sale,
+services, deposit, suretyship and the like) is not cited, because on the real
+retrieval stack every ground it contributed to the evaluation notices was
+off-topic. Both are complementary: at most three of their grounds, only
+beside a CDC ground, and none when retrieval fell back to lexical-only search.
 
 Eligibility is still not a merits decision, and the result is still marked
 ``requires_legal_review``.
@@ -38,6 +41,7 @@ from collections.abc import Sequence
 from typing import TypeVar
 
 from app.consumer.schemas import LegalProvision, LegalSource
+from app.consumer.statutes import division_numeral
 from app.schemas.trace import RetrievalTrace
 
 LEGAL_GROUND_POLICY_VERSION = "consumer-notice-scope-eligibility-v3"
@@ -78,6 +82,12 @@ MAX_COMPLEMENTARY_GROUNDS = 3
 # by public bodies (IV), administrative sanctions (VIII), the national
 # authority and council (IX), and final and transitional provisions (X).
 _EXCLUDED_LGPD_CHAPTERS = frozenset({"iv", "viii", "ix", "x"})
+# Civil Code divisions inside the index scope that a notice still does not
+# cite, as (part, book, title): Parte Especial, Livro I, Título VI - the
+# specific contract types. On the real retrieval stack all seven grounds it
+# contributed to the evaluation notices were off-topic (ADR 0016). Título VII
+# (unjust enrichment, undue payment) and Título IX (civil liability) stay.
+_EXCLUDED_CIVIL_CODE_DIVISIONS = frozenset({("especial", "i", "vi")})
 
 _Candidate = TypeVar("_Candidate")
 
@@ -98,8 +108,14 @@ def provision_is_eligible(provision: LegalProvision) -> bool:
         return True
     if provision.source is LegalSource.CIVIL_CODE:
         # The index scope already limits the Civil Code to the general part
-        # and the law of obligations.
-        return True
+        # and the law of obligations. The hierarchy labels come from the
+        # statute parser, so they are read with the parser's own helper.
+        divisions = (
+            division_numeral(provision.part, "parte"),
+            division_numeral(provision.book, "livro"),
+            division_numeral(provision.title, "titulo"),
+        )
+        return divisions not in _EXCLUDED_CIVIL_CODE_DIVISIONS
     if provision.source is LegalSource.DATA_PROTECTION_LAW:
         chapter = _division_numeral(provision.chapter, "capitulo")
         return bool(chapter) and chapter not in _EXCLUDED_LGPD_CHAPTERS
