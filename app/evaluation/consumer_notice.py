@@ -197,7 +197,6 @@ class ConsumerNoticeGroundEvaluator:
 
     async def _run_case(self, case: ConsumerLegalGoldenCase, doc_id: str) -> CaseResult:
         facts = ConsumerCaseFacts(
-            issue_category=case.intake_category,
             complaint_summary=case.complaint,
             desired_resolution=case.desired_resolution,
         )

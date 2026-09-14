@@ -1,6 +1,6 @@
 {
   "dataset_id": "consumer-legal-retrieval-seed",
-  "version": "1.2.0",
+  "version": "2.0.0",
   "description": "Developer-authored seed for offline retrieval evaluation from lay Brazilian consumer complaints to CDC provisions, with LGPD and Civil Code complements. It is not a production legal golden until specialist review.",
   "source_url": "https://www.planalto.gov.br/ccivil_03/leis/l8078compilado.htm",
   "authoring": "developer_authored_seed",
@@ -11,8 +11,11 @@
     {
       "case_id": "produto_duravel_com_vicio",
       "category": "product_defect",
-      "intake_category": "service_failure",
-      "slices": ["supplier:retail", "remedy:refund", "wording:lay"],
+      "slices": [
+        "supplier:retail",
+        "remedy:refund",
+        "wording:lay"
+      ],
       "complaint": "Comprei uma geladeira nova e, depois de dez dias, ela parou de gelar. A assistência ficou mais de trinta dias com o aparelho e não resolveu.",
       "desired_resolution": "Quero devolver a geladeira e receber de volta tudo o que paguei.",
       "relevant": [
@@ -29,13 +32,19 @@
           "rationale": "Produto durável tem prazo legal de noventa dias para reclamação por vício aparente."
         }
       ],
-      "hard_negatives": ["br-cdc-art-14", "br-cdc-art-49"]
+      "hard_negatives": [
+        "br-cdc-art-14",
+        "br-cdc-art-49"
+      ]
     },
     {
       "case_id": "servico_de_reparo_malfeito",
       "category": "service_failure",
-      "intake_category": "service_failure",
-      "slices": ["supplier:service", "remedy:refund", "wording:lay"],
+      "slices": [
+        "supplier:service",
+        "remedy:refund",
+        "wording:lay"
+      ],
       "complaint": "Paguei uma assistência para consertar meu notebook, mas ele voltou com o mesmo problema e agora nem liga. A loja diz que o serviço já foi feito.",
       "desired_resolution": "Quero cancelar o serviço e recuperar o valor pago.",
       "relevant": [
@@ -52,13 +61,19 @@
           "rationale": "O serviço inadequado ao resultado razoavelmente esperado é impróprio."
         }
       ],
-      "hard_negatives": ["br-cdc-art-18", "br-cdc-art-49"]
+      "hard_negatives": [
+        "br-cdc-art-18",
+        "br-cdc-art-49"
+      ]
     },
     {
       "case_id": "oferta_nao_entregue",
       "category": "non_delivery",
-      "intake_category": "service_failure",
-      "slices": ["supplier:ecommerce", "remedy:performance", "wording:lay"],
+      "slices": [
+        "supplier:ecommerce",
+        "remedy:performance",
+        "wording:lay"
+      ],
       "complaint": "Comprei um celular numa promoção do site, o pagamento foi aprovado, mas a loja cancelou alegando falta de estoque enquanto continua anunciando o aparelho mais caro.",
       "desired_resolution": "Quero receber o celular pelo preço anunciado.",
       "relevant": [
@@ -74,13 +89,19 @@
           "rationale": "A informação publicitária suficientemente precisa vincula o fornecedor."
         }
       ],
-      "hard_negatives": ["br-cdc-art-18", "br-cdc-art-49"]
+      "hard_negatives": [
+        "br-cdc-art-18",
+        "br-cdc-art-49"
+      ]
     },
     {
       "case_id": "arrependimento_compra_online",
       "category": "right_of_withdrawal",
-      "intake_category": "other",
-      "slices": ["supplier:ecommerce", "remedy:withdrawal", "wording:lay"],
+      "slices": [
+        "supplier:ecommerce",
+        "remedy:withdrawal",
+        "wording:lay"
+      ],
       "complaint": "Recebi há cinco dias um tênis que comprei pela internet. Ele serviu, mas não gostei do modelo, e a loja diz que só troca se houver defeito.",
       "desired_resolution": "Quero desistir da compra e receber o dinheiro de volta.",
       "relevant": [
@@ -97,13 +118,19 @@
           "rationale": "O exercício do arrependimento exige devolução imediata e atualizada dos valores pagos."
         }
       ],
-      "hard_negatives": ["br-cdc-art-18", "br-cdc-art-26"]
+      "hard_negatives": [
+        "br-cdc-art-18",
+        "br-cdc-art-26"
+      ]
     },
     {
       "case_id": "publicidade_enganosa_por_omissao",
       "category": "misleading_advertising",
-      "intake_category": "other",
-      "slices": ["supplier:education", "issue:omission", "wording:lay"],
+      "slices": [
+        "supplier:education",
+        "issue:omission",
+        "wording:lay"
+      ],
       "complaint": "A propaganda do curso dizia acesso ilimitado e certificado incluído, mas depois da matrícula descobri que o certificado custa à parte e o acesso termina em três meses.",
       "desired_resolution": "Quero as condições anunciadas ou cancelar sem multa.",
       "relevant": [
@@ -119,13 +146,19 @@
           "rationale": "Cabe ao patrocinador provar a veracidade e correção da publicidade."
         }
       ],
-      "hard_negatives": ["br-cdc-art-37-paragrafo-2", "br-cdc-art-42"]
+      "hard_negatives": [
+        "br-cdc-art-37-paragrafo-2",
+        "br-cdc-art-42"
+      ]
     },
     {
       "case_id": "venda_casada_seguro",
       "category": "abusive_practice",
-      "intake_category": "loan_or_interest",
-      "slices": ["supplier:retail", "issue:tied_sale", "wording:lay"],
+      "slices": [
+        "supplier:retail",
+        "issue:tied_sale",
+        "wording:lay"
+      ],
       "complaint": "Na compra do carro, a concessionária falou que só aprovaria o financiamento se eu contratasse também o seguro indicado por ela.",
       "desired_resolution": "Quero retirar o seguro que fui obrigado a contratar e recuperar o valor.",
       "relevant": [
@@ -136,13 +169,19 @@
           "rationale": "É vedado condicionar um produto ou serviço à contratação de outro."
         }
       ],
-      "hard_negatives": ["br-cdc-art-39-inciso-iii", "br-cdc-art-49"]
+      "hard_negatives": [
+        "br-cdc-art-39-inciso-iii",
+        "br-cdc-art-49"
+      ]
     },
     {
       "case_id": "cobranca_indevida_ja_paga",
       "category": "unauthorized_charge",
-      "intake_category": "unauthorized_charge",
-      "slices": ["supplier:telecom", "issue:paid_charge", "wording:lay"],
+      "slices": [
+        "supplier:telecom",
+        "issue:paid_charge",
+        "wording:lay"
+      ],
       "complaint": "A operadora colocou na minha fatura um pacote que nunca pedi. Eu paguei a conta para não cortarem a linha e só depois percebi a cobrança extra.",
       "desired_resolution": "Quero receber de volta o que paguei indevidamente.",
       "relevant": [
@@ -153,13 +192,19 @@
           "rationale": "Pagamento de quantia indevida pode gerar repetição em dobro, salvo engano justificável."
         }
       ],
-      "hard_negatives": ["br-cdc-art-42-caput", "br-cdc-art-43"]
+      "hard_negatives": [
+        "br-cdc-art-42-caput",
+        "br-cdc-art-43"
+      ]
     },
     {
       "case_id": "cobranca_com_ameacas",
       "category": "abusive_collection",
-      "intake_category": "unauthorized_charge",
-      "slices": ["supplier:collection", "issue:harassment", "wording:lay"],
+      "slices": [
+        "supplier:collection",
+        "issue:harassment",
+        "wording:lay"
+      ],
       "complaint": "Estou atrasado com uma parcela e a empresa de cobrança liga várias vezes para o meu trabalho, fala da dívida com colegas e ameaça me expor nas redes sociais.",
       "desired_resolution": "Quero que parem as ameaças e só entrem em contato diretamente comigo.",
       "relevant": [
@@ -170,13 +215,19 @@
           "rationale": "A cobrança não pode expor o consumidor ao ridículo, constrangimento ou ameaça."
         }
       ],
-      "hard_negatives": ["br-cdc-art-42-paragrafo-unico", "br-cdc-art-49"]
+      "hard_negatives": [
+        "br-cdc-art-42-paragrafo-unico",
+        "br-cdc-art-49"
+      ]
     },
     {
       "case_id": "negativacao_sem_aviso",
       "category": "negative_credit_record",
-      "intake_category": "negative_credit_record",
-      "slices": ["supplier:credit_bureau", "issue:no_notice", "wording:lay"],
+      "slices": [
+        "supplier:credit_bureau",
+        "issue:no_notice",
+        "wording:lay"
+      ],
       "complaint": "Descobri que meu nome foi colocado no cadastro de inadimplentes quando tentei alugar um apartamento. Nunca recebi carta, e-mail ou qualquer aviso antes disso.",
       "desired_resolution": "Quero a retirada do registro e esclarecimentos sobre a dívida.",
       "relevant": [
@@ -187,13 +238,19 @@
           "rationale": "A abertura de cadastro não solicitado deve ser comunicada por escrito ao consumidor."
         }
       ],
-      "hard_negatives": ["br-cdc-art-42", "br-cdc-art-43-paragrafo-5"]
+      "hard_negatives": [
+        "br-cdc-art-42",
+        "br-cdc-art-43-paragrafo-5"
+      ]
     },
     {
       "case_id": "contrato_ilegivel_e_limitacao_oculta",
       "category": "contract_terms",
-      "intake_category": "other",
-      "slices": ["supplier:gym", "issue:adhesion_contract", "wording:lay"],
+      "slices": [
+        "supplier:gym",
+        "issue:adhesion_contract",
+        "wording:lay"
+      ],
       "complaint": "A academia me deu um contrato pronto com letras minúsculas. A cláusula que impede cancelamento por doze meses estava no meio do texto e ninguém explicou.",
       "desired_resolution": "Quero cancelar sem a multa escondida no contrato.",
       "relevant": [
@@ -215,13 +272,19 @@
           "rationale": "Contrato não obriga quando seu conteúdo não foi previamente conhecido ou é incompreensível."
         }
       ],
-      "hard_negatives": ["br-cdc-art-49", "br-cdc-art-54-paragrafo-5"]
+      "hard_negatives": [
+        "br-cdc-art-49",
+        "br-cdc-art-54-paragrafo-5"
+      ]
     },
     {
       "case_id": "interrupcao_servico_essencial",
       "category": "public_utility",
-      "intake_category": "service_failure",
-      "slices": ["supplier:utility", "issue:continuity", "wording:lay"],
+      "slices": [
+        "supplier:utility",
+        "issue:continuity",
+        "wording:lay"
+      ],
       "complaint": "A concessionária deixou minha rua sem água por quatro dias, sem aviso nem carro-pipa. As contas estão todas pagas e os protocolos não tiveram resposta.",
       "desired_resolution": "Quero o restabelecimento imediato e reparação dos prejuízos.",
       "relevant": [
@@ -238,13 +301,19 @@
           "rationale": "O descumprimento permite exigir cumprimento e reparação dos danos."
         }
       ],
-      "hard_negatives": ["br-cdc-art-20", "br-cdc-art-49"]
+      "hard_negatives": [
+        "br-cdc-art-20",
+        "br-cdc-art-49"
+      ]
     },
     {
       "case_id": "alergeno_omitido_no_rotulo",
       "category": "consumer_safety",
-      "intake_category": "service_failure",
-      "slices": ["supplier:food", "issue:safety", "wording:lay"],
+      "slices": [
+        "supplier:food",
+        "issue:safety",
+        "wording:lay"
+      ],
       "complaint": "Comi um produto que não informava amendoim no rótulo e tive uma reação alérgica forte, com atendimento no pronto-socorro.",
       "desired_resolution": "Quero ressarcimento das despesas médicas e uma resposta do fabricante.",
       "relevant": [
@@ -267,13 +336,19 @@
           "rationale": "Produtos não devem gerar riscos anormais e exigem informação adequada."
         }
       ],
-      "hard_negatives": ["br-cdc-art-20", "br-cdc-art-49"]
+      "hard_negatives": [
+        "br-cdc-art-20",
+        "br-cdc-art-49"
+      ]
     },
     {
       "case_id": "superendividamento_e_minimo_existencial",
       "category": "over_indebtedness",
-      "intake_category": "over_indebtedness",
-      "slices": ["supplier:multiple_creditors", "issue:minimum_living", "wording:lay"],
+      "slices": [
+        "supplier:multiple_creditors",
+        "issue:minimum_living",
+        "wording:lay"
+      ],
       "complaint": "Tenho empréstimos, cartão e crediário em várias empresas. Mesmo agindo de boa-fé, as parcelas agora consomem quase toda a renda e falta dinheiro para aluguel e comida.",
       "desired_resolution": "Quero negociar todas as dívidas em um plano que preserve minhas despesas básicas.",
       "relevant": [
@@ -290,110 +365,244 @@
           "rationale": "Permite conciliação administrativa global e plano de pagamento que preserve o mínimo existencial."
         }
       ],
-      "hard_negatives": ["br-cdc-art-54-e", "br-cdc-art-42-paragrafo-unico"]
+      "hard_negatives": [
+        "br-cdc-art-54-e",
+        "br-cdc-art-42-paragrafo-unico"
+      ]
     },
     {
       "case_id": "conflito_entre_vizinhos",
       "category": "no_consumer_relationship",
-      "intake_category": "other",
-      "slices": ["ground:none", "domain:civil_neighbor", "wording:lay"],
+      "slices": [
+        "ground:none",
+        "domain:civil_neighbor",
+        "wording:lay"
+      ],
       "complaint": "Meu vizinho faz festas com som alto de madrugada e estaciona o carro bloqueando a entrada da minha garagem.",
       "desired_resolution": "Quero que ele pare com o barulho e deixe a garagem livre.",
       "relevant": [],
-      "hard_negatives": ["br-cdc-art-2", "br-cdc-art-3", "br-cdc-art-22"],
+      "hard_negatives": [
+        "br-cdc-art-2",
+        "br-cdc-art-3",
+        "br-cdc-art-22"
+      ],
       "no_applicable_ground": true
     },
     {
       "case_id": "salario_atrasado",
       "category": "no_consumer_relationship",
-      "intake_category": "other",
-      "slices": ["ground:none", "domain:labor", "wording:lay"],
+      "slices": [
+        "ground:none",
+        "domain:labor",
+        "wording:lay"
+      ],
       "complaint": "A empresa onde trabalho está há dois meses sem pagar meu salário e também não depositou o vale-transporte combinado.",
       "desired_resolution": "Quero receber os salários e benefícios atrasados.",
       "relevant": [],
-      "hard_negatives": ["br-cdc-art-2", "br-cdc-art-3-paragrafo-2", "br-cdc-art-42"],
+      "hard_negatives": [
+        "br-cdc-art-2",
+        "br-cdc-art-3-paragrafo-2",
+        "br-cdc-art-42"
+      ],
       "no_applicable_ground": true
     },
     {
       "case_id": "vazamento_de_dados_cadastrais",
       "category": "personal_data",
-      "intake_category": "other",
-      "slices": ["supplier:retail", "remedy:information", "wording:lay", "law:lgpd"],
+      "slices": [
+        "supplier:retail",
+        "remedy:information",
+        "wording:lay",
+        "law:lgpd"
+      ],
       "complaint": "Recebi um e-mail da loja avisando que houve um vazamento de dados dos clientes. Depois disso, meu nome, CPF e endereço foram usados para abrir um crediário em outra loja.",
       "desired_resolution": "Quero saber quais dados vazaram e que a loja responda pelos prejuízos.",
       "relevant": [
-        {"article_id": "br-lgpd-art-46", "unit_id": "br-lgpd-art-46-caput", "grade": 3, "rationale": "Os agentes de tratamento devem adotar medidas de segurança aptas a proteger os dados pessoais de acessos não autorizados."},
-        {"article_id": "br-lgpd-art-42", "unit_id": "br-lgpd-art-42-caput", "grade": 2, "rationale": "O controlador que causar dano em razão do tratamento de dados pessoais é obrigado a repará-lo."},
-        {"article_id": "br-lgpd-art-48", "unit_id": "br-lgpd-art-48-caput", "grade": 2, "rationale": "O controlador deve comunicar ao titular incidente de segurança que possa acarretar risco ou dano relevante."},
-        {"article_id": "br-cdc-art-14", "unit_id": "br-cdc-art-14-caput", "grade": 2, "rationale": "O fornecedor responde, independentemente de culpa, por defeitos na prestação do serviço, inclusive de segurança."}
+        {
+          "article_id": "br-lgpd-art-46",
+          "unit_id": "br-lgpd-art-46-caput",
+          "grade": 3,
+          "rationale": "Os agentes de tratamento devem adotar medidas de segurança aptas a proteger os dados pessoais de acessos não autorizados."
+        },
+        {
+          "article_id": "br-lgpd-art-42",
+          "unit_id": "br-lgpd-art-42-caput",
+          "grade": 2,
+          "rationale": "O controlador que causar dano em razão do tratamento de dados pessoais é obrigado a repará-lo."
+        },
+        {
+          "article_id": "br-lgpd-art-48",
+          "unit_id": "br-lgpd-art-48-caput",
+          "grade": 2,
+          "rationale": "O controlador deve comunicar ao titular incidente de segurança que possa acarretar risco ou dano relevante."
+        },
+        {
+          "article_id": "br-cdc-art-14",
+          "unit_id": "br-cdc-art-14-caput",
+          "grade": 2,
+          "rationale": "O fornecedor responde, independentemente de culpa, por defeitos na prestação do serviço, inclusive de segurança."
+        }
       ],
-      "hard_negatives": ["br-lgpd-art-52", "br-cdc-art-49"]
+      "hard_negatives": [
+        "br-lgpd-art-52",
+        "br-cdc-art-49"
+      ]
     },
     {
       "case_id": "pedido_de_exclusao_de_dados_ignorado",
       "category": "personal_data",
-      "intake_category": "other",
-      "slices": ["supplier:app", "remedy:deletion", "wording:lay", "law:lgpd"],
+      "slices": [
+        "supplier:app",
+        "remedy:deletion",
+        "wording:lay",
+        "law:lgpd"
+      ],
       "complaint": "Cancelei minha conta no aplicativo e pedi por e-mail para excluir meus dados pessoais. Três meses depois continuo recebendo mensagens de marketing e a empresa não responde.",
       "desired_resolution": "Quero que apaguem meus dados e confirmem a exclusão por escrito.",
       "relevant": [
-        {"article_id": "br-lgpd-art-18", "unit_id": "br-lgpd-art-18-inciso-vi", "grade": 3, "rationale": "O titular tem direito à eliminação dos dados pessoais tratados com o seu consentimento."},
-        {"article_id": "br-lgpd-art-18", "unit_id": "br-lgpd-art-18-inciso-ix", "grade": 2, "rationale": "O titular pode revogar o consentimento dado ao tratamento dos seus dados."}
+        {
+          "article_id": "br-lgpd-art-18",
+          "unit_id": "br-lgpd-art-18-inciso-vi",
+          "grade": 3,
+          "rationale": "O titular tem direito à eliminação dos dados pessoais tratados com o seu consentimento."
+        },
+        {
+          "article_id": "br-lgpd-art-18",
+          "unit_id": "br-lgpd-art-18-inciso-ix",
+          "grade": 2,
+          "rationale": "O titular pode revogar o consentimento dado ao tratamento dos seus dados."
+        }
       ],
-      "hard_negatives": ["br-lgpd-art-55-j", "br-cdc-art-42"]
+      "hard_negatives": [
+        "br-lgpd-art-55-j",
+        "br-cdc-art-42"
+      ]
     },
     {
       "case_id": "compartilhamento_de_dados_sem_consentimento",
       "category": "personal_data",
-      "intake_category": "other",
-      "slices": ["supplier:telecom", "remedy:information", "wording:lay", "law:lgpd"],
+      "slices": [
+        "supplier:telecom",
+        "remedy:information",
+        "wording:lay",
+        "law:lgpd"
+      ],
       "complaint": "Descobri que a operadora de telefonia repassou meu número e meu endereço para empresas parceiras sem eu ter autorizado. Agora recebo ligações de telemarketing todos os dias.",
       "desired_resolution": "Quero que parem de compartilhar meus dados e informem com quem foram compartilhados.",
       "relevant": [
-        {"article_id": "br-lgpd-art-18", "unit_id": "br-lgpd-art-18-inciso-vii", "grade": 3, "rationale": "O titular tem direito de saber com quais entidades o controlador compartilhou seus dados."},
-        {"article_id": "br-lgpd-art-7", "unit_id": "br-lgpd-art-7-inciso-i", "grade": 2, "rationale": "O consentimento do titular é uma das hipóteses que autorizam o tratamento de dados pessoais."},
-        {"article_id": "br-cdc-art-43", "unit_id": "br-cdc-art-43-caput", "grade": 1, "rationale": "O consumidor tem acesso às informações existentes em cadastros e dados pessoais arquivados sobre ele."}
+        {
+          "article_id": "br-lgpd-art-18",
+          "unit_id": "br-lgpd-art-18-inciso-vii",
+          "grade": 3,
+          "rationale": "O titular tem direito de saber com quais entidades o controlador compartilhou seus dados."
+        },
+        {
+          "article_id": "br-lgpd-art-7",
+          "unit_id": "br-lgpd-art-7-inciso-i",
+          "grade": 2,
+          "rationale": "O consentimento do titular é uma das hipóteses que autorizam o tratamento de dados pessoais."
+        },
+        {
+          "article_id": "br-cdc-art-43",
+          "unit_id": "br-cdc-art-43-caput",
+          "grade": 1,
+          "rationale": "O consumidor tem acesso às informações existentes em cadastros e dados pessoais arquivados sobre ele."
+        }
       ],
-      "hard_negatives": ["br-lgpd-art-52", "br-cdc-art-49"]
+      "hard_negatives": [
+        "br-lgpd-art-52",
+        "br-cdc-art-49"
+      ]
     },
     {
       "case_id": "pagamento_em_duplicidade_nao_devolvido",
       "category": "undue_payment",
-      "intake_category": "unauthorized_charge",
-      "slices": ["supplier:bank", "remedy:refund", "wording:lay", "law:cc"],
+      "slices": [
+        "supplier:bank",
+        "remedy:refund",
+        "wording:lay",
+        "law:cc"
+      ],
       "complaint": "Paguei a mesma fatura do cartão duas vezes por engano, pelo aplicativo do banco. O banco confirma que recebeu os dois pagamentos, mas se recusa a devolver o valor pago a mais.",
       "desired_resolution": "Quero a devolução do valor pago em duplicidade, com correção.",
       "relevant": [
-        {"article_id": "br-cc-art-876", "unit_id": "br-cc-art-876-caput", "grade": 3, "rationale": "Quem recebeu o que não lhe era devido fica obrigado a restituir."},
-        {"article_id": "br-cc-art-884", "unit_id": "br-cc-art-884-caput", "grade": 2, "rationale": "Quem se enriquece sem justa causa à custa de outrem deve restituir o indevidamente auferido."}
+        {
+          "article_id": "br-cc-art-876",
+          "unit_id": "br-cc-art-876-caput",
+          "grade": 3,
+          "rationale": "Quem recebeu o que não lhe era devido fica obrigado a restituir."
+        },
+        {
+          "article_id": "br-cc-art-884",
+          "unit_id": "br-cc-art-884-caput",
+          "grade": 2,
+          "rationale": "Quem se enriquece sem justa causa à custa de outrem deve restituir o indevidamente auferido."
+        }
       ],
-      "hard_negatives": ["br-cc-art-42", "br-lgpd-art-42"]
+      "hard_negatives": [
+        "br-cc-art-42",
+        "br-lgpd-art-42"
+      ]
     },
     {
       "case_id": "atraso_na_devolucao_combinada",
       "category": "late_refund",
-      "intake_category": "service_failure",
-      "slices": ["supplier:retail", "remedy:refund", "wording:lay", "law:cc"],
+      "slices": [
+        "supplier:retail",
+        "remedy:refund",
+        "wording:lay",
+        "law:cc"
+      ],
       "complaint": "Cancelei a compra de um sofá e a loja se comprometeu por escrito a devolver o valor em dez dias. Já se passaram dois meses e o dinheiro não voltou.",
       "desired_resolution": "Quero o valor de volta com juros e correção pelo atraso.",
       "relevant": [
-        {"article_id": "br-cc-art-395", "unit_id": "br-cc-art-395-caput", "grade": 3, "rationale": "O devedor responde pelos prejuízos a que sua mora der causa, com juros e atualização monetária."},
-        {"article_id": "br-cc-art-406", "unit_id": "br-cc-art-406-caput", "grade": 1, "rationale": "Define a taxa legal de juros quando não houver taxa convencionada."}
+        {
+          "article_id": "br-cc-art-395",
+          "unit_id": "br-cc-art-395-caput",
+          "grade": 3,
+          "rationale": "O devedor responde pelos prejuízos a que sua mora der causa, com juros e atualização monetária."
+        },
+        {
+          "article_id": "br-cc-art-406",
+          "unit_id": "br-cc-art-406-caput",
+          "grade": 1,
+          "rationale": "Define a taxa legal de juros quando não houver taxa convencionada."
+        }
       ],
-      "hard_negatives": ["br-cdc-art-26", "br-cc-art-42"]
+      "hard_negatives": [
+        "br-cdc-art-26",
+        "br-cc-art-42"
+      ]
     },
     {
       "case_id": "renuncia_antecipada_em_contrato_de_adesao",
       "category": "adhesion_contract_clause",
-      "intake_category": "other",
-      "slices": ["supplier:service", "remedy:repair", "wording:lay", "law:cc"],
+      "slices": [
+        "supplier:service",
+        "remedy:repair",
+        "wording:lay",
+        "law:cc"
+      ],
       "complaint": "Assinei um contrato de adesão para instalar energia solar. Uma cláusula diz que renuncio a qualquer indenização se a instalação der problema, e agora o sistema não funciona.",
       "desired_resolution": "Quero que a cláusula seja considerada sem efeito e que consertem o sistema.",
       "relevant": [
-        {"article_id": "br-cdc-art-51", "unit_id": "br-cdc-art-51-inciso-i", "grade": 3, "rationale": "São nulas as cláusulas que impossibilitem, exonerem ou atenuem a responsabilidade do fornecedor por vícios."},
-        {"article_id": "br-cc-art-424", "unit_id": "br-cc-art-424-caput", "grade": 2, "rationale": "Nos contratos de adesão, são nulas as cláusulas de renúncia antecipada do aderente a direito resultante do negócio."}
+        {
+          "article_id": "br-cdc-art-51",
+          "unit_id": "br-cdc-art-51-inciso-i",
+          "grade": 3,
+          "rationale": "São nulas as cláusulas que impossibilitem, exonerem ou atenuem a responsabilidade do fornecedor por vícios."
+        },
+        {
+          "article_id": "br-cc-art-424",
+          "unit_id": "br-cc-art-424-caput",
+          "grade": 2,
+          "rationale": "Nos contratos de adesão, são nulas as cláusulas de renúncia antecipada do aderente a direito resultante do negócio."
+        }
       ],
-      "hard_negatives": ["br-cdc-art-49", "br-lgpd-art-46"]
+      "hard_negatives": [
+        "br-cdc-art-49",
+        "br-lgpd-art-46"
+      ]
     }
   ]
 }

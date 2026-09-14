@@ -11,7 +11,7 @@ from pydantic import ValidationError
 
 from app.consumer.legal_corpus import get_default_legal_corpus
 from app.consumer.retrieval import LEGAL_LEXICON
-from app.consumer.schemas import ConsumerIssueCategory, ProvisionStatus
+from app.consumer.schemas import ProvisionStatus
 from app.evaluation.consumer_golden import load_consumer_legal_dataset
 from app.evaluation.consumer_retrievers import offline_hybrid_retriever
 from app.evaluation.consumer_runner import (
@@ -91,7 +91,6 @@ def _case(*, no_ground: bool = False) -> ConsumerLegalGoldenCase:
     return ConsumerLegalGoldenCase(
         case_id="metric_fixture",
         category="unauthorized_charge",
-        intake_category=ConsumerIssueCategory.UNAUTHORIZED_CHARGE,
         slices=("supplier:telecom",),
         complaint="A operadora cobrou um pacote que eu nunca contratei e já paguei.",
         desired_resolution="Quero meu dinheiro de volta.",
@@ -135,7 +134,7 @@ def test_seed_dataset_is_separate_versioned_and_explicitly_unreviewed() -> None:
     dataset = load_consumer_legal_dataset(DATASET_PATH)
 
     assert dataset.dataset_id == "consumer-legal-retrieval-seed"
-    assert dataset.version == "1.2.0"
+    assert dataset.version == "2.0.0"
     assert dataset.authoring == "developer_authored_seed"
     assert dataset.review_status == "requires_legal_review"
     assert dataset.source_url.endswith("/l8078compilado.htm")
@@ -145,7 +144,6 @@ def test_seed_dataset_is_separate_versioned_and_explicitly_unreviewed() -> None:
     assert all(case.slices for case in dataset.cases)
     salary_case = next(case for case in dataset.cases if case.case_id == "salario_atrasado")
     assert salary_case.category == "no_consumer_relationship"
-    assert salary_case.intake_category is ConsumerIssueCategory.OTHER
     assert any(
         judgment.unit_id == "br-cdc-art-42-paragrafo-unico"
         for case in dataset.cases
@@ -318,23 +316,12 @@ async def test_evaluator_accepts_sync_and_async_retriever_callables() -> None:
     assert sync_summary.metric_directions["consumer_hard_negative_rate@5"] == "lower_is_better"
 
 
-async def test_evaluator_ignores_both_categories_when_building_queries() -> None:
-    """Category no longer routes queries; it is reporting metadata only.
-
-    Neither the golden dataset's fine ``category`` nor the production-shaped
-    ``intake_category`` selects a query expansion any more -- every case gets
-    the same fixed lexicon.
-    """
-    case = _case().model_copy(
-        update={
-            "category": "right_of_withdrawal",
-            "intake_category": ConsumerIssueCategory.UNAUTHORIZED_CHARGE,
-        }
-    )
+async def test_descriptive_category_still_drives_the_reporting_breakdown() -> None:
+    case = _case().model_copy(update={"category": "right_of_withdrawal"})
     dataset = ConsumerLegalGoldenDataset(
-        dataset_id="intake-category-fixture",
+        dataset_id="category-reporting-fixture",
         version="1.0.0",
-        description="Fixture proving category no longer drives query construction.",
+        description="Fixture proving the descriptive category is reporting only.",
         source_url="https://www.planalto.gov.br/ccivil_03/leis/l8078compilado.htm",
         authoring="developer_authored_seed",
         review_status="requires_legal_review",
@@ -346,17 +333,24 @@ async def test_evaluator_ignores_both_categories_when_building_queries() -> None
     result = summary.cases[0]
     assert result.category == "right_of_withdrawal"
     assert summary.by_category["right_of_withdrawal"].case_count == 1
+    # The category no longer reaches the query: two queries, one fixed lexicon.
     assert len(result.queries) == 2
-    assert LEGAL_LEXICON in result.queries[1]
-    assert not any(character.isdigit() for query in result.queries for character in query)
+    assert result.queries[1].endswith(LEGAL_LEXICON)
 
 
-def test_golden_case_rejects_non_production_intake_category() -> None:
+def test_golden_case_rejects_an_intake_category() -> None:
+    """The field is gone; a dataset that still carries it must fail loudly."""
     payload = _case().model_dump(mode="json")
-    payload["intake_category"] = "right_of_withdrawal"
+    payload["intake_category"] = "unauthorized_charge"
 
     with pytest.raises(ValidationError, match="intake_category"):
         ConsumerLegalGoldenCase.model_validate(payload)
+
+
+def test_dataset_version_is_two_zero_zero() -> None:
+    dataset = load_consumer_legal_dataset(DATASET_PATH)
+
+    assert dataset.version == "2.0.0"
 
 
 async def test_evaluator_isolates_provider_failure_in_case_result() -> None:
@@ -388,7 +382,6 @@ async def test_no_consumer_scope_gate_abstains_without_calling_retriever() -> No
         update={
             "case_id": "no_scope_fixture",
             "category": "no_consumer_relationship",
-            "intake_category": ConsumerIssueCategory.OTHER,
             "slices": ("ground:none",),
             "complaint": "Meu empregador não pagou meu salário e minhas horas extras.",
             "desired_resolution": "Quero receber meu salário atrasado.",

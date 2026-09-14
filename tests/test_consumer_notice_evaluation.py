@@ -12,7 +12,7 @@ import pytest
 
 from app.consumer.legal_corpus import get_default_legal_corpus
 from app.consumer.legal_policy import LEGAL_GROUND_POLICY_VERSION
-from app.consumer.schemas import ConsumerIssueCategory, LegalGround
+from app.consumer.schemas import LegalGround
 from app.evaluation import consumer_runner
 from app.evaluation.consumer_golden import load_consumer_legal_dataset
 from app.evaluation.consumer_notice import (
@@ -47,7 +47,6 @@ def _case(**overrides: Any) -> ConsumerLegalGoldenCase:
     payload: dict[str, Any] = {
         "case_id": "notice_fixture",
         "category": "unauthorized_charge",
-        "intake_category": ConsumerIssueCategory.UNAUTHORIZED_CHARGE,
         "slices": ("supplier:telecom",),
         "complaint": "A operadora cobrou um pacote que eu nunca contratei e já paguei.",
         "desired_resolution": "Quero meu dinheiro de volta.",

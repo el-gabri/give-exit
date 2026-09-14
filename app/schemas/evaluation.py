@@ -16,8 +16,6 @@ from pydantic import (
     model_validator,
 )
 
-from app.consumer.schemas import ConsumerIssueCategory
-
 _LEGAL_ID_PATTERN = re.compile(r"^br-(?:cdc|cf|lgpd|cc)-art-[a-z0-9]+(?:-[a-z0-9]+)*$")
 
 MetricDirection = Literal["higher_is_better", "lower_is_better"]
@@ -267,15 +265,12 @@ class ConsumerLegalRelevance(BaseModel):
 class ConsumerLegalGoldenCase(BaseModel):
     """One realistic Consumer-mode legal-retrieval judgment."""
 
-    model_config = ConfigDict(frozen=True, str_strip_whitespace=True)
+    model_config = ConfigDict(frozen=True, str_strip_whitespace=True, extra="forbid")
 
     case_id: str = Field(pattern=r"^[a-z0-9]+(?:_[a-z0-9]+)*$")
     category: str = Field(
         pattern=r"^[a-z0-9]+(?:_[a-z0-9]+)*$",
         description="Fine-grained evaluation category used for reporting and slices",
-    )
-    intake_category: ConsumerIssueCategory = Field(
-        description="Production-valid guided-intake category used to construct queries",
     )
     slices: tuple[str, ...] = Field(
         min_length=1,

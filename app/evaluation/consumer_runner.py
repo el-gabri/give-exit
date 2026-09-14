@@ -385,7 +385,6 @@ class ConsumerLegalRetrievalEvaluator:
         retrieval_outcome = "completed"
         try:
             facts = ConsumerCaseFacts(
-                issue_category=case.intake_category,
                 complaint_summary=case.complaint,
                 desired_resolution=case.desired_resolution,
             )
