@@ -13,21 +13,9 @@ import streamlit as st
 
 from frontend.api_client import ConsumerApiClient, ConsumerApiError
 
-ISSUE_LABELS = {
-    "unauthorized_charge": "Cobrança não reconhecida ou indevida",
-    "fraud": "Fraude, golpe ou compra não reconhecida",
-    "account_block": "Conta, acesso ou valor bloqueado",
-    "negative_credit_record": "Negativação indevida",
-    "loan_or_interest": "Empréstimo, financiamento ou juros",
-    "service_failure": "Produto ou serviço com problema",
-    "over_indebtedness": "Superendividamento",
-    "other": "Outro problema de consumo",
-}
-
 FACT_LABELS = {
     "consumer_name": "Nome do consumidor",
     "bank_name": "Empresa, fornecedor ou instituição",
-    "issue_category": "Tipo de problema",
     "complaint_summary": "Relato do ocorrido",
     "incident_date_or_period": "Data ou período",
     "prior_protocols": "Protocolos anteriores",
@@ -363,12 +351,7 @@ def _render_conversation_and_summary(case: dict[str, Any]) -> None:
         with st.container(border=True, height=360):
             facts = case.get("facts") or {}
             supplier = facts.get("bank_name") or "Não informado"
-            category = ISSUE_LABELS.get(
-                str(facts.get("issue_category")),
-                facts.get("issue_category") or "Não definido",
-            )
             st.markdown(f"**Empresa ou fornecedor:** {supplier}")
-            st.markdown(f"**Problema:** {category}")
             if summary := facts.get("complaint_summary"):
                 st.caption(str(summary)[:500])
 
@@ -426,14 +409,7 @@ def _render_facts_form(
             help="Por exemplo: estorno, troca, cancelamento, reparo ou regularização.",
         )
 
-        category_column, date_column = st.columns(2)
-        issue_category = category_column.selectbox(
-            "Tipo principal do problema",
-            options=list(ISSUE_LABELS),
-            format_func=lambda value: ISSUE_LABELS.get(value, value),
-            key="consumer_fact_issue_category",
-        )
-        incident_period = date_column.text_input(
+        incident_period = st.text_input(
             "Data ou período do ocorrido",
             key="consumer_fact_incident_date_or_period",
             help="Pode ser uma data aproximada.",
@@ -523,7 +499,6 @@ def _render_facts_form(
         "consumer_name": consumer_name.strip() or None,
         # Legacy API key retained for compatibility; semantically this is the supplier.
         "bank_name": supplier_name.strip(),
-        "issue_category": issue_category,
         "complaint_summary": complaint_summary.strip(),
         "incident_date_or_period": incident_period.strip() or None,
         "prior_protocols": _split_protocols(prior_protocols),
@@ -553,7 +528,6 @@ def _sync_fact_widgets(case: dict[str, Any], facts: dict[str, Any]) -> None:
     required_widget_keys = {
         "consumer_fact_consumer_name",
         "consumer_fact_bank_name",
-        "consumer_fact_issue_category",
         "consumer_fact_complaint_summary",
         "consumer_fact_incident_date_or_period",
         "consumer_fact_prior_protocols",
@@ -569,13 +543,9 @@ def _sync_fact_widgets(case: dict[str, Any], facts: dict[str, Any]) -> None:
         "consumer_facts_synced_at"
     ) == version and required_widget_keys.issubset(st.session_state):
         return
-    current_category = str(facts.get("issue_category") or "other")
-    if current_category not in ISSUE_LABELS:
-        current_category = "other"
     values = {
         "consumer_fact_consumer_name": facts.get("consumer_name") or "",
         "consumer_fact_bank_name": facts.get("bank_name") or "",
-        "consumer_fact_issue_category": current_category,
         "consumer_fact_complaint_summary": facts.get("complaint_summary") or "",
         "consumer_fact_incident_date_or_period": (facts.get("incident_date_or_period") or ""),
         "consumer_fact_prior_protocols": "\n".join(
