@@ -72,24 +72,6 @@ select = ["E", "F", "I", "UP", "B", "SIM", "C90"]
 [tool.ruff.lint.mccabe]
 max-complexity = 10
 
-# Pre-existing functions above the complexity bar at the time C90 was turned
-# on (2026-09-02). Grandfathered rather than force-refactored under a test
-# harness change; new/changed functions elsewhere are held to the bar.
-# Track bringing these under 10 as a follow-up, not a blocker.
-[tool.ruff.lint.per-file-ignores]
-"app/consumer/schemas.py" = ["C901"]
-"app/consumer/service.py" = ["C901"]
-"app/evaluation/consumer_golden.py" = ["C901"]
-"app/evaluation/consumer_runner.py" = ["C901"]
-"app/evaluation/security_benchmark.py" = ["C901"]
-"app/ingestion/pdf_reader.py" = ["C901"]
-"app/llm/mock_client.py" = ["C901"]
-"app/rag/pipeline.py" = ["C901"]
-"app/rag/resilience.py" = ["C901"]
-"app/security/prompt_injection.py" = ["C901"]
-"frontend/api_client.py" = ["C901"]
-"frontend/consumer_view.py" = ["C901"]
-
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]

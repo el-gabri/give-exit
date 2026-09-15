@@ -2,7 +2,7 @@
 
 The retrieval benchmark scores ranked candidates. A notice cites only what the
 production selector keeps, so this evaluator runs the production-shaped batch
-(the three production queries, k=8, hybrid) through the same
+(the production queries, k=8, hybrid) through the same
 ``select_legal_grounds`` the service uses, and scores the final grounds against
 the golden labels.
 """
@@ -38,8 +38,8 @@ from app.schemas.evaluation import (
 )
 
 NOTICE_REQUESTED_K = 8
-# Sources that may only complement the CDC in a notice. None exist until the
-# LGPD and the Civil Code enter the corpus; the count is reported from now on.
+# Sources that may only complement the CDC in a notice (ADR 0016); their grounds
+# are counted separately.
 COMPLEMENTARY_LAW_IDS = frozenset({"br-lgpd", "br-cc"})
 
 NoticePipelineName = Literal["offline", "configured"]

@@ -131,11 +131,6 @@ def provision_is_eligible(provision: LegalProvision) -> bool:
     ) not in _EXCLUDED_CDC_DIVISIONS
 
 
-def eligible_provisions(provisions: tuple[LegalProvision, ...]) -> tuple[LegalProvision, ...]:
-    """Filter a corpus slice to what a notice may cite; used by diagnostics."""
-    return tuple(provision for provision in provisions if provision_is_eligible(provision))
-
-
 def precedence_window(
     candidates: Sequence[tuple[LegalProvision, _Candidate]],
     *,
