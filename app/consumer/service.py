@@ -9,10 +9,8 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
-import re
 import uuid
 from decimal import Decimal
-from itertools import combinations
 from pathlib import Path
 from time import perf_counter
 from typing import Any
@@ -21,7 +19,11 @@ from app.consumer.composer import (
     DeterministicNoticeComposer,
     NoticeComposition,
     NoticeDraftComposer,
-    NoticeProse,
+)
+from app.consumer.evidence_support import (
+    clean_chunk_quote,
+    evidence_page_heading,
+    evidence_supports_confirmed_facts,
 )
 from app.consumer.ground_selection import merge_results as _merge_results
 from app.consumer.ground_selection import select_legal_grounds
@@ -43,6 +45,7 @@ from app.consumer.legal_policy import (
     strongly_supported_chunk_ids,
 )
 from app.consumer.monetary import extract_brl_mentions
+from app.consumer.notice_markdown import notice_requests, render_notice_markdown
 from app.consumer.retrieval import (
     build_evidence_queries,
     build_legal_queries,
@@ -75,7 +78,6 @@ from app.core.hashing import sha256_hex
 from app.core.logging import get_logger
 from app.ingestion.service import DocumentIngestionService
 from app.rag.pipeline import RagPipeline
-from app.rag.vector_store import portuguese_lexical_tokens
 from app.schemas.document import DocumentPage, ExtractionMethod, ParsedDocument
 from app.schemas.rag import RetrievedChunk
 from app.schemas.security import SecurityAction
@@ -88,62 +90,6 @@ logger = get_logger(__name__)
 
 DEFAULT_MAX_DOCUMENTS_PER_CASE = 20
 
-# Scaffolding this service injects between evidence pages so the generic
-# chunker keeps them in separate sections. It identifies the case, so it must
-# never survive into a citation, and it is matched here in upper case because
-# that is the only form ``_combined_evidence`` emits.
-_EVIDENCE_PAGE_MARKER_RE = re.compile(
-    r"\[?\s*CASO\s+[0-9A-F]{8}\s+EVIDENCIA\s+[0-9A-F]{8}\s+PAGINA\s+\d+\s*\]?",
-    re.IGNORECASE,
-)
-# Characters through which untrusted excerpt text could inject a link, raw
-# HTML or a code span. An uploaded PDF is attacker-controlled input in the
-# common fraud scenario, and the notice is rendered as markdown and exported
-# from it. Emphasis markers (* and _) are deliberately NOT escaped: they cannot
-# create a link, and escaping them turned every masked "CPF 12.***.***/0001-00"
-# in real evidence into "12.\*\*\*.\*\*\*/0001-00" in the delivered document.
-_MARKDOWN_INLINE_ESCAPE_RE = re.compile(r"([\\`\[\]<>])")
-
-# These words come from the evidence-query scaffolding or generic request
-# phrasing. Letting them count as factual overlap would make almost any receipt
-# or attachment look supportive merely because it mentions a document, value,
-# date or requested solution.
-_GENERIC_EVIDENCE_TERMS = frozenset(
-    {
-        "comprova",
-        "comprovacao",
-        "comunicacao",
-        "comunicacoes",
-        "data",
-        "datas",
-        "documento",
-        "evidencia",
-        "fato",
-        "fatos",
-        "prejuizo",
-        "providencia",
-        "providencias",
-        "quero",
-        "solicitada",
-        "solicitado",
-        "solucao",
-        "tentativa",
-        "valor",
-        "valores",
-    }
-)
-_DATE_ANCHOR_RE = re.compile(
-    r"\b(?:\d{1,2}[./-]\d{1,2}[./-]\d{2,4}|\d{4}[./-]\d{1,2}[./-]\d{1,2})\b"
-)
-_LABELED_IDENTIFIER_RE = re.compile(
-    r"\b(?:contrato|fatura|ocorrencia|pedido|protocolo)\s*"
-    r"(?:n(?:o|ro)?\.?|numero)?\s*[:#-]?\s*([a-z0-9][a-z0-9./-]{3,})",
-    re.IGNORECASE,
-)
-_EMBEDDED_IDENTIFIER_RE = re.compile(
-    r"\b(?=[a-z0-9./-]*\d)[a-z0-9][a-z0-9./-]{5,}\b",
-    re.IGNORECASE,
-)
 
 class ConsumerCaseNotReadyError(ValueError):
     def __init__(self, missing: list[str]) -> None:
@@ -402,9 +348,9 @@ class ConsumerCaseService:
 
     async def _generate_notice(self, record: ConsumerCaseRecord) -> ConsumerNotice:
         generation_started = perf_counter()
-        snapshot = self._snapshot(record)
-        if not snapshot.ready_for_notice:
-            raise ConsumerCaseNotReadyError(self._readiness_missing(record))
+        missing = self._readiness_missing(record)
+        if missing:
+            raise ConsumerCaseNotReadyError(missing)
 
         await self._ensure_legal_corpus_indexed()
         evidence_document, page_sources = self._combined_evidence(record)
@@ -436,44 +382,16 @@ class ConsumerCaseService:
             }
         )
 
-        legal_grounds = self._legal_grounds(
-            legal_results,
-            record.facts,
-            legal_traces,
-        )
+        legal_grounds = self._legal_grounds(legal_results, record.facts, legal_traces)
         evidence_references = self._evidence_references(
-            evidence_results,
-            page_sources,
-            evidence_traces,
-            record.facts,
+            evidence_results, page_sources, evidence_traces, record.facts
         )
-        if not legal_grounds or not evidence_references:
-            missing_support: list[str] = []
-            if not legal_grounds:
-                missing_support.append("fundamentos jurídicos")
-            if not evidence_references:
-                missing_support.append("trechos dos documentos enviados")
-            logger.warning(
-                "consumer_grounding_insufficient",
-                case_id=record.case_id,
-                legal_grounds=len(legal_grounds),
-                evidence_references=len(evidence_references),
-                legal_retrieval_degraded=any(trace.degraded_mode for trace in legal_traces),
-                evidence_retrieval_degraded=any(
-                    trace.degraded_mode for trace in evidence_traces
-                ),
-            )
-            raise ConsumerRetrievalError(
-                "Não foi possível gerar o rascunho com segurança porque a recuperação "
-                f"não encontrou suporte verificável em {' e '.join(missing_support)}. "
-                "Tente novamente; se o problema persistir, revise a categoria e os "
-                "documentos enviados."
-            )
-        legal_merged = _merge_results(legal_results)
-        evidence_merged = _merge_results(evidence_results)
+        _require_grounding(
+            record.case_id, legal_grounds, evidence_references, legal_traces, evidence_traces
+        )
         legal_traces = _annotate_composer_selection(
             legal_traces,
-            legal_merged,
+            _merge_results(legal_results),
             {
                 ground.authority.chunk_id
                 for ground in legal_grounds
@@ -482,45 +400,12 @@ class ConsumerCaseService:
         )
         evidence_traces = _annotate_composer_selection(
             evidence_traces,
-            evidence_merged,
+            _merge_results(evidence_results),
             {citation.chunk_id for citation in evidence_references},
         )
 
-        direct_loss_sources = _direct_loss_sources(record)
-        improper_payment_sources = (
-            direct_loss_sources
-            if (
-                record.facts.direct_loss_reference_id is not None
-                and record.facts.improper_payment_amount == record.facts.direct_loss_amount
-            )
-            else _confirmed_fact_sources(
-                "valor indevidamente pago",
-                record.facts.improper_payment_amount,
-                record.facts.complaint_summary,
-            )
-        )
-        downside_cost_sources = _confirmed_fact_sources(
-            "custo do cenário sem acordo",
-            record.facts.unsuccessful_scenario_cost_amount,
-            record.facts.complaint_summary,
-        )
-        settlement = self._settlement.calculate(
-            SettlementInputs(
-                direct_loss_amount=record.facts.direct_loss_amount or Decimal("0"),
-                improper_payment_amount=(record.facts.improper_payment_amount or Decimal("0")),
-                downside_cost_amount=(
-                    record.facts.unsuccessful_scenario_cost_amount or Decimal("0")
-                ),
-                article_42_double_repayment_supported=(
-                    record.facts.article_42_double_repayment_requested
-                    and (record.facts.improper_payment_amount or Decimal("0")) > 0
-                ),
-                direct_loss_sources=direct_loss_sources,
-                improper_payment_sources=improper_payment_sources,
-                downside_cost_sources=downside_cost_sources,
-            )
-        )
-        requests = _requests(record.facts)
+        settlement = self._settlement.calculate(_settlement_inputs(record))
+        requests = notice_requests(record.facts)
         composition_started = perf_counter()
         composition, composition_warnings = await self._compose_notice_prose(
             facts=record.facts,
@@ -530,7 +415,7 @@ class ConsumerCaseService:
             public_proposal=settlement.public_proposal_amount,
         )
         composition_ms = (perf_counter() - composition_started) * 1000
-        full_text = _render_notice_markdown(
+        full_text = render_notice_markdown(
             facts=record.facts,
             evidence=evidence_references,
             legal_grounds=legal_grounds,
@@ -650,15 +535,18 @@ class ConsumerCaseService:
         public_proposal: Decimal | None,
     ) -> tuple[NoticeComposition, list[str]]:
         """Degrade safely when the optional prose provider is unavailable."""
-        try:
-            composition = await self._notice_composer.compose(
+
+        async def compose_with(composer: NoticeDraftComposer) -> NoticeComposition:
+            return await composer.compose(
                 facts=facts,
                 evidence=evidence,
                 legal_grounds=legal_grounds,
                 requests=requests,
                 public_proposal=public_proposal,
             )
-            return composition, []
+
+        try:
+            return await compose_with(self._notice_composer), []
         except Exception as exc:
             # The type alone cannot distinguish a rejected schema from an
             # unavailable model or an output-token ceiling consumed by
@@ -670,14 +558,7 @@ class ConsumerCaseService:
                 error_type=type(exc).__name__,
                 error=redact_sensitive_text(exc)[:500],
             )
-            fallback = await DeterministicNoticeComposer().compose(
-                facts=facts,
-                evidence=evidence,
-                legal_grounds=legal_grounds,
-                requests=requests,
-                public_proposal=public_proposal,
-            )
-            return fallback, [
+            return await compose_with(DeterministicNoticeComposer()), [
                 "A composição por IA não esteve disponível; o rascunho foi montado "
                 "deterministicamente."
             ]
@@ -690,8 +571,7 @@ class ConsumerCaseService:
 
     async def delete_case(self, case_id: str, token: str) -> None:
         record = self._store.delete_authorized(case_id, token)
-        for doc_id in record.indexed_document_ids:
-            await self._rag.delete_document(doc_id)
+        await self._delete_indexed_documents(record)
 
     async def purge_expired_cases(self) -> int:
         """Drop idle cases and release the evidence vectors they still own.
@@ -701,11 +581,14 @@ class ConsumerCaseService:
         """
         expired = self._store.expire_idle_cases()
         for record in expired:
-            for doc_id in record.indexed_document_ids:
-                await self._rag.delete_document(doc_id)
+            await self._delete_indexed_documents(record)
         if expired:
             logger.info("consumer_expired_cases_purged", cases=len(expired))
         return len(expired)
+
+    async def _delete_indexed_documents(self, record: ConsumerCaseRecord) -> None:
+        for doc_id in record.indexed_document_ids:
+            await self._rag.delete_document(doc_id)
 
     async def purge_orphaned_documents(self) -> int:
         """Delete evidence vectors whose owning case no longer exists.
@@ -822,17 +705,8 @@ class ConsumerCaseService:
             assert evidence.safe_document is not None
             for original in evidence.safe_document.pages:
                 global_page = len(pages) + 1
-                # The marker must satisfy SectionAwareChunker.is_heading, which
-                # requires ~all letters to be upper case. uuid4 hex carries
-                # lower-case a-f, so an unmodified id made this a heading only
-                # ~3% of the time; the rest of the time every evidence page fell
-                # into one section and chunks packed text across two different
-                # uploaded files under a single page number. Upper case makes
-                # detection deterministic, and _evidence_references still
-                # refuses to cite any chunk that spans pages.
-                heading = (
-                    f"CASO {record.case_id[:8].upper()} EVIDENCIA "
-                    f"{evidence.public.evidence_id[:8].upper()} PAGINA {original.number}"
+                heading = evidence_page_heading(
+                    record.case_id, evidence.public.evidence_id, original.number
                 )
                 pages.append(DocumentPage(number=global_page, text=f"{heading}\n\n{original.text}"))
                 sources[global_page] = (evidence, original.number)
@@ -896,8 +770,8 @@ class ConsumerCaseService:
             if source is None:
                 continue
             evidence, original_page = source
-            quote = _clean_chunk_quote(chunk.text)
-            if not quote or not _evidence_supports_confirmed_facts(quote, facts):
+            quote = clean_chunk_quote(chunk.text)
+            if not quote or not evidence_supports_confirmed_facts(quote, facts):
                 continue
             citations.append(
                 EvidenceCitation(
@@ -957,6 +831,41 @@ def _find_monetary_reference(
     return None
 
 
+def _settlement_inputs(record: ConsumerCaseRecord) -> SettlementInputs:
+    """The confirmed amounts and their sources, as the settlement calculator reads them."""
+    facts = record.facts
+    direct_loss_sources = _direct_loss_sources(record)
+    improper_payment_sources = (
+        direct_loss_sources
+        if (
+            facts.direct_loss_reference_id is not None
+            and facts.improper_payment_amount == facts.direct_loss_amount
+        )
+        else _confirmed_fact_sources(
+            "valor indevidamente pago",
+            facts.improper_payment_amount,
+            facts.complaint_summary,
+        )
+    )
+    downside_cost_sources = _confirmed_fact_sources(
+        "custo do cenário sem acordo",
+        facts.unsuccessful_scenario_cost_amount,
+        facts.complaint_summary,
+    )
+    return SettlementInputs(
+        direct_loss_amount=facts.direct_loss_amount or Decimal("0"),
+        improper_payment_amount=facts.improper_payment_amount or Decimal("0"),
+        downside_cost_amount=facts.unsuccessful_scenario_cost_amount or Decimal("0"),
+        article_42_double_repayment_supported=(
+            facts.article_42_double_repayment_requested
+            and (facts.improper_payment_amount or Decimal("0")) > 0
+        ),
+        direct_loss_sources=direct_loss_sources,
+        improper_payment_sources=improper_payment_sources,
+        downside_cost_sources=downside_cost_sources,
+    )
+
+
 def _direct_loss_sources(record: ConsumerCaseRecord) -> list[SettlementComponentSource]:
     reference_id = record.facts.direct_loss_reference_id
     if reference_id is None:
@@ -1012,197 +921,35 @@ def _evidence_status(action: SecurityAction) -> EvidenceStatus:
     }[action]
 
 
-def _evidence_supports_confirmed_facts(text: str, facts: ConsumerCaseFacts) -> bool:
-    """Require a retrieved excerpt to support the confirmed case topic."""
-
-    text_tokens = portuguese_lexical_tokens(text)
-    if not text_tokens:
-        return False
-    if _matches_unique_case_identifier(text_tokens, facts):
-        return True
-
-    factual_text = " ".join(
-        value
-        for value in (facts.complaint_summary, facts.desired_resolution)
-        if value
+def _require_grounding(
+    case_id: str,
+    legal_grounds: list[LegalGround],
+    evidence_references: list[EvidenceCitation],
+    legal_traces: list[RetrievalTrace],
+    evidence_traces: list[RetrievalTrace],
+) -> None:
+    """Refuse a notice without both a legal ground and a documentary citation."""
+    if legal_grounds and evidence_references:
+        return
+    missing_support: list[str] = []
+    if not legal_grounds:
+        missing_support.append("fundamentos jurídicos")
+    if not evidence_references:
+        missing_support.append("trechos dos documentos enviados")
+    logger.warning(
+        "consumer_grounding_insufficient",
+        case_id=case_id,
+        legal_grounds=len(legal_grounds),
+        evidence_references=len(evidence_references),
+        legal_retrieval_degraded=any(trace.degraded_mode for trace in legal_traces),
+        evidence_retrieval_degraded=any(trace.degraded_mode for trace in evidence_traces),
     )
-    supplier_tokens = set(portuguese_lexical_tokens(facts.bank_name or ""))
-    fact_topic = [
-        token
-        for token in portuguese_lexical_tokens(factual_text)
-        if len(token) >= 3
-        and not token.isdigit()
-        and token not in _GENERIC_EVIDENCE_TERMS
-        and token not in supplier_tokens
-    ]
-    evidence_topic = [
-        token
-        for token in text_tokens
-        if len(token) >= 3
-        and not token.isdigit()
-        and token not in _GENERIC_EVIDENCE_TERMS
-        and token not in supplier_tokens
-    ]
-    return _has_topical_evidence_overlap(
-        fact_topic,
-        evidence_topic,
-        hard_anchor_count=_evidence_hard_anchor_count(text, text_tokens, facts),
+    raise ConsumerRetrievalError(
+        "Não foi possível gerar o rascunho com segurança porque a recuperação "
+        f"não encontrou suporte verificável em {' e '.join(missing_support)}. "
+        "Tente novamente; se o problema persistir, revise a categoria e os "
+        "documentos enviados."
     )
-
-
-def _evidence_hard_anchor_count(
-    text: str,
-    text_tokens: list[str],
-    facts: ConsumerCaseFacts,
-) -> int:
-    matched: set[str] = set()
-    fact_amounts = {
-        amount
-        for amount in (
-            facts.direct_loss_amount,
-            facts.improper_payment_amount,
-            facts.unsuccessful_scenario_cost_amount,
-        )
-        if amount is not None and amount > 0
-    }
-    for fact_text in (facts.complaint_summary, facts.desired_resolution):
-        if fact_text:
-            fact_amounts.update(item.amount for item in extract_brl_mentions(fact_text))
-    if fact_amounts.intersection(item.amount for item in extract_brl_mentions(text)):
-        matched.add("amount")
-
-    supplier_tokens = portuguese_lexical_tokens(facts.bank_name or "")
-    if supplier_tokens and _contains_token_sequence(text_tokens, supplier_tokens):
-        matched.add("supplier")
-
-    fact_texts = [
-        facts.incident_date_or_period or "",
-        facts.complaint_summary or "",
-        facts.desired_resolution or "",
-    ]
-    date_anchors = {
-        match.group(0)
-        for fact_text in fact_texts
-        for match in _DATE_ANCHOR_RE.finditer(fact_text)
-    }
-    if any(
-        _contains_token_sequence(text_tokens, portuguese_lexical_tokens(anchor))
-        for anchor in date_anchors
-    ):
-        matched.add("date")
-    return len(matched)
-
-
-def _matches_unique_case_identifier(
-    text_tokens: list[str],
-    facts: ConsumerCaseFacts,
-) -> bool:
-    fact_texts = [
-        facts.incident_date_or_period or "",
-        facts.complaint_summary or "",
-        facts.desired_resolution or "",
-    ]
-
-    identifiers = set(facts.prior_protocols)
-    identifiers.update(
-        match.group(0)
-        for protocol in facts.prior_protocols
-        for match in _EMBEDDED_IDENTIFIER_RE.finditer(protocol)
-    )
-    identifiers.update(
-        match.group(1)
-        for fact_text in fact_texts
-        for match in _LABELED_IDENTIFIER_RE.finditer(fact_text)
-        if any(char.isdigit() for char in match.group(1))
-    )
-    return any(
-        len(compact := "".join(portuguese_lexical_tokens(identifier))) >= 4
-        and _contains_compact_identifier(text_tokens, compact)
-        for identifier in identifiers
-    )
-
-
-def _has_topical_evidence_overlap(
-    fact_tokens: list[str],
-    evidence_tokens: list[str],
-    *,
-    hard_anchor_count: int,
-) -> bool:
-    """Match a factual phrase, or several shared terms close together in both texts."""
-
-    shared = set(fact_tokens).intersection(evidence_tokens)
-    if len(shared) < 2:
-        return False
-
-    # Several independent anchors make two topical matches meaningful even if
-    # the consumer and the source use a different word order.
-    if hard_anchor_count >= 2:
-        return True
-
-    fact_bigrams = set(zip(fact_tokens, fact_tokens[1:], strict=False))
-    evidence_bigrams = set(zip(evidence_tokens, evidence_tokens[1:], strict=False))
-    if fact_bigrams.intersection(evidence_bigrams):
-        return True
-
-    required_terms = 2 if hard_anchor_count else 3
-    window_width = 4 if hard_anchor_count else 6
-    if len(shared) < required_terms:
-        return False
-    fact_groups = _proximate_term_groups(
-        fact_tokens,
-        shared,
-        group_size=required_terms,
-        window_width=window_width,
-    )
-    if not fact_groups:
-        return False
-    evidence_groups = _proximate_term_groups(
-        evidence_tokens,
-        shared,
-        group_size=required_terms,
-        window_width=window_width,
-    )
-    return not fact_groups.isdisjoint(evidence_groups)
-
-
-def _proximate_term_groups(
-    tokens: list[str],
-    allowed: set[str],
-    *,
-    group_size: int,
-    window_width: int,
-) -> set[tuple[str, ...]]:
-    groups: set[tuple[str, ...]] = set()
-    for index in range(len(tokens)):
-        window_terms = sorted(set(tokens[index : index + window_width]).intersection(allowed))
-        groups.update(combinations(window_terms, group_size))
-    return groups
-
-
-def _contains_token_sequence(tokens: list[str], sequence: list[str]) -> bool:
-    if not sequence or len(sequence) > len(tokens):
-        return False
-    width = len(sequence)
-    return any(
-        tokens[index : index + width] == sequence
-        for index in range(len(tokens) - width + 1)
-    )
-
-
-def _contains_compact_identifier(tokens: list[str], identifier: str) -> bool:
-    """Match an identifier across punctuation splits, never across unrelated text."""
-
-    if len(identifier) < 4:
-        return False
-    for start in range(len(tokens)):
-        candidate = ""
-        for token in tokens[start:]:
-            candidate += token
-            if candidate == identifier:
-                return True
-            if len(candidate) >= len(identifier):
-                break
-    return False
 
 
 def _annotate_composer_selection(
@@ -1248,37 +995,6 @@ def _annotate_composer_selection(
     return annotated
 
 
-def _clean_chunk_quote(text: str) -> str:
-    """Return the document's own words, without this service's page marker.
-
-    The ``CASO ... EVIDENCIA ... PAGINA n`` marker is scaffolding injected to
-    keep evidence pages in separate chunker sections. It names the case, so it
-    must never reach an exported notice, and it is removed wherever it appears
-    rather than only as a leading section title.
-    """
-    without_marker = _EVIDENCE_PAGE_MARKER_RE.sub(" ", text)
-    lines = without_marker.splitlines()
-    first = lines[0].strip() if lines else ""
-    if first.startswith("[") and first.endswith("]"):
-        lines = lines[1:]
-    return " ".join(" ".join(lines).split())[:700]
-
-
-def _markdown_inline(text: str) -> str:
-    """Escape untrusted text before it is embedded in the notice markdown.
-
-    Evidence excerpts and filenames come from files someone else sent the
-    consumer. Left raw, ``[clique aqui](https://...)`` inside a PDF becomes a
-    live hyperlink in the notice the consumer reads, exports and forwards.
-    """
-    return _MARKDOWN_INLINE_ESCAPE_RE.sub(r"\\\1", text)
-
-
-def _single_line(text: str) -> str:
-    """Collapse whitespace so a value can safely become one Markdown line."""
-    return " ".join(text.split())
-
-
 def _degraded_retrieval_warnings(degraded_modes: list[str]) -> list[str]:
     """Tell the reader when a draft was built without semantic retrieval."""
     if not degraded_modes:
@@ -1289,150 +1005,3 @@ def _degraded_retrieval_warnings(degraded_modes: list[str]) -> list[str]:
         "determinísticos de fundamentos e citações continuam valendo, mas revise "
         "este rascunho com atenção redobrada ou gere novamente mais tarde."
     ]
-
-
-def _requests(facts: ConsumerCaseFacts) -> list[str]:
-    requests = [facts.desired_resolution or "solução integral do problema relatado"]
-    if facts.direct_loss_amount and facts.direct_loss_amount > 0:
-        requests.append("restituição do prejuízo direto alegado, após conferência dos comprovantes")
-    if facts.prior_protocols:
-        requests.append("resposta escrita e fundamentada aos protocolos já registrados")
-    requests.append("confirmação escrita das providências adotadas dentro do prazo indicado")
-    return requests
-
-
-def _render_notice_markdown(
-    *,
-    facts: ConsumerCaseFacts,
-    evidence: list[EvidenceCitation],
-    legal_grounds: list[LegalGround],
-    requests: list[str],
-    public_proposal: Decimal | None,
-    prose: NoticeProse | None = None,
-) -> str:
-    name = facts.consumer_name or "[PREENCHER NOME DO(A) CONSUMIDOR(A)]"
-    supplier = facts.bank_name or "[PREENCHER EMPRESA, FORNECEDOR OU INSTITUIÇÃO]"
-    protocols = (
-        ", ".join(_single_line(item) for item in facts.prior_protocols)
-        or "nenhum protocolo informado"
-    )
-    lines = [
-        "# NOTIFICAÇÃO EXTRAJUDICIAL COM PROPOSTA DE ACORDO",
-        "",
-        "**À**",
-        "",
-        f"{_single_line(supplier)}",
-        "[PREENCHER ENDEREÇO DA NOTIFICADA]",
-        "",
-        f"**Notificante:** {_single_line(name)}",
-        "[PREENCHER CPF E ENDEREÇO DO(A) NOTIFICANTE]",
-        "",
-        "## 1. Finalidade",
-        "",
-        (
-            prose.purpose
-            if prose is not None
-            else "Esta notificação busca solução consensual de uma controvérsia de consumo. "
-            "Não se trata de ação judicial nem de reconhecimento definitivo de responsabilidade."
-        ),
-        "",
-        "## 2. Fatos declarados pelo(a) consumidor(a)",
-        "",
-        facts.complaint_summary or "[PREENCHER RELATO]",
-        *(["", prose.facts_framing] if prose is not None else []),
-        "",
-        f"**Data ou período:** {facts.incident_date_or_period or '[PREENCHER]'}",
-        f"**Protocolos anteriores:** {protocols}",
-        "",
-        "## 3. Documentos de suporte",
-        "",
-    ]
-    # Retrieval identifiers (chunk id, corpus release, content hashes) stay out
-    # of the delivered document. They are provenance for the consumer's own
-    # review and for /consumer/cases/{id}/notice/retrievals, and every one of
-    # them survives unchanged on EvidenceCitation and LegalAuthorityCitation.
-    for item in evidence:
-        lines.append(
-            f"- **{_markdown_inline(item.filename)}, p. {item.page}** — "
-            f"{_markdown_inline(item.quote)}"
-        )
-    lines.extend(["", "## 4. Fundamentos jurídicos", ""])
-    if prose is not None:
-        lines.extend([prose.legal_transition, ""])
-    for ground in legal_grounds:
-        authority = ground.authority
-        # The official text is quoted verbatim, including its own legislative
-        # annotations: trimming a statute to look tidier would make the quote
-        # something other than what the source says.
-        official_excerpt = _bounded_legal_excerpt(
-            authority.official_excerpt or authority.official_text
-        )
-        unit_suffix = f", {authority.unit_label}" if authority.unit_label else ""
-        # ``application_to_facts`` explains how the retrieval policy selected
-        # this provision. That is reviewer-facing commentary about our own
-        # software; addressed to the supplier it only undercuts the notice.
-        lines.append(
-            f"- **[{authority.citation_label}{unit_suffix}]({authority.official_url})** — "
-            f"{official_excerpt or authority.summary}"
-        )
-    lines.extend(["", "## 5. Providências solicitadas", ""])
-    if prose is not None:
-        lines.extend([prose.requests_transition, ""])
-    # A confirmed fact may span several lines; a raw newline inside a list item
-    # silently drops the bullet for every line after the first.
-    lines.extend(f"- {_single_line(request)}" for request in requests)
-    lines.extend(["", "## 6. Proposta para composição", ""])
-    if public_proposal is None:
-        lines.append(
-            "Neste momento, propõe-se solução não monetária nos termos dos pedidos acima, "
-            "sem atribuição automática de indenização."
-        )
-    else:
-        lines.append(
-            f"Para tentativa de composição, propõe-se o valor de **R$ {_brl(public_proposal)}**, "
-            "sujeito à conferência dos comprovantes e à revisão humana. O valor é uma âncora "
-            "de negociação calculada por cenário, não uma previsão de decisão judicial."
-        )
-    lines.extend(
-        [
-            "",
-            "## 7. Prazo e encerramento",
-            "",
-            *([prose.closing, ""] if prose is not None else []),
-            "Solicita-se resposta escrita em até "
-            f"**{facts.response_deadline_business_days} dias úteis**. "
-            "A ausência de acordo não altera direitos, defesas ou prazos legais de qualquer parte.",
-        ]
-    )
-    # Place, date and signature are left as fields to fill rather than
-    # generated: the notice is sent on a day the renderer cannot know, and a
-    # plausible-looking wrong date on an extrajudicial notice is worse than a
-    # blank one.
-    lines.extend(
-        [
-            "",
-            "---",
-            "",
-            "[PREENCHER LOCAL], [PREENCHER DATA].",
-            "",
-            "___________________________________________",
-            "",
-            f"{_single_line(name)}",
-            "[PREENCHER CPF DO(A) NOTIFICANTE]",
-        ]
-    )
-    # The private reservation value is intentionally unavailable to this
-    # renderer, so it cannot leak into an exported notice by accident.
-    return "\n".join(lines)
-
-
-def _brl(value: Decimal) -> str:
-    rendered = f"{value:,.2f}"
-    return rendered.replace(",", "_").replace(".", ",").replace("_", ".")
-
-
-def _bounded_legal_excerpt(text: str | None, limit: int = 600) -> str:
-    normalized = " ".join((text or "").split())
-    if len(normalized) <= limit:
-        return normalized
-    return normalized[: limit - 1].rsplit(" ", 1)[0] + "…"

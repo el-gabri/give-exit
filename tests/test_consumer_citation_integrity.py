@@ -13,12 +13,12 @@ import httpx
 import pytest
 
 from app.api.main import create_app
-from app.consumer.schemas import ConsumerCaseFacts
-from app.consumer.service import (
-    _clean_chunk_quote,
-    _evidence_supports_confirmed_facts,
-    _markdown_inline,
+from app.consumer.evidence_support import (
+    clean_chunk_quote,
+    evidence_supports_confirmed_facts,
 )
+from app.consumer.notice_markdown import markdown_inline
+from app.consumer.schemas import ConsumerCaseFacts
 from app.core.config import LLMProvider, Settings, VectorStoreBackend
 from app.rag.chunking import is_heading
 from app.reporting.convert import strip_markdown_escapes
@@ -415,13 +415,13 @@ def _bank_fee_facts() -> ConsumerCaseFacts:
 def test_non_unique_anchor_or_unordered_terms_do_not_support_evidence(
     excerpt: str,
 ) -> None:
-    assert not _evidence_supports_confirmed_facts(excerpt, _bank_fee_facts())
+    assert not evidence_supports_confirmed_facts(excerpt, _bank_fee_facts())
 
 
 def test_unique_case_identifier_can_support_evidence_by_itself() -> None:
     facts = ConsumerCaseFacts(prior_protocols=["ABC-123"])
 
-    assert _evidence_supports_confirmed_facts(
+    assert evidence_supports_confirmed_facts(
         "Atendimento identificado como ABC-123.",
         facts,
     )
@@ -430,7 +430,7 @@ def test_unique_case_identifier_can_support_evidence_by_itself() -> None:
 def test_unique_case_identifier_does_not_match_as_a_substring() -> None:
     facts = ConsumerCaseFacts(prior_protocols=["1234"])
 
-    assert not _evidence_supports_confirmed_facts(
+    assert not evidence_supports_confirmed_facts(
         "Atendimento identificado como 91234.",
         facts,
     )
@@ -441,7 +441,7 @@ def test_identifier_is_extracted_from_a_descriptive_protocol_value() -> None:
         prior_protocols=["Protocolo de atendimento no SAC 123091890"]
     )
 
-    assert _evidence_supports_confirmed_facts(
+    assert evidence_supports_confirmed_facts(
         "Protocolo 123091890.",
         facts,
     )
@@ -453,7 +453,7 @@ def test_hard_anchor_plus_proximate_topic_supports_evidence() -> None:
         complaint_summary="O banco lancou tarifa de manutencao da conta.",
     )
 
-    assert _evidence_supports_confirmed_facts(
+    assert evidence_supports_confirmed_facts(
         "Bradesco registrou manutencao mensal da tarifa.",
         facts,
     )
@@ -464,7 +464,7 @@ def test_strong_proximate_topic_supports_evidence_without_hard_anchor() -> None:
         complaint_summary="Compra lancada na fatura sem autorizacao.",
     )
 
-    assert _evidence_supports_confirmed_facts(
+    assert evidence_supports_confirmed_facts(
         "A fatura registra compra sem autorizacao.",
         facts,
     )
@@ -473,7 +473,7 @@ def test_strong_proximate_topic_supports_evidence_without_hard_anchor() -> None:
 def test_untrusted_excerpt_cannot_inject_a_markdown_link() -> None:
     raw = "Veja [clique aqui](https://evil.example/phishing) para detalhes."
 
-    escaped = _markdown_inline(raw)
+    escaped = markdown_inline(raw)
 
     assert "\\[clique aqui\\]" in escaped
     assert "](https://evil.example" not in escaped.replace("\\]", "]REMOVED")
@@ -487,7 +487,7 @@ def test_clean_chunk_quote_strips_the_marker_anywhere_in_the_text() -> None:
         "Cobranca de R$ 10,00 nao reconhecida."
     )
 
-    assert _clean_chunk_quote(text) == "Cobranca de R$ 10,00 nao reconhecida."
+    assert clean_chunk_quote(text) == "Cobranca de R$ 10,00 nao reconhecida."
 
 
 async def test_lexical_only_retrieval_is_declared_in_the_notice(
@@ -564,8 +564,8 @@ async def test_notice_has_addressing_and_signature_blocks(
 
 def test_multiline_request_stays_one_list_item() -> None:
     """A newline inside a bullet silently drops the marker for the rest."""
+    from app.consumer.notice_markdown import notice_requests, render_notice_markdown
     from app.consumer.schemas import ConsumerCaseFacts
-    from app.consumer.service import _render_notice_markdown, _requests
 
     facts = ConsumerCaseFacts(
         consumer_name="Gabriel",
@@ -575,11 +575,11 @@ def test_multiline_request_stays_one_list_item() -> None:
         desired_resolution="ressarcimento do valor cobrado\nretirada de negativacao",
     )
 
-    markdown = _render_notice_markdown(
+    markdown = render_notice_markdown(
         facts=facts,
         evidence=[],
         legal_grounds=[],
-        requests=_requests(facts),
+        requests=notice_requests(facts),
         public_proposal=None,
     )
     section = markdown[markdown.index("## 5.") : markdown.index("## 6.")]
@@ -593,4 +593,4 @@ def test_masked_identifiers_survive_untouched_in_the_delivered_text() -> None:
     """Escaping emphasis mangled every masked CPF/CNPJ in real evidence."""
     masked = "CPF/CNPJ: 18.*** ***/8000-43"
 
-    assert _markdown_inline(masked) == masked
+    assert markdown_inline(masked) == masked
