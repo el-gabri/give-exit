@@ -159,9 +159,14 @@ def create_rag_pipeline(
             embedding_model=embedding_identity,
             corpus_version=effective_corpus_version,
         ),
+        # Consumer evidence is the only document this pipeline chunks; legal
+        # corpora arrive pre-chunked through index_chunks. Evidence is chunked
+        # per page, so uppercase receipt lines are kept instead of becoming
+        # section titles.
         chunker=SectionAwareChunker(
             target_chars=settings.chunk_target_chars,
             overlap_chars=settings.chunk_overlap_chars,
+            page_preserving=True,
         ),
         default_k=settings.retrieval_k,
         include_trace_previews=settings.retrieval_trace_include_previews,

@@ -75,7 +75,10 @@ def evidence_page_heading(case_id: str, evidence_id: str, page: int) -> str:
     time every evidence page fell into one section and chunks packed text
     across two different uploaded files under a single page number. Upper
     case makes detection deterministic, and the notice service still refuses
-    to cite any chunk that spans pages.
+    to cite any chunk that spans pages. The consumer pipeline now chunks
+    evidence per page (SectionAwareChunker's page-preserving mode), which
+    keeps pages apart on its own; the marker stays a heading for the default
+    chunker.
     """
     return f"CASO {case_id[:8].upper()} EVIDENCIA {evidence_id[:8].upper()} PAGINA {page}"
 

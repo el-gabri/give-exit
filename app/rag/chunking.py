@@ -10,6 +10,12 @@ Strategy (see ADR 0006):
    overlap between consecutive chunks of the same section.
 4. Every chunk keeps provenance: section title + page span, powering the
    citations shown to the user.
+
+Evidence mode (``page_preserving=True``) skips heading detection: each page is
+one untitled section and every nonempty block is body text. Uploaded evidence
+is not a petition. A receipt or bank statement read by OCR is often nothing but
+short uppercase lines, which the heuristic turns into section titles, and a
+title with no body text after it is discarded - with the receipt's only content.
 """
 
 from dataclasses import dataclass, field
@@ -40,17 +46,34 @@ class _Section:
     paragraphs: list[tuple[int, str]] = field(default_factory=list)  # (page, text)
 
 
+def _paragraphs(text: str) -> list[str]:
+    """The page's nonempty blocks, each collapsed onto one line."""
+    return [
+        paragraph
+        for paragraph in (" ".join(block.split()) for block in text.split("\n\n"))
+        if paragraph
+    ]
+
+
 def _split_sections(document: ParsedDocument) -> list[_Section]:
     sections: list[_Section] = [_Section(title=None)]
     for page in document.pages:
-        for raw_paragraph in page.text.split("\n\n"):
-            paragraph = " ".join(raw_paragraph.split())
-            if not paragraph:
-                continue
+        for paragraph in _paragraphs(page.text):
             if is_heading(paragraph):
                 sections.append(_Section(title=paragraph))
             else:
                 sections[-1].paragraphs.append((page.number, paragraph))
+    return [s for s in sections if s.paragraphs]
+
+
+def _page_sections(document: ParsedDocument) -> list[_Section]:
+    sections = [
+        _Section(
+            title=None,
+            paragraphs=[(page.number, paragraph) for paragraph in _paragraphs(page.text)],
+        )
+        for page in document.pages
+    ]
     return [s for s in sections if s.paragraphs]
 
 
@@ -59,22 +82,33 @@ class SectionAwareChunker:
 
     VERSION = "section-aware-v1"
 
-    def __init__(self, target_chars: int = 1200, overlap_chars: int = 150) -> None:
+    def __init__(
+        self,
+        target_chars: int = 1200,
+        overlap_chars: int = 150,
+        *,
+        page_preserving: bool = False,
+    ) -> None:
         if overlap_chars >= target_chars:
             raise ValueError("overlap_chars must be smaller than target_chars")
         self._target = target_chars
         self._overlap = overlap_chars
+        self._page_preserving = page_preserving
 
     @property
     def index_version(self) -> str:
         """Configuration fingerprint recorded in retrieval audit traces."""
-        return f"{self.VERSION}:target={self._target}:overlap={self._overlap}"
+        version = f"{self.VERSION}:target={self._target}:overlap={self._overlap}"
+        return f"{version}:page-preserving" if self._page_preserving else version
 
     def chunk(
         self, document: ParsedDocument, *, doc_id: str | None = None
     ) -> list[Chunk]:
+        sections = (
+            _page_sections(document) if self._page_preserving else _split_sections(document)
+        )
         chunks: list[Chunk] = []
-        for section in _split_sections(document):
+        for section in sections:
             chunks.extend(
                 self._chunk_section(doc_id or document.doc_id, section, len(chunks))
             )
