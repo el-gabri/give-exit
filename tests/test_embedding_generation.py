@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from app.consumer.embedding_generation import EmbeddingGenerationManager
-from app.consumer.legal_corpus import get_default_legal_corpus
+from app.consumer.legal_corpus import LegalCorpus, get_default_legal_corpus
 from app.consumer.legal_index import (
     adopt_legal_corpus_index,
     legal_corpus_is_indexed,
@@ -41,6 +41,54 @@ def _pipeline(
         embedding_shard_size=shard_size,
         embedding_require_model_revision=True,
     )
+
+
+@pytest.fixture
+async def completed_generation(
+    tmp_path: Path,
+) -> tuple[EmbeddingGenerationManager, EmbeddingGenerationManifest]:
+    corpus = LegalCorpus(get_default_legal_corpus().provisions[:2])
+    pipeline = _pipeline(
+        tmp_path,
+        MockEmbeddingClient(),
+        InMemoryVectorStore(index_name="shard-lookup-test"),
+        shard_size=1,
+    )
+    manager = EmbeddingGenerationManager(pipeline, corpus)
+    manifest = await manager.build_and_activate()
+    return manager, manifest
+
+
+def test_generation_load_preserves_canonical_order_with_reversed_manifest(
+    completed_generation: tuple[EmbeddingGenerationManager, EmbeddingGenerationManifest],
+) -> None:
+    manager, manifest = completed_generation
+    chunks, vectors = manager._load_complete_generation(manifest)
+    manifest.shards.reverse()
+
+    loaded_chunks, loaded_vectors = manager._load_complete_generation(manifest)
+
+    assert loaded_chunks is chunks
+    assert loaded_vectors == vectors
+
+
+@pytest.mark.parametrize("first_is_corrupt", [False, True])
+def test_generation_duplicate_shards_preserve_first_match_and_error_order(
+    completed_generation: tuple[EmbeddingGenerationManager, EmbeddingGenerationManifest],
+    first_is_corrupt: bool,
+) -> None:
+    manager, manifest = completed_generation
+    original = manifest.shards[0]
+    corrupt = original.model_copy(update={"artifact_sha256": "0" * 64})
+    manifest.shards[:2] = [corrupt, original] if first_is_corrupt else [original, corrupt]
+
+    expected_error = (
+        "embedding shard 0 failed checksum validation"
+        if first_is_corrupt
+        else "embedding generation is missing shard 1"
+    )
+    with pytest.raises(ValueError, match=f"^{expected_error}$"):
+        manager._load_complete_generation(manifest)
 
 
 async def test_generation_is_checksummed_active_and_strongly_validated(

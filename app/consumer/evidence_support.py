@@ -273,8 +273,8 @@ def _contains_compact_identifier(tokens: list[str], identifier: str) -> bool:
         return False
     for start in range(len(tokens)):
         candidate = ""
-        for token in tokens[start:]:
-            candidate += token
+        for end in range(start, len(tokens)):
+            candidate += tokens[end]
             if candidate == identifier:
                 return True
             if len(candidate) >= len(identifier):

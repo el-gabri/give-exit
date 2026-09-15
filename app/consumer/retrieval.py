@@ -23,23 +23,6 @@ MAX_QUERY_CHARS = 2_000
 # abstains on strong negative signals without any supplier/product/service
 # signal.  Ambiguous cases remain eligible for human review instead of being
 # silently rejected.
-# These signals describe a concrete consumer transaction, product, service or
-# charge.  They may legitimately coexist with words from another legal domain
-# (for example, an employer may also make an unauthorized card charge).
-_STRONG_CONSUMER_SIGNALS = (
-    "cobrança",
-    "cobranca",
-    "compra",
-    "comprei",
-    "consumidor",
-    "contratei",
-    "fatura",
-    "financiamento",
-    "paguei",
-    "plano de saúde",
-    "plano de saude",
-    "produto",
-)
 # In a mixed-domain clause, a transaction word alone does not identify which
 # relationship the complaint is about. The bank is handled separately because
 # "banco de horas" is an employment term, not a consumer counterparty.
@@ -70,27 +53,6 @@ _CONSUMER_TRANSACTION_SERVICE_SIGNALS = (
     "produto",
     "seguro",
     "serviço",
-)
-# These words occur frequently in consumer narratives, but also describe
-# employment, inheritance and neighbour disputes.  They can establish scope
-# for an otherwise ambiguous intake, but must not override a strong
-# non-consumer signal by themselves.
-_WEAK_CONSUMER_SIGNALS = (
-    "assinatura",
-    "banco",
-    "cartão",
-    "cartao",
-    "contrato",
-    "entrega",
-    "empresa",
-    "fornecedor",
-    "internet",
-    "loja",
-    "operadora",
-    "pagamento",
-    "seguro",
-    "serviço",
-    "servico",
 )
 _NON_CONSUMER_SIGNALS = (
     "banco de horas",
@@ -176,12 +138,6 @@ def is_consumer_scope(*, complaint: str) -> bool:
     """
 
     normalized_complaint = _scope_normalize(complaint)
-    has_strong_consumer_signal = _scope_contains_any(
-        normalized_complaint, _STRONG_CONSUMER_SIGNALS
-    )
-    has_weak_consumer_signal = _scope_contains_any(
-        normalized_complaint, _WEAK_CONSUMER_SIGNALS
-    )
     has_non_consumer_signal = _scope_contains_any(
         normalized_complaint, _NON_CONSUMER_SIGNALS
     )
@@ -190,7 +146,7 @@ def is_consumer_scope(*, complaint: str) -> bool:
             _clause_has_consumer_relationship(clause)
             for clause in _scope_clauses(normalized_complaint)
         )
-    return has_strong_consumer_signal or has_weak_consumer_signal or not has_non_consumer_signal
+    return True
 
 
 def build_evidence_queries(facts: ConsumerCaseFacts) -> list[str]:
@@ -268,10 +224,7 @@ def _clause_has_consumer_relationship(clause: str) -> bool:
 
 
 def _bounded(value: str) -> str:
-    normalized = _clean(value)
-    if len(normalized) <= MAX_QUERY_CHARS:
-        return normalized
-    return normalized[:MAX_QUERY_CHARS].rsplit(" ", 1)[0]
+    return _bounded_component(value, MAX_QUERY_CHARS)
 
 
 def _bounded_component(value: str | None, max_chars: int) -> str:

@@ -407,12 +407,13 @@ class EmbeddingGenerationManager:
             raise ValueError("embedding generation has an incomplete chunk count")
         if sum(shard.chunk_count for shard in manifest.shards) != len(self._chunks):
             raise ValueError("embedding shard counts do not cover the canonical corpus")
+        shards_by_index: dict[int, EmbeddingShardManifest] = {}
+        for shard in manifest.shards:
+            # Preserve the first match if a malformed manifest repeats an index.
+            shards_by_index.setdefault(shard.shard_index, shard)
         entries: list[tuple[Chunk, list[float]]] = []
         for shard_index, chunks in enumerate(_shards(self._chunks, self._shard_size)):
-            selected = next(
-                (item for item in manifest.shards if item.shard_index == shard_index),
-                None,
-            )
+            selected = shards_by_index.get(shard_index)
             if selected is None:
                 raise ValueError(f"embedding generation is missing shard {shard_index}")
             loaded = self._verified_shard_entries(selected, chunks)
