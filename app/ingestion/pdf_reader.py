@@ -7,6 +7,7 @@ import struct
 import warnings
 from dataclasses import dataclass
 from pathlib import Path
+from typing import BinaryIO
 
 import fitz  # PyMuPDF
 
@@ -14,6 +15,14 @@ import fitz  # PyMuPDF
 # a scan (image-only) and needs OCR. A page of legal text has 1500-3500
 # chars; scans yield ~0. The generous margin tolerates cover pages/stamps.
 MIN_AVG_CHARS_PER_PAGE = 50
+
+# JPEG start-of-frame markers carry the image size; standalone markers have
+# no length field to skip; start of scan means the size never came.
+_JPEG_START_OF_FRAME_MARKERS = frozenset(
+    {0xC0, 0xC1, 0xC2, 0xC3, 0xC5, 0xC6, 0xC7, 0xC9, 0xCA, 0xCB, 0xCD, 0xCE, 0xCF}
+)
+_JPEG_STANDALONE_MARKERS = frozenset({*range(0xD0, 0xD8), 0xD8, 0xD9, 0x01})
+_JPEG_START_OF_SCAN = 0xDA
 
 
 @dataclass(frozen=True)
@@ -120,57 +129,48 @@ def _image_dimensions_from_header(path: Path) -> tuple[int, int]:
             raise ValueError(f"Not a readable PNG or JPEG image: {path.name}")
 
         stream.seek(2)
-        start_of_frame_markers = {
-            0xC0,
-            0xC1,
-            0xC2,
-            0xC3,
-            0xC5,
-            0xC6,
-            0xC7,
-            0xC9,
-            0xCA,
-            0xCB,
-            0xCD,
-            0xCE,
-            0xCF,
-        }
-        standalone_markers = {*range(0xD0, 0xD8), 0xD8, 0xD9, 0x01}
+        dimensions = _jpeg_frame_dimensions(stream)
+    if dimensions is None:
+        raise ValueError(f"Not a readable JPEG image: {path.name}")
+    return dimensions
 
-        for _ in range(512):
-            prefix = stream.read(1)
-            if prefix != b"\xff":
-                raise ValueError(f"Not a readable JPEG image: {path.name}")
 
-            marker = stream.read(1)
-            while marker == b"\xff":
-                marker = stream.read(1)
-            if not marker:
-                break
-            marker_code = marker[0]
-            if marker_code in standalone_markers:
-                continue
-            if marker_code == 0xDA:  # Start of scan: dimensions must precede it.
-                break
+def _jpeg_frame_dimensions(stream: BinaryIO) -> tuple[int, int] | None:
+    """Walk JPEG marker segments up to the frame header; None if it never comes."""
+    for _ in range(512):
+        marker_code = _next_jpeg_marker(stream)
+        if marker_code is None or marker_code == _JPEG_START_OF_SCAN:
+            return None
+        if marker_code in _JPEG_STANDALONE_MARKERS:
+            continue
 
-            length_bytes = stream.read(2)
-            if len(length_bytes) != 2:
-                break
-            segment_length = int.from_bytes(length_bytes, "big")
-            if segment_length < 2:
-                break
+        length_bytes = stream.read(2)
+        if len(length_bytes) != 2:
+            return None
+        segment_length = int.from_bytes(length_bytes, "big")
+        if segment_length < 2:
+            return None
 
-            if marker_code in start_of_frame_markers:
-                frame_header = stream.read(5)
-                if len(frame_header) != 5 or segment_length < 7:
-                    break
-                height = int.from_bytes(frame_header[1:3], "big")
-                width = int.from_bytes(frame_header[3:5], "big")
-                return width, height
+        if marker_code in _JPEG_START_OF_FRAME_MARKERS:
+            frame_header = stream.read(5)
+            if len(frame_header) != 5 or segment_length < 7:
+                return None
+            height = int.from_bytes(frame_header[1:3], "big")
+            width = int.from_bytes(frame_header[3:5], "big")
+            return width, height
 
-            stream.seek(segment_length - 2, 1)
+        stream.seek(segment_length - 2, 1)
+    return None
 
-    raise ValueError(f"Not a readable JPEG image: {path.name}")
+
+def _next_jpeg_marker(stream: BinaryIO) -> int | None:
+    """The next marker code, skipping fill bytes; None on a bad prefix or at EOF."""
+    if stream.read(1) != b"\xff":
+        return None
+    marker = stream.read(1)
+    while marker == b"\xff":
+        marker = stream.read(1)
+    return marker[0] if marker else None
 
 
 def render_page_images(

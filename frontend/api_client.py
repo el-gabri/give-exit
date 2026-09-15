@@ -210,21 +210,27 @@ class ConsumerApiClient:
         except requests.RequestException as exc:
             error_response = exc.response
             status_code = error_response.status_code if error_response is not None else None
-            detail = _response_detail(error_response)
-            if status_code in (401, 403, 404):
-                detail = (
-                    "Este atendimento não está mais disponível nesta sessão. "
-                    "Inicie um novo atendimento."
-                )
-            elif status_code == 413:
-                detail = "O arquivo excede o limite aceito pela API."
-            elif status_code == 422 and not detail:
-                detail = "Revise os campos informados e tente novamente."
-            elif status_code is not None and status_code >= 500 and not detail:
-                detail = "A API encontrou um erro interno durante a operação."
-            elif not detail:
-                detail = "A API não conseguiu concluir a operação. Tente novamente."
-            raise ConsumerApiError(detail, status_code) from exc
+            raise ConsumerApiError(
+                _error_message(status_code, _response_detail(error_response)), status_code
+            ) from exc
+
+
+def _error_message(status_code: int | None, detail: str | None) -> str:
+    """The message shown for a failed request: the API's own or a safe default."""
+    if status_code in (401, 403, 404):
+        return (
+            "Este atendimento não está mais disponível nesta sessão. "
+            "Inicie um novo atendimento."
+        )
+    if status_code == 413:
+        return "O arquivo excede o limite aceito pela API."
+    if detail:
+        return detail
+    if status_code == 422:
+        return "Revise os campos informados e tente novamente."
+    if status_code is not None and status_code >= 500:
+        return "A API encontrou um erro interno durante a operação."
+    return "A API não conseguiu concluir a operação. Tente novamente."
 
 
 def _response_detail(response: requests.Response | None) -> str | None:

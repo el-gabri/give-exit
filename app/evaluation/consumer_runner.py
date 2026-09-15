@@ -122,52 +122,63 @@ def normalize_consumer_retrieval_hit(value: object) -> ConsumerLegalRetrievalHit
     if isinstance(value, ConsumerLegalRetrievalHit):
         return value
     if isinstance(value, str):
-        stable_id = value.strip().lower()
-        article_id = _article_id_from_stable_id(stable_id)
-        unit_id = stable_id if stable_id != article_id else None
-        return ConsumerLegalRetrievalHit(
-            provision_id=article_id,
-            unit_id=unit_id,
-            status="unknown",
-        )
+        return _hit_from_stable_id(value)
 
     direct = _mapping_from(value)
     chunk_value = direct.get("chunk") if direct else getattr(value, "chunk", None)
     chunk = _mapping_from(chunk_value)
-    metadata_value = (
+    metadata = _mapping_from(
         direct.get("metadata") or chunk.get("metadata") or getattr(chunk_value, "metadata", None)
     )
-    metadata = _mapping_from(metadata_value)
+    sources = (direct, metadata, value, chunk_value)
 
-    def pick(name: str) -> object | None:
-        if name in direct:
-            return direct[name]
-        if name in metadata:
-            return metadata[name]
-        if hasattr(value, name):
-            return cast(object, getattr(value, name))
-        if hasattr(chunk_value, name):
-            return cast(object, getattr(chunk_value, name))
-        return None
-
-    provision_value = pick("provision_id")
-    unit_value = pick("unit_id")
+    provision_value = _pick("provision_id", *sources)
+    unit_value = _pick("unit_id", *sources)
     if provision_value is None:
-        chunk_id = pick("chunk_id")
+        chunk_id = _pick("chunk_id", *sources)
         if chunk_id is not None and _string_value(chunk_id).startswith("br-"):
             unit_value = chunk_id
             provision_value = _article_id_from_stable_id(_string_value(chunk_id))
     if provision_value is None:
         raise ValueError("retrieval hit needs provision_id in the hit or chunk metadata")
 
-    score_value = pick("score")
-    status_value = pick("status")
+    score_value = _pick("score", *sources)
+    status_value = _pick("status", *sources)
     return ConsumerLegalRetrievalHit(
         provision_id=_string_value(provision_value),
         unit_id=_string_value(unit_value) if unit_value is not None else None,
         score=float(_string_value(score_value)) if score_value is not None else 0.0,
         status=_string_value(status_value, "unknown"),
     )
+
+
+def _hit_from_stable_id(value: str) -> ConsumerLegalRetrievalHit:
+    stable_id = value.strip().lower()
+    article_id = _article_id_from_stable_id(stable_id)
+    return ConsumerLegalRetrievalHit(
+        provision_id=article_id,
+        unit_id=stable_id if stable_id != article_id else None,
+        status="unknown",
+    )
+
+
+def _pick(
+    name: str,
+    direct: Mapping[str, object],
+    metadata: Mapping[str, object],
+    value: object,
+    chunk_value: object,
+) -> object | None:
+    """A hit field from the mapping, its chunk metadata, or the hit or chunk object."""
+    if name in direct:
+        return direct[name]
+    if name in metadata:
+        return metadata[name]
+    if hasattr(value, name):
+        return cast(object, getattr(value, name))
+    if hasattr(chunk_value, name):
+        return cast(object, getattr(chunk_value, name))
+    return None
 
 
 def _normalize_hits(value: object) -> list[ConsumerLegalRetrievalHit]:

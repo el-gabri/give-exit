@@ -26,6 +26,13 @@ from app.llm.base import (
 )
 
 PROVIDER_NAME = "mock"
+# Placeholders for scalar annotations, matched by identity (bool is not int).
+_SCALAR_PLACEHOLDERS: tuple[tuple[type, object], ...] = (
+    (str, "[mock]"),
+    (int, 0),
+    (float, 0.0),
+    (bool, False),
+)
 
 
 class MockLLMClient:
@@ -98,7 +105,7 @@ def synthesize_instance(schema: type[SchemaT]) -> SchemaT:
     return schema(**values)
 
 
-def _placeholder_for(annotation: Any) -> Any:  # noqa: PLR0911
+def _placeholder_for(annotation: Any) -> Any:
     """Return a type-appropriate placeholder for a field annotation."""
     origin = typing.get_origin(annotation)
     args = typing.get_args(annotation)
@@ -110,17 +117,12 @@ def _placeholder_for(annotation: Any) -> Any:  # noqa: PLR0911
             return None
         return _placeholder_for(args[0])
     if origin in (list, set, tuple):
-        return origin() if origin is not tuple else ()
+        return origin()
     if origin is dict:
         return {}
-    if annotation is str:
-        return "[mock]"
-    if annotation is int:
-        return 0
-    if annotation is float:
-        return 0.0
-    if annotation is bool:
-        return False
+    for scalar, placeholder in _SCALAR_PLACEHOLDERS:
+        if annotation is scalar:
+            return placeholder
     if isinstance(annotation, type) and issubclass(annotation, Enum):
         return next(iter(annotation))
     if isinstance(annotation, type) and issubclass(annotation, BaseModel):

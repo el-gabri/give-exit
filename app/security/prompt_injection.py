@@ -335,77 +335,31 @@ class PromptInjectionDetector:
         semantic_reviewed = False
         semantic_meta: LLMCallMetadata | None = None
         warnings: list[str] = []
-        scan_complete = True
         trace_error: str | None = None
+        batches, budget_failure = self._review_batches(document, findings)
+        scan_complete = budget_failure is None
+        if budget_failure is not None:
+            trace_error, budget_warning = budget_failure
+            warnings.append(budget_warning)
 
-        candidates: list[tuple[int, str]] = []
-        review_batches: list[list[tuple[int, str]]] = []
-        if self._mode is PromptInjectionScanMode.BALANCED:
-            candidates = _semantic_candidates(document, findings)
-        elif self._mode is PromptInjectionScanMode.STRICT:
-            document_chars = sum(len(page.text) for page in document.pages)
-            if document_chars > self._strict_max_chars:
+        if batches:
+            findings, semantic_meta, review_error = await self._review_semantically(
+                document, batches, findings
+            )
+            if review_error is None:
+                semantic_reviewed = True
+            elif self._mode is PromptInjectionScanMode.STRICT:
                 scan_complete = False
-                trace_error = (
-                    f"strict character budget exceeded: {document_chars} > "
-                    f"{self._strict_max_chars}"
-                )
+                trace_error = f"{type(review_error).__name__}: {review_error}"
                 warnings.append(
-                    "A revisao semantica integral excedeu o limite configurado "
-                    "de caracteres; o modo strict bloqueou a analise automatizada."
+                    "A revisao semantica integral de seguranca falhou; o modo "
+                    "strict bloqueou a analise automatizada."
                 )
             else:
-                candidates = _all_semantic_candidates(document)
-
-        if candidates:
-            review_batches = _candidate_batches(candidates)
-            if (
-                self._mode is PromptInjectionScanMode.STRICT
-                and len(review_batches) > self._strict_max_batches
-            ):
-                scan_complete = False
-                trace_error = (
-                    f"strict batch budget exceeded: {len(review_batches)} > "
-                    f"{self._strict_max_batches}"
-                )
                 warnings.append(
-                    "A revisao semantica integral excedeu o limite configurado "
-                    "de chamadas; o modo strict bloqueou a analise automatizada."
+                    "A revisao semantica de seguranca falhou; a decisao usa "
+                    "apenas a varredura deterministica completa."
                 )
-                candidates = []
-
-        if candidates:
-            semantic_findings: list[PromptInjectionFinding] = []
-            semantic_metadata: list[LLMCallMetadata] = []
-            try:
-                for batch in review_batches:
-                    batch_findings, batch_meta = await self._semantic_review(
-                        document, batch
-                    )
-                    semantic_findings.extend(batch_findings)
-                    semantic_metadata.append(batch_meta)
-                findings = _deduplicate_findings([*findings, *semantic_findings])
-                semantic_meta = _aggregate_metadata(semantic_metadata)
-                semantic_reviewed = True
-            except Exception as exc:
-                findings = _deduplicate_findings([*findings, *semantic_findings])
-                semantic_meta = _aggregate_metadata(semantic_metadata)
-                logger.warning(
-                    "prompt_injection_semantic_review_failed",
-                    error_type=type(exc).__name__,
-                )
-                if self._mode is PromptInjectionScanMode.STRICT:
-                    scan_complete = False
-                    trace_error = f"{type(exc).__name__}: {exc}"
-                    warnings.append(
-                        "A revisao semantica integral de seguranca falhou; o modo "
-                        "strict bloqueou a analise automatizada."
-                    )
-                else:
-                    warnings.append(
-                        "A revisao semantica de seguranca falhou; a decisao usa "
-                        "apenas a varredura deterministica completa."
-                    )
         elif self._mode is PromptInjectionScanMode.STRICT and scan_complete:
             semantic_reviewed = True
 
@@ -425,6 +379,62 @@ class PromptInjectionDetector:
             error=trace_error,
         )
         return assessment, trace
+
+    def _review_batches(
+        self, document: ParsedDocument, findings: list[PromptInjectionFinding]
+    ) -> tuple[list[list[tuple[int, str]]], tuple[str, str] | None]:
+        """Passages for the semantic reviewer, or why strict mode cannot send them.
+
+        A budget failure is the trace error paired with the consumer's warning.
+        """
+        if self._mode is PromptInjectionScanMode.BALANCED:
+            return _candidate_batches(_semantic_candidates(document, findings)), None
+        if self._mode is not PromptInjectionScanMode.STRICT:
+            return [], None
+        document_chars = sum(len(page.text) for page in document.pages)
+        if document_chars > self._strict_max_chars:
+            return [], (
+                f"strict character budget exceeded: {document_chars} > "
+                f"{self._strict_max_chars}",
+                "A revisao semantica integral excedeu o limite configurado "
+                "de caracteres; o modo strict bloqueou a analise automatizada.",
+            )
+        batches = _candidate_batches(_all_semantic_candidates(document))
+        if len(batches) > self._strict_max_batches:
+            return [], (
+                f"strict batch budget exceeded: {len(batches)} > "
+                f"{self._strict_max_batches}",
+                "A revisao semantica integral excedeu o limite configurado "
+                "de chamadas; o modo strict bloqueou a analise automatizada.",
+            )
+        return batches, None
+
+    async def _review_semantically(
+        self,
+        document: ParsedDocument,
+        batches: list[list[tuple[int, str]]],
+        findings: list[PromptInjectionFinding],
+    ) -> tuple[list[PromptInjectionFinding], LLMCallMetadata | None, Exception | None]:
+        """Add the reviewer's findings batch by batch, keeping what arrived on failure."""
+        semantic_findings: list[PromptInjectionFinding] = []
+        semantic_metadata: list[LLMCallMetadata] = []
+        review_error: Exception | None = None
+        try:
+            for batch in batches:
+                batch_findings, batch_meta = await self._semantic_review(document, batch)
+                semantic_findings.extend(batch_findings)
+                semantic_metadata.append(batch_meta)
+        except Exception as exc:
+            logger.warning(
+                "prompt_injection_semantic_review_failed",
+                error_type=type(exc).__name__,
+            )
+            review_error = exc
+        return (
+            _deduplicate_findings([*findings, *semantic_findings]),
+            _aggregate_metadata(semantic_metadata),
+            review_error,
+        )
 
     async def _semantic_review(
         self, document: ParsedDocument, candidates: list[tuple[int, str]]
@@ -810,35 +820,8 @@ def _semantic_candidates(
 
     by_page: dict[int, list[str]] = {}
     for page in document.pages:
-        passages = [
-            match.group(0).strip()
-            for match in re.finditer(r"[^.!?;]+[.!?;]?", page.text)
-            if match.group(0).strip()
-        ]
-        for passage in passages:
-            canonical, positions = _canonical_with_positions(passage)
-            control_match = _CONTROL_TERMS.search(canonical)
-            target_match = _AI_TARGET_TERMS.search(canonical)
-            marker_match = _PROMPT_MARKERS.search(canonical)
-            self_reference_match = _SELF_REFERENCE_CUES.search(canonical)
-            focus_matches = [
-                match
-                for match in (
-                    control_match,
-                    target_match,
-                    marker_match,
-                    self_reference_match,
-                )
-                if match is not None
-            ]
-            if (control_match and target_match) or marker_match or self_reference_match:
-                focus_start = min(match.start() for match in focus_matches)
-                focus_end = max(match.end() for match in focus_matches)
-                source_start = positions[focus_start]
-                source_end = positions[focus_end - 1] + 1
-                by_page.setdefault(page.number, []).append(
-                    _focused_passage(passage, source_start, source_end)
-                )
+        if passages := _focus_passages(page.text):
+            by_page.setdefault(page.number, []).extend(passages)
 
     # Round-robin: every page contributes its first candidate before any page
     # contributes its second, so no single page can consume the whole budget.
@@ -850,6 +833,31 @@ def _semantic_candidates(
         if len(candidates) >= MAX_CANDIDATES:
             break
     return candidates
+
+
+def _focus_passages(text: str) -> list[str]:
+    """Sentences that address the AI, each trimmed around the words that do."""
+    focused: list[str] = []
+    for sentence in re.finditer(r"[^.!?;]+[.!?;]?", text):
+        passage = sentence.group(0).strip()
+        if not passage:
+            continue
+        canonical, positions = _canonical_with_positions(passage)
+        control_match = _CONTROL_TERMS.search(canonical)
+        target_match = _AI_TARGET_TERMS.search(canonical)
+        marker_match = _PROMPT_MARKERS.search(canonical)
+        self_reference_match = _SELF_REFERENCE_CUES.search(canonical)
+        if not ((control_match and target_match) or marker_match or self_reference_match):
+            continue
+        focus_matches = [
+            match
+            for match in (control_match, target_match, marker_match, self_reference_match)
+            if match is not None
+        ]
+        source_start = positions[min(match.start() for match in focus_matches)]
+        source_end = positions[max(match.end() for match in focus_matches) - 1] + 1
+        focused.append(_focused_passage(passage, source_start, source_end))
+    return focused
 
 
 def _focused_passage(text: str, focus_start: int, focus_end: int) -> str:
