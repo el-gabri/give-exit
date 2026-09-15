@@ -48,14 +48,27 @@ OFFICIAL_LEGAL_HOSTS = {
 _MARKDOWN_LINK_RE = re.compile(r"(\[[^\]\n]*\])\(([^)\s]+)\)")
 _MARKDOWN_LITERAL_RE = re.compile(r"([\\`*_\[\]])")
 
-CONSUMER_STATE_KEYS = (
-    "consumer_case_id",
-    "consumer_case_token",
-    "consumer_case",
-    "consumer_notice",
-    "consumer_facts_synced_at",
-    "consumer_flash",
-    "consumer_upload_generation",
+_STATE_DEFAULTS: dict[str, Any] = {
+    "consumer_case_id": None,
+    "consumer_case_token": None,
+    "consumer_case": None,
+    "consumer_notice": None,
+    "consumer_facts_synced_at": None,
+    "consumer_flash": None,
+    "consumer_upload_generation": 0,
+}
+CONSUMER_STATE_KEYS = tuple(_STATE_DEFAULTS)
+
+# (label, extension, MIME type, icon) of each notice download, in button order.
+_NOTICE_DOWNLOADS = (
+    ("Baixar Markdown", "md", "text/markdown", ":material/download:"),
+    ("Baixar PDF", "pdf", "application/pdf", ":material/picture_as_pdf:"),
+    (
+        "Baixar DOCX",
+        "docx",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        ":material/description:",
+    ),
 )
 
 
@@ -109,13 +122,8 @@ def render_consumer_app(api_url: str, api_key: str | None = None) -> None:
 
 
 def _initialize_state() -> None:
-    st.session_state.setdefault("consumer_case_id", None)
-    st.session_state.setdefault("consumer_case_token", None)
-    st.session_state.setdefault("consumer_case", None)
-    st.session_state.setdefault("consumer_notice", None)
-    st.session_state.setdefault("consumer_facts_synced_at", None)
-    st.session_state.setdefault("consumer_flash", None)
-    st.session_state.setdefault("consumer_upload_generation", 0)
+    for key, value in _STATE_DEFAULTS.items():
+        st.session_state.setdefault(key, value)
 
 
 def _has_case_credentials() -> bool:
@@ -525,24 +533,6 @@ def _render_facts_form(
 
 def _sync_fact_widgets(case: dict[str, Any], facts: dict[str, Any]) -> None:
     version = case.get("updated_at") or repr(sorted(facts.items()))
-    required_widget_keys = {
-        "consumer_fact_consumer_name",
-        "consumer_fact_bank_name",
-        "consumer_fact_complaint_summary",
-        "consumer_fact_incident_date_or_period",
-        "consumer_fact_prior_protocols",
-        "consumer_fact_direct_loss_amount",
-        "consumer_fact_improper_payment_amount",
-        "consumer_fact_article_42_double_repayment_requested",
-        "consumer_fact_unsuccessful_scenario_cost_amount",
-        "consumer_fact_desired_resolution",
-        "consumer_fact_response_deadline_business_days",
-        "consumer_fact_confirmed",
-    }
-    if st.session_state.get(
-        "consumer_facts_synced_at"
-    ) == version and required_widget_keys.issubset(st.session_state):
-        return
     values = {
         "consumer_fact_consumer_name": facts.get("consumer_name") or "",
         "consumer_fact_bank_name": facts.get("bank_name") or "",
@@ -565,6 +555,10 @@ def _sync_fact_widgets(case: dict[str, Any], facts: dict[str, Any]) -> None:
         ),
         "consumer_fact_confirmed": bool(case.get("facts_confirmed")),
     }
+    if st.session_state.get("consumer_facts_synced_at") == version and set(values).issubset(
+        st.session_state
+    ):
+        return
     for key, value in values.items():
         st.session_state[key] = value
     st.session_state.consumer_facts_synced_at = version
@@ -618,7 +612,17 @@ def _render_evidence_section(
     if not uploads:
         st.warning("Selecione ao menos um arquivo PDF, PNG ou JPG.")
         return
+    _analyze_uploads(client, case_id, token, case, uploads)
 
+
+def _analyze_uploads(
+    client: ConsumerApiClient,
+    case_id: str,
+    token: str,
+    case: dict[str, Any],
+    uploads: list[Any],
+) -> None:
+    """Send every selected file, report the failures, then refresh the case."""
     failures: list[str] = []
     latest_case = case
     with st.status("Analisando documentos…", expanded=True) as status:
@@ -688,20 +692,7 @@ def _render_monetary_candidate_confirmation(
     token: str,
     case: dict[str, Any],
 ) -> None:
-    candidates: dict[str, dict[str, Any]] = {}
-    for document in case.get("documents") or []:
-        if not isinstance(document, dict):
-            continue
-        for reference in document.get("monetary_references") or []:
-            if not isinstance(reference, dict):
-                continue
-            reference_id = str(reference.get("reference_id") or "")
-            if not reference_id:
-                continue
-            candidates[reference_id] = {
-                **reference,
-                "filename": document.get("filename") or "Documento",
-            }
+    candidates = _monetary_candidates(case)
     if not candidates:
         return
 
@@ -766,6 +757,25 @@ def _render_monetary_candidate_confirmation(
         "Valor documentado registrado. Revise e confirme os fatos antes de gerar.",
     )
     st.rerun()
+
+
+def _monetary_candidates(case: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """Evidence amounts the consumer may confirm, keyed by reference id."""
+    candidates: dict[str, dict[str, Any]] = {}
+    for document in case.get("documents") or []:
+        if not isinstance(document, dict):
+            continue
+        for reference in document.get("monetary_references") or []:
+            if not isinstance(reference, dict):
+                continue
+            reference_id = str(reference.get("reference_id") or "")
+            if not reference_id:
+                continue
+            candidates[reference_id] = {
+                **reference,
+                "filename": document.get("filename") or "Documento",
+            }
+    return candidates
 
 
 def _monetary_candidate_label(candidate: dict[str, Any]) -> str:
@@ -882,37 +892,19 @@ def _render_notice(
         "do atendimento não é colocado na URL."
     )
     short_id = case_id[:8]
-    markdown_column, pdf_column, docx_column = st.columns(3)
-    markdown_column.download_button(
-        "Baixar Markdown",
-        data=lambda: client.download_notice(case_id, token, "md"),
-        file_name=f"notificacao_{short_id}.md",
-        mime="text/markdown",
-        icon=":material/download:",
-        width="stretch",
-        on_click="ignore",
-        key=f"consumer_download_md_{short_id}",
-    )
-    pdf_column.download_button(
-        "Baixar PDF",
-        data=lambda: client.download_notice(case_id, token, "pdf"),
-        file_name=f"notificacao_{short_id}.pdf",
-        mime="application/pdf",
-        icon=":material/picture_as_pdf:",
-        width="stretch",
-        on_click="ignore",
-        key=f"consumer_download_pdf_{short_id}",
-    )
-    docx_column.download_button(
-        "Baixar DOCX",
-        data=lambda: client.download_notice(case_id, token, "docx"),
-        file_name=f"notificacao_{short_id}.docx",
-        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        icon=":material/description:",
-        width="stretch",
-        on_click="ignore",
-        key=f"consumer_download_docx_{short_id}",
-    )
+    for column, (label, extension, mime, icon) in zip(
+        st.columns(3), _NOTICE_DOWNLOADS, strict=True
+    ):
+        column.download_button(
+            label,
+            data=lambda extension=extension: client.download_notice(case_id, token, extension),
+            file_name=f"notificacao_{short_id}.{extension}",
+            mime=mime,
+            icon=icon,
+            width="stretch",
+            on_click="ignore",
+            key=f"consumer_download_{extension}_{short_id}",
+        )
 
 
 def _render_legal_grounds(grounds: Iterable[Any]) -> None:
@@ -921,35 +913,7 @@ def _render_legal_grounds(grounds: Iterable[Any]) -> None:
         if not isinstance(ground, dict):
             continue
         rendered = True
-        authority = ground.get("authority")
-        if not isinstance(authority, dict):
-            authority = ground
-        source = authority.get("source_name") or authority.get("source") or "Base legal"
-        article = authority.get("article") or authority.get("provision_id") or ""
-        with st.container(border=True):
-            st.markdown(f"**{source} · {article}**")
-            if summary := authority.get("summary"):
-                st.write(summary)
-            application = ground.get("application_to_facts") or ground.get("application")
-            if application:
-                st.markdown("**Aplicação ao relato**")
-                st.write(application)
-            details = []
-            if authority.get("retrieval_rank") is not None:
-                details.append(f"rank {authority['retrieval_rank']}")
-            if authority.get("retrieval_score") is not None:
-                details.append(f"score {float(authority['retrieval_score']):.4f}")
-            if authority.get("chunk_id"):
-                details.append(f"chunk {authority['chunk_id']}")
-            if details:
-                st.caption(" · ".join(details))
-            official_url = str(authority.get("official_url") or "")
-            if _is_official_legal_url(official_url):
-                st.link_button(
-                    "Abrir fonte oficial",
-                    official_url,
-                    icon=":material/open_in_new:",
-                )
+        _render_legal_ground(ground)
     if not rendered:
         st.info("Nenhum fundamento legal foi vinculado ao rascunho.")
     else:
@@ -957,6 +921,38 @@ def _render_legal_grounds(grounds: Iterable[Any]) -> None:
             "Os textos exibidos são resumos referenciais. Confira a redação vigente "
             "nos links oficiais antes do envio."
         )
+
+
+def _render_legal_ground(ground: dict[str, Any]) -> None:
+    authority = ground.get("authority")
+    if not isinstance(authority, dict):
+        authority = ground
+    source = authority.get("source_name") or authority.get("source") or "Base legal"
+    article = authority.get("article") or authority.get("provision_id") or ""
+    with st.container(border=True):
+        st.markdown(f"**{source} · {article}**")
+        if summary := authority.get("summary"):
+            st.write(summary)
+        application = ground.get("application_to_facts") or ground.get("application")
+        if application:
+            st.markdown("**Aplicação ao relato**")
+            st.write(application)
+        details = []
+        if authority.get("retrieval_rank") is not None:
+            details.append(f"rank {authority['retrieval_rank']}")
+        if authority.get("retrieval_score") is not None:
+            details.append(f"score {float(authority['retrieval_score']):.4f}")
+        if authority.get("chunk_id"):
+            details.append(f"chunk {authority['chunk_id']}")
+        if details:
+            st.caption(" · ".join(details))
+        official_url = str(authority.get("official_url") or "")
+        if _is_official_legal_url(official_url):
+            st.link_button(
+                "Abrir fonte oficial",
+                official_url,
+                icon=":material/open_in_new:",
+            )
 
 
 def _render_evidence_references(references: Iterable[Any]) -> None:
@@ -992,6 +988,31 @@ def _render_settlement_scenario(scenario: dict[str, Any]) -> None:
         st.info("Não foi calculado um cenário financeiro para este caso.")
         return
 
+    _render_settlement_metrics(scenario)
+    st.warning(
+        "O cenário usa somente valores confirmados e acréscimos legais explicitamente "
+        "condicionados. Não calcula probabilidade de êxito, valor esperado ou indenização."
+    )
+    amount_rows = _amount_rows(scenario)
+    if amount_rows:
+        st.table(amount_rows)
+    source_rows = _financial_source_rows(scenario)
+    if source_rows:
+        with st.expander("Origem dos valores usados no cálculo"):
+            st.caption("Cada componente mostra o fato confirmado ou o documento que o sustenta.")
+            st.dataframe(source_rows, hide_index=True, width="stretch")
+
+    if assumption := scenario.get("article_42_assumption"):
+        st.caption(str(assumption))
+    if methodology := scenario.get("methodology"):
+        _render_bullet_list("**Como foi calculado**", _as_text_list(methodology))
+    if caveats := _as_text_list(scenario.get("caveats")):
+        _render_bullet_list("**Limitações**", caveats)
+    if calculation_hash := scenario.get("calculation_sha256"):
+        st.caption(f"SHA-256 do cálculo: `{calculation_hash}`")
+
+
+def _render_settlement_metrics(scenario: dict[str, Any]) -> None:
     proposed = _number(
         scenario,
         "public_proposal_amount",
@@ -1016,11 +1037,9 @@ def _render_settlement_scenario(scenario: dict[str, Any]) -> None:
     if downside:
         st.caption(f"Custo explícito informado para o cenário sem acordo: {_format_brl(downside)}.")
 
-    st.warning(
-        "O cenário usa somente valores confirmados e acréscimos legais explicitamente "
-        "condicionados. Não calcula probabilidade de êxito, valor esperado ou indenização."
-    )
-    amount_rows = []
+
+def _amount_rows(scenario: dict[str, Any]) -> list[dict[str, str]]:
+    rows = []
     for label, key in (
         ("Prejuízo direto confirmado", "direct_loss_amount"),
         ("Valor pago em cobrança contestada", "improper_payment_amount"),
@@ -1030,29 +1049,14 @@ def _render_settlement_scenario(scenario: dict[str, Any]) -> None:
     ):
         value = _number(scenario, key)
         if value is not None:
-            amount_rows.append({"Componente": label, "Valor": _format_brl(value)})
-    if amount_rows:
-        st.table(amount_rows)
-    source_rows = _financial_source_rows(scenario)
-    if source_rows:
-        with st.expander("Origem dos valores usados no cálculo"):
-            st.caption("Cada componente mostra o fato confirmado ou o documento que o sustenta.")
-            st.dataframe(source_rows, hide_index=True, width="stretch")
+            rows.append({"Componente": label, "Valor": _format_brl(value)})
+    return rows
 
-    if assumption := scenario.get("article_42_assumption"):
-        st.caption(str(assumption))
-    methodology = scenario.get("methodology")
-    if methodology:
-        st.markdown("**Como foi calculado**")
-        for item in _as_text_list(methodology):
-            st.markdown(f"- {item}")
-    caveats = _as_text_list(scenario.get("caveats"))
-    if caveats:
-        st.markdown("**Limitações**")
-        for item in caveats:
-            st.markdown(f"- {item}")
-    if calculation_hash := scenario.get("calculation_sha256"):
-        st.caption(f"SHA-256 do cálculo: `{calculation_hash}`")
+
+def _render_bullet_list(title: str, items: list[str]) -> None:
+    st.markdown(title)
+    for item in items:
+        st.markdown(f"- {item}")
 
 
 def _financial_source_rows(scenario: dict[str, Any]) -> list[dict[str, Any]]:
