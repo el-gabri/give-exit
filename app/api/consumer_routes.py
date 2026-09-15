@@ -4,13 +4,12 @@ from __future__ import annotations
 
 import asyncio
 import uuid
-from collections.abc import Callable
 from decimal import Decimal
 from pathlib import Path
-from typing import Annotated, TypeVar
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, UploadFile
-from fastapi.responses import PlainTextResponse, Response
+from fastapi.responses import JSONResponse, PlainTextResponse, Response
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.api.security import (
@@ -29,16 +28,14 @@ from app.consumer.service import (
     ConsumerCaseNotReadyError,
     ConsumerCaseService,
     ConsumerEvidenceLimitError,
-    ConsumerLegalCorpusNotReadyError,
     ConsumerRetrievalError,
 )
-from app.consumer.store import ConsumerCaseCapacityError, ConsumerCaseNotFoundError
+from app.consumer.store import ConsumerCaseCapacityError
 from app.ingestion.service import DocumentTextUnavailableError
 from app.reporting.convert import render_docx, render_pdf
 from app.schemas.trace import RetrievalTrace
 
 router = APIRouter(prefix="/consumer", tags=["consumer"])
-ResultT = TypeVar("ResultT")
 
 EVIDENCE_MEDIA_TYPES = {
     ".pdf": "application/pdf",
@@ -124,6 +121,16 @@ CaseToken = Annotated[
 ]
 
 
+async def consumer_case_not_found(request: Request, exc: Exception) -> JSONResponse:
+    """One 404 for unknown cases and wrong tokens, from every consumer route.
+
+    Registered on the application for ``ConsumerCaseNotFoundError``, so a route
+    never has to translate it and case-id enumeration learns nothing.
+    """
+    del request, exc
+    return JSONResponse(status_code=404, content={"detail": "Consumer case not found"})
+
+
 @router.post(
     "/cases",
     response_model=ConsumerCaseCreated,
@@ -153,7 +160,7 @@ async def create_consumer_case(service: ConsumerServiceDep) -> ConsumerCaseCreat
 async def get_consumer_case(
     case_id: str, token: CaseToken, service: ConsumerServiceDep
 ) -> ConsumerCaseSnapshot:
-    return _authorized(lambda: service.get_case(case_id, token))
+    return service.get_case(case_id, token)
 
 
 @router.post(
@@ -167,13 +174,11 @@ async def add_consumer_message(
     token: CaseToken,
     service: ConsumerServiceDep,
 ) -> ConsumerChatTurn:
-    snapshot, assistant = _authorized(
-        lambda: service.add_message(
-            case_id,
-            token,
-            payload.text,
-            client_message_id=payload.client_message_id,
-        )
+    snapshot, assistant = service.add_message(
+        case_id,
+        token,
+        payload.text,
+        client_message_id=payload.client_message_id,
     )
     return ConsumerChatTurn(case=snapshot, assistant_message=assistant)
 
@@ -188,9 +193,7 @@ async def update_consumer_facts(
     values = payload.model_dump(exclude_unset=True)
     confirmed = values.pop("facts_confirmed", None)
     try:
-        return _authorized(
-            lambda: service.update_facts(case_id, token, values, facts_confirmed=confirmed)
-        )
+        return service.update_facts(case_id, token, values, facts_confirmed=confirmed)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
@@ -218,7 +221,7 @@ async def add_consumer_document(
             detail="Formato não suportado. Envie um arquivo PDF, PNG ou JPG.",
         )
 
-    _authorized(lambda: service.get_case(case_id, token))
+    service.get_case(case_id, token)
     await asyncio.to_thread(uploads_dir.mkdir, parents=True, exist_ok=True)
     upload_path = uploads_dir / f"{uuid.uuid4().hex}{suffix}"
     try:
@@ -239,8 +242,6 @@ async def add_consumer_document(
             path=upload_path,
             media_type=media_type,
         )
-    except ConsumerCaseNotFoundError as exc:
-        raise HTTPException(status_code=404, detail="Consumer case not found") from exc
     except UploadTooLargeError as exc:
         raise HTTPException(
             status_code=413,
@@ -277,15 +278,11 @@ async def generate_consumer_notice(
 ) -> ConsumerNotice:
     try:
         return await service.generate_notice(case_id, token)
-    except ConsumerCaseNotFoundError as exc:
-        raise HTTPException(status_code=404, detail="Consumer case not found") from exc
     except ConsumerCaseNotReadyError as exc:
         raise HTTPException(
             status_code=409,
             detail={"message": "Consumer case is not ready", "missing": exc.missing},
         ) from exc
-    except ConsumerLegalCorpusNotReadyError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
     except ConsumerRetrievalError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
@@ -296,8 +293,6 @@ async def get_consumer_notice(
 ) -> ConsumerNotice:
     try:
         return service.get_notice(case_id, token)
-    except ConsumerCaseNotFoundError as exc:
-        raise HTTPException(status_code=404, detail="Consumer case not found") from exc
     except ConsumerCaseNotReadyError as exc:
         raise HTTPException(status_code=404, detail="Notice not found") from exc
 
@@ -321,10 +316,11 @@ async def get_consumer_notice_pdf(
     case_id: str, token: CaseToken, service: ConsumerServiceDep
 ) -> Response:
     notice = await get_consumer_notice(case_id, token, service)
-    return Response(
-        content=await asyncio.to_thread(render_pdf, notice.full_text),
+    return _notice_attachment(
+        case_id,
+        await asyncio.to_thread(render_pdf, notice.full_text),
+        extension="pdf",
         media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="notificacao_{case_id}.pdf"'},
     )
 
 
@@ -333,10 +329,11 @@ async def get_consumer_notice_docx(
     case_id: str, token: CaseToken, service: ConsumerServiceDep
 ) -> Response:
     notice = await get_consumer_notice(case_id, token, service)
-    return Response(
-        content=await asyncio.to_thread(render_docx, notice.full_text),
-        media_type=("application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
-        headers={"Content-Disposition": f'attachment; filename="notificacao_{case_id}.docx"'},
+    return _notice_attachment(
+        case_id,
+        await asyncio.to_thread(render_docx, notice.full_text),
+        extension="docx",
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     )
 
 
@@ -344,15 +341,17 @@ async def get_consumer_notice_docx(
 async def delete_consumer_case(
     case_id: str, token: CaseToken, service: ConsumerServiceDep
 ) -> Response:
-    try:
-        await service.delete_case(case_id, token)
-    except ConsumerCaseNotFoundError as exc:
-        raise HTTPException(status_code=404, detail="Consumer case not found") from exc
+    await service.delete_case(case_id, token)
     return Response(status_code=204)
 
 
-def _authorized(operation: Callable[[], ResultT]) -> ResultT:
-    try:
-        return operation()
-    except ConsumerCaseNotFoundError as exc:
-        raise HTTPException(status_code=404, detail="Consumer case not found") from exc
+def _notice_attachment(
+    case_id: str, content: bytes, *, extension: str, media_type: str
+) -> Response:
+    return Response(
+        content=content,
+        media_type=media_type,
+        headers={
+            "Content-Disposition": f'attachment; filename="notificacao_{case_id}.{extension}"'
+        },
+    )

@@ -16,6 +16,7 @@ from contextlib import asynccontextmanager
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.consumer_routes import consumer_case_not_found
 from app.api.consumer_routes import router as consumer_router
 from app.api.routes import router as system_router
 from app.api.security import (
@@ -28,7 +29,7 @@ from app.api.security import (
 from app.consumer.composer import create_notice_composer
 from app.consumer.runtime import create_consumer_rag
 from app.consumer.service import ConsumerCaseService
-from app.consumer.store import ConsumerCaseStore
+from app.consumer.store import ConsumerCaseNotFoundError, ConsumerCaseStore
 from app.core.config import Settings, get_settings
 from app.core.logging import configure_logging, get_logger
 from app.ingestion.ocr import create_default_ocr_engine
@@ -145,6 +146,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     app.include_router(system_router)
     app.include_router(consumer_router)
+    app.add_exception_handler(ConsumerCaseNotFoundError, consumer_case_not_found)
     return app
 
 
