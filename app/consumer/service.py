@@ -113,6 +113,10 @@ class ConsumerEvidenceLimitError(ValueError):
         super().__init__(f"a consumer case accepts at most {limit} evidence documents")
 
 
+class ConsumerPromptNoticeError(ValueError):
+    """One-shot prompt notice rejected for a client-correctable reason."""
+
+
 class ConsumerCaseService:
     def __init__(
         self,
@@ -346,29 +350,120 @@ class ConsumerCaseService:
         async with record.mutation_lock:
             return await self._generate_notice(record)
 
-    async def _generate_notice(self, record: ConsumerCaseRecord) -> ConsumerNotice:
+    async def generate_notice_from_prompt(
+        self,
+        text: str,
+        *,
+        upload_path: Path | None = None,
+        filename: str | None = None,
+        media_type: str | None = None,
+    ) -> str:
+        """One-shot notice from free text and an optional evidence file.
+
+        Creates an ephemeral case, synthesizes the structured facts the
+        legacy renderer still needs, generates Markdown, then deletes the case.
+        """
+        normalized = " ".join(text.split())
+        if not normalized:
+            raise ConsumerPromptNoticeError("O texto da solicitação não pode estar vazio.")
+        if not is_consumer_scope(complaint=normalized):
+            raise ConsumerPromptNoticeError(
+                "O relato não caracteriza relação de consumo elegível para este rascunho."
+            )
+        if (upload_path is None) != (filename is None) or (upload_path is None) != (
+            media_type is None
+        ):
+            raise ValueError("upload_path, filename and media_type must be provided together")
+
+        snapshot, token, _ = self.create_case()
+        case_id = snapshot.case_id
+        try:
+            record = self._store.get_authorized(case_id, token)
+            record.facts = _facts_from_prompt(normalized)
+            record.facts_confirmed = True
+            record.touch()
+
+            if upload_path is not None:
+                assert filename is not None and media_type is not None
+                _, document = await self.add_document(
+                    case_id,
+                    token,
+                    filename=filename,
+                    path=upload_path,
+                    media_type=media_type,
+                )
+                record = self._store.get_authorized(case_id, token)
+                # add_document clears confirmation; one-shot treats the request
+                # itself as confirmation from the integrating client.
+                record.facts_confirmed = True
+                if document.status in {
+                    EvidenceStatus.BLOCKED,
+                    EvidenceStatus.REVIEW_REQUIRED,
+                } or not self._has_accepted_evidence(record):
+                    raise ConsumerPromptNoticeError(
+                        "O anexo não pôde ser usado automaticamente. "
+                        "Envie um PDF, PNG ou JPG legível sem instruções dirigidas à IA."
+                    )
+
+            require_evidence = self._has_accepted_evidence(record)
+            async with record.mutation_lock:
+                notice = await self._generate_notice(
+                    record,
+                    require_evidence=require_evidence,
+                    enforce_readiness=False,
+                )
+            return notice.full_text
+        finally:
+            await self.delete_case(case_id, token)
+
+    async def _generate_notice(
+        self,
+        record: ConsumerCaseRecord,
+        *,
+        require_evidence: bool = True,
+        enforce_readiness: bool = True,
+    ) -> ConsumerNotice:
         generation_started = perf_counter()
-        missing = self._readiness_missing(record)
-        if missing:
-            raise ConsumerCaseNotReadyError(missing)
+        if enforce_readiness:
+            missing = self._readiness_missing(record)
+            if missing:
+                raise ConsumerCaseNotReadyError(missing)
+        elif require_evidence and not self._has_accepted_evidence(record):
+            raise ConsumerCaseNotReadyError(["accepted_evidence"])
 
         await self._ensure_legal_corpus_indexed()
-        evidence_document, page_sources = self._combined_evidence(record)
-        index_started = perf_counter()
-        evidence_index_reused = await self._ensure_evidence_indexed(record, evidence_document)
-        evidence_index_ms = (perf_counter() - index_started) * 1000
-
+        has_evidence = self._has_accepted_evidence(record)
         legal_queries = build_legal_queries(record.facts)
-        evidence_queries = build_evidence_queries(record.facts)
         retrieval_started = perf_counter()
+        evidence_index_ms = 0.0
+        evidence_index_reused = False
+        page_sources: dict[int, tuple[StoredEvidence, int]] = {}
         try:
-            legal_results, legal_traces, evidence_results, evidence_traces = (
-                await self._retrieve_notice_support(
-                    legal_queries=legal_queries,
-                    evidence_queries=evidence_queries,
-                    evidence_doc_id=evidence_document.doc_id,
+            if has_evidence:
+                evidence_document, page_sources = self._combined_evidence(record)
+                index_started = perf_counter()
+                evidence_index_reused = await self._ensure_evidence_indexed(
+                    record, evidence_document
                 )
-            )
+                evidence_index_ms = (perf_counter() - index_started) * 1000
+                evidence_queries = build_evidence_queries(record.facts)
+                legal_results, legal_traces, evidence_results, evidence_traces = (
+                    await self._retrieve_notice_support(
+                        legal_queries=legal_queries,
+                        evidence_queries=evidence_queries,
+                        evidence_doc_id=evidence_document.doc_id,
+                    )
+                )
+            else:
+                legal_results, legal_traces = await self._rag.retrieve_many_with_traces(
+                    legal_queries,
+                    doc_id=self._legal_corpus.document_id,
+                    agent="consumer_legal_authorities",
+                    k=8,
+                    mode="hybrid",
+                )
+                evidence_results: list[list[RetrievedChunk]] = []
+                evidence_traces = []
         except Exception as exc:
             raise ConsumerRetrievalError(
                 "required retrieval failed; no unsupported notice was generated"
@@ -383,11 +478,20 @@ class ConsumerCaseService:
         )
 
         legal_grounds = self._legal_grounds(legal_results, record.facts, legal_traces)
-        evidence_references = self._evidence_references(
-            evidence_results, page_sources, evidence_traces, record.facts
+        evidence_references = (
+            self._evidence_references(
+                evidence_results, page_sources, evidence_traces, record.facts
+            )
+            if has_evidence
+            else []
         )
         _require_grounding(
-            record.case_id, legal_grounds, evidence_references, legal_traces, evidence_traces
+            record.case_id,
+            legal_grounds,
+            evidence_references,
+            legal_traces,
+            evidence_traces,
+            require_evidence=require_evidence and has_evidence,
         )
         legal_traces = _annotate_composer_selection(
             legal_traces,
@@ -647,7 +751,9 @@ class ConsumerCaseService:
             return
         raise ConsumerLegalCorpusNotReadyError(
             "A base legal do modelo configurado ainda não foi pré-indexada. "
-            "Execute `python -m app.consumer.preindex_legal` e reinicie a API."
+            "No Docker: `docker compose up --build` (serviço legal-index) ou "
+            "`docker compose --profile tools run --rm indexer`. "
+            "Local: `python -m app.consumer.preindex_legal` e reinicie a API."
         )
 
     def _snapshot(self, record: ConsumerCaseRecord) -> ConsumerCaseSnapshot:
@@ -786,6 +892,23 @@ class ConsumerCaseService:
             if len(citations) >= 8:
                 break
         return citations
+
+
+def _facts_from_prompt(text: str) -> ConsumerCaseFacts:
+    """Synthesize the structured facts the renderer still needs from free text."""
+    base = ConsumerCaseFacts()
+    merged = merge_explicit_facts(base, extract_explicit_facts(text, base))
+    return merged.model_copy(
+        update={
+            "complaint_summary": text[:10_000],
+            "consumer_name": merged.consumer_name or "Consumidor",
+            "bank_name": merged.bank_name or "Destinatário",
+            "incident_date_or_period": merged.incident_date_or_period or "não informado",
+            "desired_resolution": (
+                merged.desired_resolution or "solução integral do problema relatado"
+            ),
+        }
+    )
 
 
 def _sha256_file(path: Path) -> str:
@@ -927,27 +1050,31 @@ def _require_grounding(
     evidence_references: list[EvidenceCitation],
     legal_traces: list[RetrievalTrace],
     evidence_traces: list[RetrievalTrace],
+    *,
+    require_evidence: bool = True,
 ) -> None:
-    """Refuse a notice without both a legal ground and a documentary citation."""
-    if legal_grounds and evidence_references:
+    """Refuse a notice without required grounding for the generation path."""
+    needs_evidence = require_evidence
+    if legal_grounds and (evidence_references or not needs_evidence):
         return
     missing_support: list[str] = []
     if not legal_grounds:
         missing_support.append("fundamentos jurídicos")
-    if not evidence_references:
+    if needs_evidence and not evidence_references:
         missing_support.append("trechos dos documentos enviados")
     logger.warning(
         "consumer_grounding_insufficient",
         case_id=case_id,
         legal_grounds=len(legal_grounds),
         evidence_references=len(evidence_references),
+        require_evidence=needs_evidence,
         legal_retrieval_degraded=any(trace.degraded_mode for trace in legal_traces),
         evidence_retrieval_degraded=any(trace.degraded_mode for trace in evidence_traces),
     )
     raise ConsumerRetrievalError(
         "Não foi possível gerar o rascunho com segurança porque a recuperação "
         f"não encontrou suporte verificável em {' e '.join(missing_support)}. "
-        "Tente novamente; se o problema persistir, revise a categoria e os "
+        "Tente novamente; se o problema persistir, revise o relato e os "
         "documentos enviados."
     )
 

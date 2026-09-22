@@ -8,7 +8,7 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Request, UploadFile
 from fastapi.responses import JSONResponse, PlainTextResponse, Response
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -28,6 +28,7 @@ from app.consumer.service import (
     ConsumerCaseNotReadyError,
     ConsumerCaseService,
     ConsumerEvidenceLimitError,
+    ConsumerPromptNoticeError,
     ConsumerRetrievalError,
 )
 from app.consumer.store import ConsumerCaseCapacityError
@@ -266,6 +267,92 @@ async def add_consumer_document(
         await file.close()
         await asyncio.to_thread(upload_path.unlink, missing_ok=True)
     return ConsumerDocumentAdded(case=snapshot, document=document)
+
+
+@router.post(
+    "/prompt-notices",
+    response_class=PlainTextResponse,
+    dependencies=[Depends(enforce_notice_rate_limit), Depends(enforce_upload_rate_limit)],
+)
+async def generate_prompt_notice(
+    service: ConsumerServiceDep,
+    uploads_dir: UploadsDirDep,
+    max_upload_bytes: MaxUploadBytesDep,
+    text: Annotated[str, Form(min_length=1, max_length=20_000)],
+    file: Annotated[UploadFile | None, File()] = None,
+) -> PlainTextResponse:
+    """One-shot notice from free text and an optional evidence attachment.
+
+    Keeps the multi-step ``/cases`` journey unchanged for the Streamlit UI.
+    """
+    upload_path: Path | None = None
+    filename: str | None = None
+    media_type: str | None = None
+    try:
+        if file is not None and (file.filename or "").strip():
+            filename = Path(file.filename or "evidencia").name
+            suffix = Path(filename).suffix.casefold()
+            media_type = EVIDENCE_MEDIA_TYPES.get(suffix)
+            if media_type is None:
+                raise HTTPException(
+                    status_code=422,
+                    detail="Formato não suportado. Envie um arquivo PDF, PNG ou JPG.",
+                )
+            await asyncio.to_thread(uploads_dir.mkdir, parents=True, exist_ok=True)
+            upload_path = uploads_dir / f"{uuid.uuid4().hex}{suffix}"
+            try:
+                header = await write_upload_in_chunks(
+                    file=file,
+                    path=upload_path,
+                    max_upload_bytes=max_upload_bytes,
+                )
+            except UploadTooLargeError as exc:
+                raise HTTPException(
+                    status_code=413,
+                    detail=(
+                        f"O arquivo excede o limite de {max_upload_bytes // (1024 * 1024)} MB."
+                    ),
+                ) from exc
+            if not _has_expected_signature(suffix, header):
+                raise HTTPException(
+                    status_code=422,
+                    detail="O conteúdo do arquivo não corresponde ao formato informado.",
+                )
+
+        try:
+            markdown = await service.generate_notice_from_prompt(
+                text,
+                upload_path=upload_path,
+                filename=filename,
+                media_type=media_type,
+            )
+        except ConsumerPromptNoticeError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except ConsumerCaseCapacityError as exc:
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "O serviço está com a capacidade de atendimentos simultâneos esgotada. "
+                    "Tente novamente em alguns minutos."
+                ),
+            ) from exc
+        except DocumentTextUnavailableError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    "O arquivo está corrompido, ilegível ou excede o limite de resolução aceito."
+                ),
+            ) from exc
+        except ConsumerRetrievalError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        return PlainTextResponse(content=markdown, media_type="text/plain; charset=utf-8")
+    finally:
+        if file is not None:
+            await file.close()
+        if upload_path is not None:
+            await asyncio.to_thread(upload_path.unlink, missing_ok=True)
 
 
 @router.post(

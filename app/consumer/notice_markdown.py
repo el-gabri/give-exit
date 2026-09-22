@@ -82,11 +82,14 @@ def render_notice_markdown(
     # of the delivered document. They are provenance for the consumer's own
     # review and for /consumer/cases/{id}/notice/retrievals, and every one of
     # them survives unchanged on EvidenceCitation and LegalAuthorityCitation.
-    for item in evidence:
-        lines.append(
-            f"- **{markdown_inline(item.filename)}, p. {item.page}** — "
-            f"{markdown_inline(item.quote)}"
-        )
+    if evidence:
+        for item in evidence:
+            lines.append(
+                f"- **{markdown_inline(item.filename)}, p. {item.page}** — "
+                f"{markdown_inline(item.quote)}"
+            )
+    else:
+        lines.append("Nenhum documento anexado a esta geração.")
     lines.extend(["", "## 4. Fundamentos jurídicos", ""])
     if prose is not None:
         lines.extend([prose.legal_transition, ""])

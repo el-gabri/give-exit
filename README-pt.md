@@ -87,6 +87,18 @@ X-Consumer-Case-Token: <token opaco do caso>
 docker compose up --build
 ```
 
+Na subida, o serviço `legal-index` pré-indexa (ou reutiliza) o corpus legal nos
+volumes nomeados `consumer-data` e `embedding-generations` — o mesmo estado em
+qualquer máquina, sem depender de `./data` no host. A API só sobe depois que
+esse passo termina com sucesso. Confirme com `GET /health`
+(`legal_corpus_ready: true`).
+
+Rebuild manual / `--force`:
+
+```bash
+docker compose --profile tools run --rm indexer -- --force
+```
+
 - Interface: <http://localhost:8501>
 - OpenAPI: <http://localhost:8000/docs>
 
@@ -220,9 +232,13 @@ ou de citação.
 
 ## API
 
+Tutorial do endpoint one-shot (texto + anexo opcional):
+**[docs/api-consumer.md](docs/api-consumer.md)**
+
 | Método | Rota | Finalidade |
 |---|---|---|
 | `GET` | `/health` | Vida da API e prontidão do corpus legal |
+| `POST` | `/consumer/prompt-notices` | One-shot: texto (+ anexo opcional) → Markdown |
 | `POST` | `/consumer/cases` | Criar caso efêmero e token |
 | `GET` | `/consumer/cases/{id}` | Consultar caso autorizado |
 | `POST` | `/consumer/cases/{id}/messages` | Adicionar mensagem |
@@ -233,6 +249,10 @@ ou de citação.
 | `GET` | `/consumer/cases/{id}/notice.{md,pdf,docx}` | Exportar notificação |
 | `GET` | `/consumer/cases/{id}/notice/retrievals` | Auditar recuperação |
 | `DELETE` | `/consumer/cases/{id}` | Apagar caso e vetores de evidência |
+
+`POST /consumer/prompt-notices` não exige token de caso: a API cria um atendimento
+efêmero, gera o Markdown e apaga o estado. O fluxo multi-campo (`/cases` …)
+continua oficial para a UI Streamlit.
 
 Todas as operações do caso exigem o token opaco devolvido na criação. O modo
 produção também exige uma API key configurada.

@@ -123,6 +123,18 @@ X-Consumer-Case-Token: <opaque case token>
 docker compose up --build
 ```
 
+On startup, the `legal-index` service materializes (or reuses) the legal corpus
+into the named volumes `consumer-data` and `embedding-generations` — the same
+portable state on any machine, with no host `./data` bind mount. The API starts
+only after that job exits successfully. Confirm with `GET /health`
+(`legal_corpus_ready: true`).
+
+Manual rebuild / `--force`:
+
+```bash
+docker compose --profile tools run --rm indexer -- --force
+```
+
 - UI: <http://localhost:8501>
 - API docs: <http://localhost:8000/docs>
 
@@ -324,9 +336,12 @@ abstain. A degraded draft is labelled as such: the notice carries
 
 ## API surface
 
+One-shot integration guide: **[docs/api-consumer.md](docs/api-consumer.md)**
+
 | Method | Route | Purpose |
 |---|---|---|
 | `GET` | `/health` | API liveness and legal-corpus readiness |
+| `POST` | `/consumer/prompt-notices` | One-shot: free text (+ optional file) → Markdown |
 | `POST` | `/consumer/cases` | Create an ephemeral case and possession token |
 | `GET` | `/consumer/cases/{id}` | Read the authorized case |
 | `POST` | `/consumer/cases/{id}/messages` | Add a consumer message |
@@ -337,6 +352,10 @@ abstain. A degraded draft is labelled as such: the notice carries
 | `GET` | `/consumer/cases/{id}/notice.{md,pdf,docx}` | Export the notice |
 | `GET` | `/consumer/cases/{id}/notice/retrievals` | Inspect retrieval provenance |
 | `DELETE` | `/consumer/cases/{id}` | Delete case state and evidence vectors |
+
+`POST /consumer/prompt-notices` needs no case token: the API creates an
+ephemeral case, returns Markdown, and deletes the case. The multi-step
+`/cases` journey remains the Streamlit contract.
 
 Every case operation requires the opaque possession token returned at case
 creation. Production mode also requires a configured API key.
