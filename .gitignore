@@ -22,3 +22,4 @@ plan.md
 # are versioned deliberately - see .claude/skills/).
 .claude/settings.local.json
 .claude/scheduled_tasks.lock
+/output/

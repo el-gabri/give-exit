@@ -1,7 +1,7 @@
-# Give Exit
+# Exit
 
 Consumer-first Brazilian legal-information assistant for producing auditable
-drafts of extrajudicial notices. Give Exit turns a consumer's confirmed account
+drafts of extrajudicial notices. Exit turns a consumer's confirmed account
 and uploaded evidence into a deterministic notice grounded in a versioned
 consumer-law corpus.
 
@@ -14,7 +14,7 @@ review by a qualified Brazilian lawyer.
 
 ## Product scope
 
-Give Exit serves consumers only:
+Exit serves consumers only:
 
 1. The consumer describes the problem and expected resolution.
 2. Deterministic intake extracts only explicit facts; all facts remain
