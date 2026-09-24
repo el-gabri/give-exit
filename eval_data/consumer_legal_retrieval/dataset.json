@@ -1,6 +1,6 @@
 {
   "dataset_id": "consumer-legal-retrieval-seed",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Developer-authored seed for offline retrieval evaluation from lay Brazilian consumer complaints to CDC provisions, with LGPD and Civil Code complements. It is not a production legal golden until specialist review.",
   "source_url": "https://www.planalto.gov.br/ccivil_03/leis/l8078compilado.htm",
   "authoring": "developer_authored_seed",
@@ -640,6 +640,404 @@
         "br-cc-art-881",
         "br-cdc-art-54-g"
       ]
+    },
+    {
+      "case_id": "cartao_de_credito_nao_solicitado",
+      "category": "unrequested_product",
+      "slices": [
+        "supplier:bank",
+        "issue:unrequested_product",
+        "wording:lay"
+      ],
+      "complaint": "Recebi em casa um cartão de crédito do banco que eu nunca pedi e agora chegou a fatura cobrando anuidade.",
+      "desired_resolution": "Quero cancelar o cartão sem pagar a anuidade cobrada.",
+      "relevant": [
+        {
+          "article_id": "br-cdc-art-39",
+          "unit_id": "br-cdc-art-39-inciso-iii",
+          "grade": 3,
+          "rationale": "Enviar produto ou fornecer serviço sem solicitação prévia é prática abusiva."
+        },
+        {
+          "article_id": "br-cdc-art-39",
+          "unit_id": "br-cdc-art-39-paragrafo-unico",
+          "grade": 3,
+          "rationale": "O produto enviado sem solicitação equipara-se a amostra grátis, sem obrigação de pagamento."
+        }
+      ],
+      "hard_negatives": [
+        "br-cdc-art-49",
+        "br-cdc-art-18"
+      ]
+    },
+    {
+      "case_id": "titulo_de_capitalizacao_exigido_no_emprestimo",
+      "category": "abusive_practice",
+      "slices": [
+        "supplier:bank",
+        "issue:tie_in_sale",
+        "wording:lay"
+      ],
+      "complaint": "Para liberar o empréstimo consignado, o gerente disse que eu teria que comprar também um título de capitalização. Assinei porque precisava do dinheiro.",
+      "desired_resolution": "Quero cancelar o título de capitalização e receber de volta o que já paguei nele.",
+      "relevant": [
+        {
+          "article_id": "br-cdc-art-39",
+          "unit_id": "br-cdc-art-39-inciso-i",
+          "grade": 3,
+          "rationale": "Condicionar o fornecimento de um serviço à contratação de outro é venda casada."
+        }
+      ],
+      "hard_negatives": [
+        "br-cdc-art-49",
+        "br-cdc-art-18"
+      ]
+    },
+    {
+      "case_id": "preco_da_prateleira_diferente_no_caixa",
+      "category": "price_offer",
+      "slices": [
+        "supplier:retail",
+        "issue:advertised_price",
+        "wording:lay"
+      ],
+      "complaint": "Na prateleira do supermercado o azeite estava por R$ 29,90, mas no caixa cobraram R$ 39,90 e se recusaram a vender pelo preço da etiqueta.",
+      "desired_resolution": "Quero pagar o preço que estava na etiqueta da prateleira.",
+      "relevant": [
+        {
+          "article_id": "br-cdc-art-30",
+          "grade": 3,
+          "rationale": "A informação suficientemente precisa sobre o preço obriga o fornecedor e integra o contrato."
+        },
+        {
+          "article_id": "br-cdc-art-35",
+          "unit_id": "br-cdc-art-35-inciso-i",
+          "grade": 3,
+          "rationale": "Diante da recusa, o consumidor pode exigir o cumprimento forçado nos termos da oferta."
+        }
+      ],
+      "hard_negatives": [
+        "br-cdc-art-18",
+        "br-cdc-art-42-paragrafo-unico"
+      ]
+    },
+    {
+      "case_id": "conserto_sem_orcamento",
+      "category": "abusive_practice",
+      "slices": [
+        "supplier:repair_shop",
+        "issue:no_quote",
+        "wording:lay"
+      ],
+      "complaint": "Deixei o carro na oficina só para avaliarem um barulho e, sem me passar orçamento, fizeram o conserto e agora cobram R$ 2.300,00.",
+      "desired_resolution": "Quero pagar apenas pelo que eu autorizei.",
+      "relevant": [
+        {
+          "article_id": "br-cdc-art-39",
+          "unit_id": "br-cdc-art-39-inciso-vi",
+          "grade": 3,
+          "rationale": "Executar serviço sem orçamento prévio e autorização expressa é prática abusiva."
+        },
+        {
+          "article_id": "br-cdc-art-40",
+          "unit_id": "br-cdc-art-40-caput",
+          "grade": 2,
+          "rationale": "O fornecedor de serviço deve entregar orçamento prévio discriminado."
+        }
+      ],
+      "hard_negatives": [
+        "br-cdc-art-49",
+        "br-cdc-art-18"
+      ]
+    },
+    {
+      "case_id": "preco_abusivo_durante_enchente",
+      "category": "abusive_practice",
+      "slices": [
+        "supplier:retail",
+        "issue:price_gouging",
+        "wording:lay"
+      ],
+      "complaint": "Durante a enchente, o mercado do bairro passou a vender o galão de água que custava R$ 12,00 por R$ 40,00.",
+      "desired_resolution": "Quero que o preço volte ao normal e ser ressarcido do que paguei a mais.",
+      "relevant": [
+        {
+          "article_id": "br-cdc-art-39",
+          "unit_id": "br-cdc-art-39-inciso-x",
+          "grade": 3,
+          "rationale": "Elevar sem justa causa o preço de produtos é prática abusiva."
+        },
+        {
+          "article_id": "br-cdc-art-39",
+          "unit_id": "br-cdc-art-39-inciso-v",
+          "grade": 2,
+          "rationale": "Exigir do consumidor vantagem manifestamente excessiva é prática abusiva."
+        }
+      ],
+      "hard_negatives": [
+        "br-cdc-art-49",
+        "br-cdc-art-18"
+      ]
+    },
+    {
+      "case_id": "recusa_de_venda_a_vista",
+      "category": "abusive_practice",
+      "slices": [
+        "supplier:retail",
+        "issue:refusal_to_sell",
+        "wording:lay"
+      ],
+      "complaint": "A loja se recusou a me vender a geladeira que estava na vitrine, mesmo eu tendo o dinheiro para pagar à vista, dizendo que só vende para cliente cadastrado.",
+      "desired_resolution": "Quero comprar a geladeira pagando à vista.",
+      "relevant": [
+        {
+          "article_id": "br-cdc-art-39",
+          "unit_id": "br-cdc-art-39-inciso-ix",
+          "grade": 3,
+          "rationale": "Recusar a venda a quem se dispõe a pagar à vista é prática abusiva."
+        }
+      ],
+      "hard_negatives": [
+        "br-cdc-art-49",
+        "br-cdc-art-18"
+      ]
+    },
+    {
+      "case_id": "nome_mantido_no_cadastro_apos_quitacao",
+      "category": "negative_credit_record",
+      "slices": [
+        "supplier:retail",
+        "issue:stale_negative_record",
+        "wording:lay"
+      ],
+      "complaint": "Quitei a dívida com a loja em março, mas meu nome continua no SPC até hoje e não consigo comprar a prazo.",
+      "desired_resolution": "Quero que retirem meu nome do cadastro de inadimplentes.",
+      "relevant": [
+        {
+          "article_id": "br-cdc-art-43",
+          "unit_id": "br-cdc-art-43-paragrafo-3",
+          "grade": 3,
+          "rationale": "O consumidor pode exigir a correção imediata de dados inexatos no cadastro."
+        }
+      ],
+      "hard_negatives": [
+        "br-cdc-art-43-paragrafo-2",
+        "br-cdc-art-42-paragrafo-unico"
+      ]
+    },
+    {
+      "case_id": "quitacao_antecipada_do_financiamento",
+      "category": "credit_contract",
+      "slices": [
+        "supplier:bank",
+        "issue:early_payment",
+        "wording:lay"
+      ],
+      "complaint": "Quero quitar antes do prazo o financiamento do carro, mas o banco quer cobrar todas as parcelas cheias, com os juros futuros.",
+      "desired_resolution": "Quero pagar o saldo com desconto dos juros das parcelas antecipadas.",
+      "relevant": [
+        {
+          "article_id": "br-cdc-art-52",
+          "unit_id": "br-cdc-art-52-paragrafo-2",
+          "grade": 3,
+          "rationale": "A liquidação antecipada do débito assegura a redução proporcional dos juros."
+        }
+      ],
+      "hard_negatives": [
+        "br-cdc-art-52-paragrafo-1",
+        "br-cdc-art-49"
+      ]
+    },
+    {
+      "case_id": "multa_de_cancelamento_da_academia",
+      "category": "contract_terms",
+      "slices": [
+        "supplier:gym",
+        "issue:cancellation_penalty",
+        "wording:lay"
+      ],
+      "complaint": "A academia quer cobrar multa de metade de todas as mensalidades que faltam para eu cancelar o plano anual, porque me mudei de cidade.",
+      "desired_resolution": "Quero cancelar o contrato sem pagar essa multa abusiva.",
+      "relevant": [
+        {
+          "article_id": "br-cdc-art-51",
+          "unit_id": "br-cdc-art-51-inciso-iv",
+          "grade": 3,
+          "rationale": "É nula a cláusula que coloca o consumidor em desvantagem exagerada."
+        },
+        {
+          "article_id": "br-cdc-art-51",
+          "unit_id": "br-cdc-art-51-paragrafo-1-inciso-iii",
+          "grade": 2,
+          "rationale": "Presume-se exagerada a vantagem excessivamente onerosa para o consumidor."
+        }
+      ],
+      "hard_negatives": [
+        "br-cdc-art-49",
+        "br-cdc-art-42-paragrafo-unico"
+      ]
+    },
+    {
+      "case_id": "pedido_de_acesso_aos_dados_ignorado",
+      "category": "personal_data",
+      "slices": [
+        "supplier:ecommerce",
+        "issue:data_access",
+        "law:lgpd",
+        "wording:lay"
+      ],
+      "complaint": "Pedi à loja virtual uma cópia dos meus dados pessoais que ela guarda e para quem eles foram repassados, e há dois meses não recebo resposta.",
+      "desired_resolution": "Quero receber meus dados e saber com quem foram compartilhados.",
+      "relevant": [
+        {
+          "article_id": "br-lgpd-art-18",
+          "unit_id": "br-lgpd-art-18-inciso-ii",
+          "grade": 3,
+          "rationale": "O titular tem direito de acesso aos seus dados."
+        },
+        {
+          "article_id": "br-lgpd-art-18",
+          "unit_id": "br-lgpd-art-18-inciso-vii",
+          "grade": 3,
+          "rationale": "O titular tem direito a saber com quem o controlador compartilhou seus dados."
+        },
+        {
+          "article_id": "br-lgpd-art-19",
+          "grade": 2,
+          "rationale": "O acesso deve ser providenciado de imediato ou em até quinze dias, conforme o formato."
+        },
+        {
+          "article_id": "br-cdc-art-43",
+          "unit_id": "br-cdc-art-43-caput",
+          "grade": 2,
+          "rationale": "O consumidor tem acesso aos dados pessoais e de consumo arquivados sobre ele."
+        }
+      ],
+      "hard_negatives": [
+        "br-lgpd-art-18-inciso-vi",
+        "br-cdc-art-49"
+      ]
+    },
+    {
+      "case_id": "carregador_pegou_fogo",
+      "category": "consumer_safety",
+      "slices": [
+        "supplier:retail",
+        "issue:product_accident",
+        "wording:lay"
+      ],
+      "complaint": "O carregador do celular que comprei esquentou e pegou fogo durante a noite, queimou minha mão e o sofá.",
+      "desired_resolution": "Quero indenização pelos danos ao sofá e pelo tratamento da queimadura.",
+      "relevant": [
+        {
+          "article_id": "br-cdc-art-12",
+          "unit_id": "br-cdc-art-12-caput",
+          "grade": 3,
+          "rationale": "O fabricante responde, independentemente de culpa, pelos danos causados por defeito do produto."
+        },
+        {
+          "article_id": "br-cdc-art-12",
+          "unit_id": "br-cdc-art-12-paragrafo-1",
+          "grade": 2,
+          "rationale": "O produto é defeituoso quando não oferece a segurança que dele se espera."
+        }
+      ],
+      "hard_negatives": [
+        "br-cdc-art-18",
+        "br-cdc-art-26"
+      ]
+    },
+    {
+      "case_id": "voo_cancelado_sem_assistencia",
+      "category": "service_failure",
+      "slices": [
+        "supplier:airline",
+        "issue:cancelled_service",
+        "wording:lay"
+      ],
+      "complaint": "A companhia aérea cancelou meu voo na véspera, não ofereceu hotel nem alimentação e eu perdi um dia de trabalho.",
+      "desired_resolution": "Quero o reembolso das despesas e indenização pelo prejuízo.",
+      "relevant": [
+        {
+          "article_id": "br-cdc-art-14",
+          "unit_id": "br-cdc-art-14-caput",
+          "grade": 3,
+          "rationale": "O fornecedor de serviços responde, independentemente de culpa, pelos danos da falha na prestação."
+        },
+        {
+          "article_id": "br-cdc-art-6",
+          "unit_id": "br-cdc-art-6-inciso-vi",
+          "grade": 2,
+          "rationale": "É direito básico a efetiva reparação de danos patrimoniais e morais."
+        }
+      ],
+      "hard_negatives": [
+        "br-cdc-art-18",
+        "br-cdc-art-49"
+      ]
+    },
+    {
+      "case_id": "loja_nega_garantia_e_manda_ao_fabricante",
+      "category": "product_defect",
+      "slices": [
+        "supplier:retail",
+        "issue:warranty_refusal",
+        "wording:lay"
+      ],
+      "complaint": "A televisão que comprei parou de funcionar depois de três meses e a loja se recusa a resolver, dizendo que a garantia é só com o fabricante.",
+      "desired_resolution": "Quero que a loja conserte ou troque a televisão.",
+      "relevant": [
+        {
+          "article_id": "br-cdc-art-18",
+          "unit_id": "br-cdc-art-18-caput",
+          "grade": 3,
+          "rationale": "Os fornecedores respondem solidariamente pelos vícios do produto, inclusive o comerciante."
+        },
+        {
+          "article_id": "br-cdc-art-18",
+          "unit_id": "br-cdc-art-18-paragrafo-1",
+          "grade": 2,
+          "rationale": "Sem reparo em trinta dias, o consumidor escolhe a troca, a restituição ou o abatimento."
+        }
+      ],
+      "hard_negatives": [
+        "br-cdc-art-12",
+        "br-cdc-art-49"
+      ]
+    },
+    {
+      "case_id": "multa_de_transito",
+      "category": "no_consumer_relationship",
+      "slices": [
+        "ground:none",
+        "domain:administrative",
+        "wording:lay"
+      ],
+      "complaint": "Recebi uma multa de trânsito por excesso de velocidade em uma cidade onde eu nunca estive com o meu carro.",
+      "desired_resolution": "Quero cancelar a multa.",
+      "relevant": [],
+      "hard_negatives": [
+        "br-cdc-art-42",
+        "br-cdc-art-6-inciso-vi"
+      ],
+      "no_applicable_ground": true
+    },
+    {
+      "case_id": "emprestimo_entre_amigos",
+      "category": "no_consumer_relationship",
+      "slices": [
+        "ground:none",
+        "domain:private_loan",
+        "wording:lay"
+      ],
+      "complaint": "Emprestei dinheiro para um amigo há um ano e ele não me devolve, sempre diz que vai pagar no mês seguinte.",
+      "desired_resolution": "Quero receber de volta o dinheiro emprestado.",
+      "relevant": [],
+      "hard_negatives": [
+        "br-cdc-art-42",
+        "br-cdc-art-52"
+      ],
+      "no_applicable_ground": true
     }
   ]
 }

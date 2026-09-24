@@ -169,14 +169,19 @@ async def test_offline_notice_baseline_on_the_seed_dataset() -> None:
     12 to 24. Offline: 17 grounds, 5 complementary, no known-bad citation, and
     the single exact hit (CDC art. 12 for the allergen case) is lost, as it is
     at every depth below 20 on this hashed-embedder stack.
+
+    Re-measured on 2026-09-24 for dataset 2.1.0 (15 new cases, the original 22
+    unchanged): 22 grounds, 7 complementary, still no known-bad citation. The
+    offline stack cites nothing in 9 of the 13 new in-scope cases, whose lay
+    wording shares few words with the statute (see app.evaluation.label_ranks).
     """
 
     summary = await run_notice_evaluation(load_consumer_legal_dataset(DATASET_PATH))
 
     assert summary.failed_case_count == 0
     assert summary.totals == {
-        "consumer_notice_complementary_grounds": 5,
-        "consumer_notice_grounds": 17,
+        "consumer_notice_complementary_grounds": 7,
+        "consumer_notice_grounds": 22,
         "consumer_notice_known_bad_citations": 0,
     }
     assert summary.averages["consumer_notice_exact_recall"] == 0.0
@@ -214,14 +219,11 @@ async def test_a_failing_case_is_recorded_without_stopping_the_run() -> None:
 
     summary = await evaluator.run(load_consumer_legal_dataset(DATASET_PATH))
 
-    # The golden set gained the unrequested-service case (21 -> 22 cases,
-    # test(consumer): add the unrequested-service charge to the golden), and
-    # it has a ground like every case besides the two no_applicable_ground
-    # ones, so the failure count that the exploding pipeline produces moves
-    # from 19 to 20.
+    # Every case the scope gate lets through fails: 37 cases in dataset 2.1.0
+    # minus the four no_applicable_ground ones the gate stops first.
     failed = [case for case in summary.cases if case.retrieval_outcome == "failed"]
-    assert len(failed) == 20
-    assert summary.failed_case_count == 20
+    assert len(failed) == 33
+    assert summary.failed_case_count == 33
     assert all("store offline" in case.errors[0] for case in failed)
 
 
@@ -328,14 +330,14 @@ async def test_an_agreement_sweep_retrieves_each_case_once(
     shallow = await evaluator.run(dataset, agreement_max_rank=8)
     default = await evaluator.run(dataset)
 
-    # 22 cases, two of them stopped by the scope gate before retrieval.
-    assert len(calls) == 20
+    # 37 cases, four of them stopped by the scope gate before retrieval.
+    assert len(calls) == 33
     assert shallow.run is not None and shallow.run.agreement_max_rank == 8
     assert default.run is not None and default.run.agreement_max_rank == 13
     assert default.run.ground_verifier == "none"
     # A shallower gate can only drop grounds.
-    assert shallow.totals["consumer_notice_grounds"] == 9
-    assert default.totals["consumer_notice_grounds"] == 17
+    assert shallow.totals["consumer_notice_grounds"] == 11
+    assert default.totals["consumer_notice_grounds"] == 22
 
 
 class _RejectEveryGround:
@@ -357,7 +359,7 @@ async def test_verifier_removals_are_counted_per_case() -> None:
     summary = await evaluator.run(load_consumer_legal_dataset(DATASET_PATH))
 
     assert summary.totals["consumer_notice_grounds"] == 0
-    assert summary.totals["consumer_notice_verifier_removed"] == 17
+    assert summary.totals["consumer_notice_verifier_removed"] == 22
     assert summary.totals["consumer_notice_verifier_failures"] == 0
     assert summary.run is not None and summary.run.ground_verifier == "llm"
 
@@ -389,7 +391,7 @@ def test_cli_prints_an_agreement_sweep(
     start = next(i for i, line in enumerate(printed) if line.startswith("agreement_max_rank"))
     table = printed[start : start + 3]
     assert table[0].split()[:4] == ["agreement_max_rank", "grounds", "complementary", "known_bad"]
-    assert [line.split()[:2] for line in table[1:]] == [["16", "20"], ["20", "24"]]
+    assert [line.split()[:2] for line in table[1:]] == [["16", "27"], ["20", "33"]]
     payload = json.loads(output.read_text(encoding="utf-8"))
     assert sorted(payload["agreement_sweep"]) == ["16", "20"]
     assert payload["agreement_sweep"]["20"]["run"]["agreement_max_rank"] == 20

@@ -133,13 +133,13 @@ def test_seed_dataset_is_separate_versioned_and_explicitly_unreviewed() -> None:
     dataset = load_consumer_legal_dataset(DATASET_PATH)
 
     assert dataset.dataset_id == "consumer-legal-retrieval-seed"
-    assert dataset.version == "2.0.0"
+    assert dataset.version == "2.1.0"
     assert dataset.authoring == "developer_authored_seed"
     assert dataset.review_status == "requires_legal_review"
     assert dataset.source_url.endswith("/l8078compilado.htm")
-    assert len(dataset.cases) == 22
-    assert len({case.category for case in dataset.cases}) >= 12
-    assert sum(case.no_applicable_ground for case in dataset.cases) == 2
+    assert len(dataset.cases) == 37
+    assert len({case.category for case in dataset.cases}) >= 20
+    assert sum(case.no_applicable_ground for case in dataset.cases) == 4
     assert all(case.slices for case in dataset.cases)
     salary_case = next(case for case in dataset.cases if case.case_id == "salario_atrasado")
     assert salary_case.category == "no_consumer_relationship"
@@ -148,7 +148,7 @@ def test_seed_dataset_is_separate_versioned_and_explicitly_unreviewed() -> None:
         for case in dataset.cases
         for judgment in case.relevant
     )
-    assert sum("law:lgpd" in case.slices for case in dataset.cases) == 3
+    assert sum("law:lgpd" in case.slices for case in dataset.cases) == 4
     assert sum("law:cc" in case.slices for case in dataset.cases) == 3
 
 
@@ -345,10 +345,12 @@ def test_golden_case_rejects_an_unknown_field() -> None:
         ConsumerLegalGoldenCase.model_validate(payload)
 
 
-def test_dataset_version_is_two_zero_zero() -> None:
+def test_dataset_version_is_two_one_zero() -> None:
+    """2.1.0 adds 15 cases: 13 in scope, several on CDC art. 39, and two
+    disputes with no consumer relationship (a traffic fine, a private loan)."""
     dataset = load_consumer_legal_dataset(DATASET_PATH)
 
-    assert dataset.version == "2.0.0"
+    assert dataset.version == "2.1.0"
 
 
 def test_dataset_covers_an_unrequested_service_charge() -> None:

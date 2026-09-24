@@ -209,7 +209,9 @@ configured stack:
 
 - 11 of the 42 labels share no token with their case's queries, so the
   lexical channel never ranks them and **no gate depth or dense model can make
-  them citable**. Among them are CDC art. 39 I (`venda_casada_seguro`: the
+  them citable**. Dataset 2.1.0 (15 new cases, five of them on art. 39
+  incisos) confirms it: 20 of its 66 labels are never ranked lexically, and
+  only 2 of the 24 new labels reach the lexical top 13. Among them are CDC art. 39 I (`venda_casada_seguro`: the
   consumer says "financiamento", "seguro", "contratasse"; the statute says
   "condicionar o fornecimento de produto ou de serviço ao fornecimento de
   outro"), arts. 35 I and 30, 37 § 3 and 38, 49 sole paragraph and CDC 14.

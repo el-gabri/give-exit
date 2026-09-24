@@ -78,6 +78,13 @@ jobs:
         # undue-payment chapter, premised on a payment that never happened)
         # stopped being cited and CDC art. 52 started being cited (3 grounds
         # instead of 5, same relevant hit).
+        #
+        # Re-baselined on 2026-09-24 for dataset 2.1.0 (15 new cases; the
+        # system did not change and the original 22 cases score exactly as
+        # before). The new cases are lay paraphrases the offline stack barely
+        # ranks, so the averages fell: recall@5 0.142 -> 0.086, article
+        # recall@5 0.225 -> 0.212, nDCG@5 0.075 -> 0.045, hard-negative
+        # rate@5 0.027 -> 0.032. The gates sit just below the new measurement.
         # consumer_retrieval_success@5 and consumer_abstention@5 stay pinned
         # at 1.0 and consumer_inactive_provision_rate@5 /
         # consumer_unknown_status_rate@5 stay pinned at 0.0 regardless of
@@ -87,11 +94,11 @@ jobs:
             eval_data/consumer_legal_retrieval \
             --output consumer-legal-retrieval-results.json \
             --min consumer_retrieval_success@5=1.0 \
-            --min consumer_recall@5=0.14 \
-            --min consumer_article_recall@5=0.22 \
-            --min consumer_ndcg@5=0.06 \
+            --min consumer_recall@5=0.08 \
+            --min consumer_article_recall@5=0.21 \
+            --min consumer_ndcg@5=0.04 \
             --min consumer_abstention@5=1.0 \
-            --max consumer_hard_negative_rate@5=0.03 \
+            --max consumer_hard_negative_rate@5=0.035 \
             --max consumer_inactive_provision_rate@5=0.0 \
             --max consumer_unknown_status_rate@5=0.0
       - name: Consumer notice final-ground gates
