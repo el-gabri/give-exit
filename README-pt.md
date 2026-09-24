@@ -333,8 +333,10 @@ python -m app.evaluation.consumer_runner --evaluate-notice --notice-pipeline con
 
 O relatório traz fundamentos citados, citações ruins conhecidas (hard negatives
 rotulados que foram citados), recall exato das unidades citadas, abstenção e
-sucesso da recuperação semântica. Duas opções medem os controles de precisão em
-qualquer stack. `--agreement-max-rank N`, repetida, compara profundidades do
+sucesso da recuperação semântica. `python -m app.evaluation.label_ranks [--pipeline configured]` explica as
+ausências: para cada rótulo do golden set, imprime a melhor posição nos canais
+denso e lexical e a profundidade de gate que o teria citado. Duas opções medem
+os controles de precisão em qualquer stack. `--agreement-max-rank N`, repetida, compara profundidades do
 gate a partir de uma única recuperação e imprime uma tabela;
 `--ground-verifier llm` executa o verificador de fundamentos configurado e
 conta os fundamentos que ele remove:

@@ -199,6 +199,37 @@ On the offline stack depth 13 cites 17 grounds with no known-bad citation, and
 its single exact hit (which needs depth 20 there) is lost. The CI gates read
 known-bad citations and abstention, not exact recall.
 
+### Why labelled provisions are missed (2026-09-24)
+
+`python -m app.evaluation.label_ranks` reports, for every golden label, the
+best rank each channel gave it under the production queries and the agreement
+depth that would have supported it. Offline its lexical ranks are exact (the
+same BM25 PostgreSQL computes), so these offline findings hold on the
+configured stack:
+
+- 11 of the 42 labels share no token with their case's queries, so the
+  lexical channel never ranks them and **no gate depth or dense model can make
+  them citable**. Among them are CDC art. 39 I (`venda_casada_seguro`: the
+  consumer says "financiamento", "seguro", "contratasse"; the statute says
+  "condicionar o fornecimento de produto ou de serviço ao fornecimento de
+  outro"), arts. 35 I and 30, 37 § 3 and 38, 49 sole paragraph and CDC 14.
+  Art. 39 III shares one word ("serviço") and ranks 269th lexically.
+- Every exact hit on the configured stack ranks between 1st and 9th in the
+  lexical channel offline: the lexical channel, not the dense model, sets the
+  ceiling of what notices can cite.
+- Portuguese stemming of the BM25 tokens (Snowball) was tried as a scratch
+  experiment: 13 labels instead of 9 reach the lexical top 13 and 6 instead
+  of 11 are never ranked, but art. 39 is unchanged (a synonym gap, not an
+  inflection one) and the offline notices gained a known-bad citation. Not
+  adopted.
+
+The remaining options bridge the vocabulary on the document side (curated,
+legally reviewed aliases on the provisions whose ordinary names are not their
+statutory words, such as "venda casada" for art. 39 I) or admit very strong
+dense-only candidates behind the verifier. Choosing needs the dense ranks,
+which only the configured run gives:
+`python -m app.evaluation.label_ranks --pipeline configured --output configured-label-ranks.json`.
+
 ## Alternatives tried and rejected
 
 - **One query per complaint sentence** (alone, or on top of the two ranking

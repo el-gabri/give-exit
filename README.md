@@ -484,7 +484,10 @@ python -m app.evaluation.consumer_runner --evaluate-notice --notice-pipeline con
 
 It reports cited grounds, known-bad citations (labelled hard negatives that
 were cited), exact recall over cited units, abstention and semantic success.
-Two options measure precision controls on any stack. `--agreement-max-rank N`,
+`python -m app.evaluation.label_ranks [--pipeline configured]` explains misses:
+for every golden label it prints the best dense and lexical rank and the gate
+depth that would have cited it. Two options measure precision controls on any
+stack. `--agreement-max-rank N`,
 repeated, compares gate depths from one retrieval pass and prints a table;
 `--ground-verifier llm` runs the configured ground verifier and counts the
 grounds it removes:
