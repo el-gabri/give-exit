@@ -376,10 +376,10 @@ class PostgresVectorStore:
             raise RuntimeError(
                 "Postgres vector storage requires `pip install -e \".[postgres]\"`"
             ) from exc
-        pool = self._connection_pool()
+        pool = self._connection_pool(psycopg)
         return pool.connection() if pool is not None else psycopg.connect(self._dsn)
 
-    def _connection_pool(self) -> Any | None:
+    def _connection_pool(self, psycopg: Any) -> Any | None:
         if self._pool is not None:
             return self._pool
         try:
@@ -388,6 +388,11 @@ class PostgresVectorStore:
             return None
         with self._pool_lock:
             if self._pool is None:
+                # Connect once directly before pooling. A pool retries in the
+                # background, so an unreachable server or rejected credentials
+                # would surface only as "PoolTimeout: couldn't get a connection
+                # after 30.00 sec" instead of the server's own error, at once.
+                psycopg.connect(self._dsn).close()
                 self._pool = ConnectionPool(
                     self._dsn, min_size=1, max_size=self._pool_max_size, open=True
                 )
