@@ -24,10 +24,5 @@ plan.md
 .claude/scheduled_tasks.lock
 /output/
 
-/configured-notice.json
-/configured-notice-sweep.json
-/configured-notice-verified.json
-/configured-retrieval.json
-/configured-notice-13.json
-/configured-notice-en.json
-/configured-retrieval-en.json
+# Evaluation results written at the repository root (consumer_runner --output).
+/configured-*.json
