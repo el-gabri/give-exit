@@ -29,7 +29,7 @@ from app.consumer.schemas import (
     GroundVerificationSummary,
     LegalGround,
 )
-from app.consumer.statutes import CDC, CIVIL_CODE, LGPD
+from app.consumer.statutes import CDC, CIVIL_CODE
 from app.core.config import GroundVerifierMode, Settings
 from app.llm.base import LLMClient
 from app.llm.factory import create_llm_client
@@ -39,8 +39,8 @@ PROMPT_VERSION = "consumer-ground-verifier:v1"
 MIN_QUOTE_CHARS = 12
 MAX_QUOTE_CHARS = 300
 _OFFICIAL_TEXT_CHARS = 1_500
-# The LGPD and the Civil Code only complement the CDC (ADR 0016).
-_COMPLEMENTARY_LAW_IDS = frozenset({LGPD.law_id, CIVIL_CODE.law_id})
+# Laws whose grounds stand only beside a CDC ground (legal_policy, ADR 0020).
+_CDC_ANCHORED_LAW_IDS = frozenset({CIVIL_CODE.law_id})
 
 
 class _ModelVerdict(BaseModel):
@@ -149,11 +149,11 @@ def apply_verdicts(
         record = _checked_record(verdict, fact_sources, official)
         if record.verdict != "does_not_apply":
             kept.append(_with_record(ground, record))
-    # Removing a CDC ground can leave complementary sources standing alone,
-    # which the selection policy never allows (ADR 0016).
+    # Removing a CDC ground can leave Civil Code grounds standing alone, which
+    # the selection policy never allows (ADR 0016, ADR 0020).
     if any(ground.authority.law_id == CDC.law_id for ground in kept):
         return kept
-    return [ground for ground in kept if ground.authority.law_id not in _COMPLEMENTARY_LAW_IDS]
+    return [ground for ground in kept if ground.authority.law_id not in _CDC_ANCHORED_LAW_IDS]
 
 
 def _checked_record(

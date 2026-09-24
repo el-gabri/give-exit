@@ -26,8 +26,9 @@ provisions are excluded. The Civil Code is limited by its index scope, and
 Título VI of its law of obligations (the specific contract types: sale,
 services, deposit, suretyship and the like) is not cited, because on the real
 retrieval stack every ground it contributed to the evaluation notices was
-off-topic. Both are complementary: at most three of their grounds, only
-beside a CDC ground, and none when retrieval fell back to lexical-only search.
+off-topic. Both are complementary: at most three of their grounds, and none
+when retrieval fell back to lexical-only search. A Civil Code ground stands
+only beside a CDC ground; the LGPD may ground a notice alone (ADR 0020).
 
 Eligibility is still not a merits decision, and the result is still marked
 ``requires_legal_review``.
@@ -46,7 +47,7 @@ from app.consumer.statutes import division_numeral
 from app.schemas.rag import DENSE_CHANNEL, LEXICAL_CHANNEL
 from app.schemas.trace import RetrievalTrace
 
-LEGAL_GROUND_POLICY_VERSION = "consumer-notice-scope-eligibility-v4"
+LEGAL_GROUND_POLICY_VERSION = "consumer-notice-scope-eligibility-v5"
 LEGAL_GROUND_POLICY_REVIEW_STATUS = "requires_legal_review"
 
 # CDC divisions whose subject matter cannot support an individual consumer's
@@ -76,10 +77,15 @@ _EXCLUDED_CDC_DIVISIONS: frozenset[tuple[str, str | None]] = frozenset(
     }
 )
 
-# ADR 0016: the LGPD and the Civil Code complement the CDC in a consumer
-# notice; they never ground one on their own.
+# ADR 0016: the LGPD and the Civil Code share a small, semantic-only budget of
+# ground slots so they cannot crowd the CDC out of a notice.
 COMPLEMENTARY_SOURCES = frozenset({LegalSource.DATA_PROTECTION_LAW, LegalSource.CIVIL_CODE})
 MAX_COMPLEMENTARY_GROUNDS = 3
+# Sources whose grounds stand only beside a CDC ground. The Civil Code's
+# general rules drifted off-topic without one (ADR 0016). The LGPD is not here
+# (ADR 0020): a data-protection complaint may have no CDC article that clears
+# the agreement gate, and requiring one left such complaints without a notice.
+CDC_ANCHORED_SOURCES = frozenset({LegalSource.CIVIL_CODE})
 # LGPD chapters an individual notice to a supplier cannot rest on: processing
 # by public bodies (IV), administrative sanctions (VIII), the national
 # authority and council (IX), and final and transitional provisions (X).
@@ -98,7 +104,8 @@ AGREEMENT_CHANNELS = frozenset({DENSE_CHANNEL, LEXICAL_CHANNEL})
 # the index, the offline notice evaluation cited 41 grounds, 2 of them known
 # bad. At 20 it cites 20 (3 fewer than before either change), none known bad,
 # and keeps its only exact hit; 16 and below lose that hit. Calibrated on the
-# 22-case offline seed; recheck it on the configured embedding stack.
+# 22-case offline seed; recheck it on the configured embedding stack with the
+# notice evaluation's --agreement-max-rank sweep (ADR 0019).
 AGREEMENT_MAX_RANK = 20
 # Without both channels, a chunk needs this rank in two independent queries.
 CORROBORATION_RANK = 3
@@ -175,14 +182,14 @@ def precedence_window(
 def enforce_cdc_anchor(
     selected: Sequence[tuple[LegalProvision, _Candidate]],
 ) -> list[tuple[LegalProvision, _Candidate]]:
-    """Complementary grounds stand only beside at least one CDC ground."""
+    """Civil Code grounds stand only beside at least one CDC ground."""
 
     if any(provision.source is LegalSource.CONSUMER_DEFENSE_CODE for provision, _ in selected):
         return list(selected)
     return [
         (provision, candidate)
         for provision, candidate in selected
-        if provision.source not in COMPLEMENTARY_SOURCES
+        if provision.source not in CDC_ANCHORED_SOURCES
     ]
 
 
@@ -196,7 +203,9 @@ def _division_numeral(label: str | None, keyword: str) -> str:
     return match.group(1) if match else ""
 
 
-def strongly_supported_chunk_ids(traces: list[RetrievalTrace]) -> frozenset[str]:
+def strongly_supported_chunk_ids(
+    traces: list[RetrievalTrace], *, max_rank: int = AGREEMENT_MAX_RANK
+) -> frozenset[str]:
     """Return chunks that clear the retrieval-agreement safety gate.
 
     With the category allowlist gone this is the load-bearing precision
@@ -207,7 +216,9 @@ def strongly_supported_chunk_ids(traces: list[RetrievalTrace]) -> frozenset[str]
     lexical channel. A chunk is supported when both channels ranked it within
     ``AGREEMENT_MAX_RANK``; the gate reads that from the trace rather than
     inferring it from a fused score, so it holds for any fusion weights and
-    survives a reranker, which only reorders candidates.
+    survives a reranker, which only reorders candidates. ``max_rank`` exists
+    so the notice evaluation can measure other depths; production uses the
+    default.
 
     A trace without both channels (lexical-only degraded mode, dense-only
     configuration) cannot show that agreement. There a chunk must rank in the
@@ -225,7 +236,7 @@ def strongly_supported_chunk_ids(traces: list[RetrievalTrace]) -> frozenset[str]
         both_channels_ran = trace.retrieval_mode == "hybrid" and trace.degraded_mode is None
         for item in trace.results:
             if both_channels_ran:
-                if _channels_agree(item.channel_ranks):
+                if _channels_agree(item.channel_ranks, max_rank):
                     supported.add(item.chunk_id)
             elif item.rank <= CORROBORATION_RANK:
                 corroborating_queries.setdefault(item.chunk_id, set()).add(
@@ -240,10 +251,9 @@ def strongly_supported_chunk_ids(traces: list[RetrievalTrace]) -> frozenset[str]
     return frozenset(supported)
 
 
-def _channels_agree(channel_ranks: dict[str, int]) -> bool:
+def _channels_agree(channel_ranks: dict[str, int], max_rank: int) -> bool:
     return all(
-        channel_ranks.get(channel, AGREEMENT_MAX_RANK + 1) <= AGREEMENT_MAX_RANK
-        for channel in AGREEMENT_CHANNELS
+        channel_ranks.get(channel, max_rank + 1) <= max_rank for channel in AGREEMENT_CHANNELS
     )
 
 

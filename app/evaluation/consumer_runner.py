@@ -11,12 +11,14 @@ import argparse
 import asyncio
 import importlib
 import inspect
+import json
 import math
 from collections.abc import Awaitable, Callable, Iterable, Mapping, Sequence
 from pathlib import Path
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 from app.consumer.legal_corpus import LegalCorpus
+from app.consumer.legal_policy import AGREEMENT_MAX_RANK
 from app.consumer.retrieval import build_legal_queries, is_consumer_scope
 from app.consumer.schemas import ConsumerCaseFacts
 from app.core.hashing import sha256_hex
@@ -37,6 +39,9 @@ from app.schemas.evaluation import (
     RetrievalEvaluationConfiguration,
     max_queries_per_case,
 )
+
+if TYPE_CHECKING:
+    from app.consumer.ground_verifier import GroundVerifier
 
 ConsumerRetriever = Callable[[str, int], object]
 
@@ -584,7 +589,13 @@ async def _run_selected_evaluation(
     if args.evaluate_notice:
         from app.evaluation.consumer_notice import run_notice_evaluation
 
-        summary = await run_notice_evaluation(dataset, pipeline_name=args.notice_pipeline)
+        [agreement_max_rank] = args.agreement_max_ranks
+        summary = await run_notice_evaluation(
+            dataset,
+            pipeline_name=args.notice_pipeline,
+            agreement_max_rank=agreement_max_rank,
+            ground_verifier=_ground_verifier(args.ground_verifier),
+        )
         if args.require_semantic:
             minimums.append(("consumer_notice_semantic_success", 1.0))
         return summary, minimums
@@ -596,7 +607,98 @@ async def _run_selected_evaluation(
         from app.evaluation.consumer_retrievers import offline_hybrid_retriever
 
         retriever = offline_hybrid_retriever
-    return await ConsumerLegalRetrievalEvaluator(retriever).run(dataset), minimums
+    try:
+        return await ConsumerLegalRetrievalEvaluator(retriever).run(dataset), minimums
+    finally:
+        # Built-in retrievers hold a pipeline whose store pool must be closed
+        # before the interpreter exits.
+        close = getattr(retriever, "close", None)
+        if callable(close):
+            close()
+
+
+def _ground_verifier(mode: str) -> GroundVerifier | None:
+    """The verifier ``--ground-verifier`` selects, built from the configured LLM."""
+    if mode == "none":
+        return None
+    from app.consumer.ground_verifier import create_ground_verifier
+    from app.core.config import GroundVerifierMode, Settings
+
+    return create_ground_verifier(Settings(ground_verifier=GroundVerifierMode(mode)))
+
+
+def render_agreement_sweep(sweep: Mapping[int, EvaluationSummary]) -> str:
+    """One line per gate depth with the notice metrics that move with it."""
+    columns = (
+        ("grounds", "consumer_notice_grounds"),
+        ("complementary", "consumer_notice_complementary_grounds"),
+        ("known_bad", "consumer_notice_known_bad_citations"),
+        ("verifier_removed", "consumer_notice_verifier_removed"),
+    )
+    lines = [
+        "agreement_max_rank  "
+        + "  ".join(label for label, _ in columns)
+        + "  exact_recall  abstention  failed_cases"
+    ]
+    for rank, summary in sorted(sweep.items()):
+        totals = "  ".join(
+            f"{summary.totals.get(key, 0):>{len(label)}}" for label, key in columns
+        )
+        lines.append(
+            f"{rank:>18}  {totals}"
+            f"  {summary.averages.get('consumer_notice_exact_recall', 0.0):>12.3f}"
+            f"  {summary.averages.get('consumer_notice_abstention', 0.0):>10.3f}"
+            f"  {summary.failed_case_count:>12}"
+        )
+    return "\n".join(lines)
+
+
+async def _run_agreement_sweep(
+    args: argparse.Namespace, dataset: ConsumerLegalGoldenDataset
+) -> None:
+    """Measure the notice grounds at every requested gate depth, retrieving once."""
+    from app.evaluation.consumer_notice import run_notice_agreement_sweep
+
+    sweep = await run_notice_agreement_sweep(
+        dataset,
+        pipeline_name=args.notice_pipeline,
+        agreement_max_ranks=sorted(set(args.agreement_max_ranks)),
+        ground_verifier=_ground_verifier(args.ground_verifier),
+    )
+    if args.output:
+        payload = {
+            "agreement_sweep": {
+                str(rank): summary.model_dump(mode="json") for rank, summary in sweep.items()
+            }
+        }
+        Path(args.output).write_text(
+            json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+        )
+    print(render_agreement_sweep(sweep))
+    if any(summary.failed_case_count for summary in sweep.values()):
+        raise SystemExit(2)
+
+
+def _positive_int(value: str) -> int:
+    number = int(value)
+    if number < 1:
+        raise argparse.ArgumentTypeError("must be a positive integer")
+    return number
+
+
+def _check_arguments(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
+    if args.evaluate_notice and (args.retriever or args.empty_baseline):
+        parser.error("--evaluate-notice cannot be combined with --retriever or --empty-baseline")
+    notice_only = ("--require-semantic", "--agreement-max-rank", "--ground-verifier")
+    if not args.evaluate_notice and (
+        args.require_semantic or args.agreement_max_ranks or args.ground_verifier != "none"
+    ):
+        parser.error(f"{', '.join(notice_only)} require --evaluate-notice")
+    if args.retriever and args.empty_baseline:
+        parser.error("--retriever and --empty-baseline are mutually exclusive")
+    if len(args.agreement_max_ranks or []) > 1 and (args.minimums or args.maximums):
+        parser.error("gates apply to one agreement depth; drop --min/--max for a sweep")
+    args.agreement_max_ranks = args.agreement_max_ranks or [AGREEMENT_MAX_RANK]
 
 
 async def _cli() -> None:
@@ -659,15 +761,30 @@ async def _cli() -> None:
         action="store_true",
         help="with --evaluate-notice, fail when any case fell back to lexical-only retrieval",
     )
+    parser.add_argument(
+        "--agreement-max-rank",
+        dest="agreement_max_ranks",
+        action="append",
+        type=_positive_int,
+        metavar="RANK",
+        help=(
+            "with --evaluate-notice, the depth within which both channels must rank a "
+            f"citable chunk (default {AGREEMENT_MAX_RANK}); repeat it to compare depths "
+            "from one retrieval pass"
+        ),
+    )
+    parser.add_argument(
+        "--ground-verifier",
+        choices=("none", "llm"),
+        default="none",
+        help="with --evaluate-notice, verify the selected grounds with the configured LLM",
+    )
     args = parser.parse_args()
-
-    if args.evaluate_notice and (args.retriever or args.empty_baseline):
-        parser.error("--evaluate-notice cannot be combined with --retriever or --empty-baseline")
-    if args.require_semantic and not args.evaluate_notice:
-        parser.error("--require-semantic requires --evaluate-notice")
-    if args.retriever and args.empty_baseline:
-        parser.error("--retriever and --empty-baseline are mutually exclusive")
+    _check_arguments(parser, args)
     dataset = load_consumer_legal_dataset(Path(args.dataset))
+    if len(args.agreement_max_ranks) > 1:
+        await _run_agreement_sweep(args, dataset)
+        return
     summary, minimums = await _run_selected_evaluation(args, dataset)
     rendered = summary.model_dump_json(indent=2)
     if args.output:

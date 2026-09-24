@@ -78,13 +78,23 @@ def test_lexical_only_retrieval_admits_no_complementary_source() -> None:
     assert [item for _, item in precedence_window(mixed, window=8, lexical_only=True)] == ["cdc"]
 
 
-def test_complementary_grounds_need_a_cdc_anchor() -> None:
+def test_civil_code_grounds_need_a_cdc_anchor() -> None:
     cdc = (_provision(LegalSource.CONSUMER_DEFENSE_CODE, 14), "cdc")
     cf = (_provision(LegalSource.FEDERAL_CONSTITUTION, 5), "cf")
     civil = (_provision(LegalSource.CIVIL_CODE, 927), "cc")
 
     assert [item for _, item in enforce_cdc_anchor([civil, cdc])] == ["cc", "cdc"]
     assert [item for _, item in enforce_cdc_anchor([civil, cf])] == ["cf"]
+
+
+def test_the_lgpd_grounds_a_notice_without_the_cdc() -> None:
+    """A data-protection complaint may have no CDC article that clears the gate."""
+    lgpd = (_lgpd("CAPÍTULO III DOS DIREITOS DO TITULAR"), "lgpd")
+    civil = (_provision(LegalSource.CIVIL_CODE, 927), "cc")
+
+    assert [item for _, item in enforce_cdc_anchor([lgpd])] == ["lgpd"]
+    # The LGPD does not anchor the Civil Code in the CDC's place.
+    assert [item for _, item in enforce_cdc_anchor([lgpd, civil])] == ["lgpd"]
 
 
 def test_civil_code_specific_contract_types_are_not_citable() -> None:

@@ -3,7 +3,8 @@
 ## Status
 
 Accepted · Date: 2026-09-13 · Amends: [ADR 0012](0012-bounded-consumer-extrajudicial-notice.md) §3
-and [ADR 0013](0013-versioned-consumer-law-retrieval.md) §1
+and [ADR 0013](0013-versioned-consumer-law-retrieval.md) §1 · Amended by
+[ADR 0020](0020-lgpd-grounds-without-cdc-anchor.md) (the LGPD needs no CDC anchor)
 
 ## Context
 

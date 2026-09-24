@@ -123,6 +123,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             sweeper.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await sweeper
+            consumer_rag.close()
 
     app = FastAPI(
         title="Give Exit Consumer API",

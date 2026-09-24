@@ -114,6 +114,10 @@ jobs:
         # of 23, 3 complementary instead of 5, known-bad still 0, same exact
         # hit. The retrieval gates above are unchanged (nDCG@5 0.069 ->
         # 0.075, every other metric equal).
+        #
+        # Re-measured on 2026-09-24 for ADR 0020 (LGPD grounds need no CDC
+        # anchor): 24 grounds, 7 complementary; the two data-protection cases
+        # that cited nothing now cite the LGPD. Known-bad still 0.
         run: |
           python -m app.evaluation.consumer_runner \
             eval_data/consumer_legal_retrieval \

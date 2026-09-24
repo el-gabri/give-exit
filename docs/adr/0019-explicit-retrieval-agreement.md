@@ -96,6 +96,58 @@ hit. The seed has 22 cases and the offline dense channel is a hashed bag of
 words, so this depth must be rechecked on the configured embedding stack
 (`--evaluate-notice` with the configured pipeline).
 
+## Configured-stack measurement (JUÁ 4B, PostgreSQL, 2026-09-24)
+
+The first full 22-case run on the configured stack since ADR 0018 (earlier
+attempts ran out of memory), with this ADR's gate at depth 20:
+
+| Notice metric | ADR 0016 run | This run |
+|---|---|---|
+| grounds | 81 | 53 |
+| complementary grounds | 21 | 16 |
+| known-bad citations | 3 | 1 |
+| exact recall | 0.228 | 0.225 |
+| semantic success | 1.0 | 1.0 |
+
+Ranking, on the 15 cases ADR 0016 measured (13 with labels): recall@5 0.564 →
+0.410, article recall@5 0.756 → 0.564, nDCG@5 0.512 → 0.405, hard-negative
+rate@5 0.08 → 0.053. On all 22 cases: recall@5 0.283, article recall@5 0.438,
+nDCG@5 0.265, hard-negative rate@5 0.045. ADR 0018 (no injected legal
+vocabulary) and this ADR both landed between the two runs and no configured
+run separates them; offline, ADR 0018 alone halved article recall. The labels
+may also have changed since ADR 0016, so the comparison is approximate.
+
+Notices got more precise at the same exact recall. The one known-bad citation
+is CDC art. 18 § 4 (product defects) in `arrependimento_compra_online`, where
+the consumer merely regrets an online purchase and says the shop "só troca se
+houver defeito". With equal weights and c = 60 a fused score determines the
+two ranks of the query it came from: the cited unit ranked 17th and 19th, and
+the whole-article chunk of art. 18 5th and 13th, so a gate at 16 would still
+cite the article and one at 12 might not. It is a negation both channels read
+as an assertion, which the optional verifier targets. By the same arithmetic
+every exact hit ranked within 9 in both channels of its best-scoring query,
+while about half of the 53 grounds needed a depth above 12 there. That is a
+proxy (a chunk can clear the gate through a lower-scoring query), so it
+motivates the sweep below rather than a new depth.
+
+Two data-protection cases cited nothing because no CDC article cleared the
+gate; ADR 0020 lets the LGPD ground a notice alone.
+
+The notice evaluation now measures the depth and the verifier directly on any
+stack. `--agreement-max-rank N` (repeatable) selects grounds at each depth from
+a single retrieval pass, and `--ground-verifier llm` applies the configured
+verifier and counts what it removes:
+
+```bash
+python -m app.evaluation.consumer_runner --evaluate-notice --notice-pipeline configured \
+  --agreement-max-rank 12 --agreement-max-rank 16 --agreement-max-rank 20 \
+  --agreement-max-rank 24 --output configured-notice-sweep.json
+python -m app.evaluation.consumer_runner --evaluate-notice --notice-pipeline configured \
+  --ground-verifier llm --output configured-notice-verified.json
+```
+
+`AGREEMENT_MAX_RANK` stays 20 until that sweep says otherwise.
+
 ## Alternatives tried and rejected
 
 - **One query per complaint sentence** (alone, or on top of the two ranking

@@ -7,6 +7,7 @@ import asyncio
 import sys
 import time
 
+from app.consumer.legal_corpus import LegalCorpus
 from app.consumer.legal_index import (
     adopt_legal_corpus_index,
     legal_corpus_is_indexed,
@@ -16,7 +17,8 @@ from app.consumer.runtime import create_consumer_rag
 from app.core.config import Settings
 from app.core.logging import configure_logging
 from app.rag.factory import create_vector_store_for_index
-from app.rag.vector_store import DocumentExportingVectorStore
+from app.rag.pipeline import RagPipeline
+from app.rag.vector_store import ClosableVectorStore, DocumentExportingVectorStore
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -81,6 +83,32 @@ async def _run(
     configure_logging(settings.log_level)
     print("Preparando a configuração do índice legal...", flush=True)
     corpus, rag = create_consumer_rag(settings)
+    try:
+        return await _prepare_index(
+            rag,
+            corpus,
+            settings,
+            force=force,
+            check=check,
+            adopt_source_index=adopt_source_index,
+            attested_source_revision=attested_source_revision,
+            no_reuse=no_reuse,
+        )
+    finally:
+        rag.close()
+
+
+async def _prepare_index(
+    rag: RagPipeline,
+    corpus: LegalCorpus,
+    settings: Settings,
+    *,
+    force: bool,
+    check: bool,
+    adopt_source_index: str | None,
+    attested_source_revision: str | None,
+    no_reuse: bool,
+) -> int:
     configuration = rag.retrieval_configuration(requested_k=1)
     model = configuration["embedding_model"]
     index_name = configuration["index_name"]
@@ -95,9 +123,13 @@ async def _run(
 
     if adopt_source_index is not None and attested_source_revision is not None:
         source = create_vector_store_for_index(settings, index_name=adopt_source_index)
-        if not isinstance(source, DocumentExportingVectorStore):
-            raise TypeError("o backend configurado não permite exportar o índice legado")
-        entries = await source.export_document(corpus.document_id)
+        try:
+            if not isinstance(source, DocumentExportingVectorStore):
+                raise TypeError("o backend configurado não permite exportar o índice legado")
+            entries = await source.export_document(corpus.document_id)
+        finally:
+            if isinstance(source, ClosableVectorStore):
+                source.close()
         if not entries:
             raise ValueError(f"o índice legado está vazio: {adopt_source_index}")
         result = await adopt_legal_corpus_index(
