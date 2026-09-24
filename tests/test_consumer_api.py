@@ -319,15 +319,16 @@ async def test_documented_value_requires_confirmation_and_keeps_financial_proven
     facts = {
         "consumer_name": "Pessoa Consumidora",
         "bank_name": "Loja Exemplo",
-        # This test is about financial provenance, not retrieval. On the
-        # 2,455-chunk corpus the offline hashed embedder only corroborates a
-        # CDC ground for a complaint this specific; the one-liner found none.
+        # This test is about financial provenance, not retrieval. The offline
+        # hashed embedder only corroborates a CDC ground within the agreement
+        # depth for a complaint this specific; the one-liner found none, and at
+        # depth 13 "reembolso integral" as the remedy found none either.
         "complaint_summary": (
             "Comprei um produto na Loja Exemplo e ele não foi entregue no prazo "
-            "prometido; o atendimento não resolveu."
+            "prometido; o fornecedor recusou cumprir a oferta."
         ),
         "incident_date_or_period": "julho de 2026",
-        "desired_resolution": "reembolso integral",
+        "desired_resolution": "Quero rescindir o contrato com restituição da quantia antecipada.",
     }
     response = await consumer_client.patch(
         f"/consumer/cases/{case_id}/facts",

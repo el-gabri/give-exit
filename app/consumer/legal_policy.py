@@ -100,13 +100,15 @@ _EXCLUDED_CIVIL_CODE_DIVISIONS = frozenset({("especial", "i", "vi")})
 # The two hybrid channels whose agreement makes a chunk citable.
 AGREEMENT_CHANNELS = frozenset({DENSE_CHANNEL, LEXICAL_CHANNEL})
 # Both channels must rank a chunk within this depth. Appearing anywhere in the
-# 32-deep candidate lists was near-vacuous: once the uncitable chapters left
-# the index, the offline notice evaluation cited 41 grounds, 2 of them known
-# bad. At 20 it cites 20 (3 fewer than before either change), none known bad,
-# and keeps its only exact hit; 16 and below lose that hit. Calibrated on the
-# 22-case offline seed; recheck it on the configured embedding stack with the
-# notice evaluation's --agreement-max-rank sweep (ADR 0019).
-AGREEMENT_MAX_RANK = 20
+# 32-deep candidate lists was near-vacuous: offline it cited 41 grounds, 2 of
+# them known bad. On the configured stack (JUÁ 4B, 22 cases) every exact hit
+# ranked within 12 in both channels: depth 12 cited 31 grounds and no known-bad
+# one, depth 20 cited 57 with one, and exact recall was 0.225 at every depth
+# from 12 to 24. 13 keeps one rank of margin above that (ADR 0019); the
+# offline stack loses its single exact hit below 20, which is a limit of its
+# hashed embedder, not of the gate. Measure other depths with the notice
+# evaluation's --agreement-max-rank sweep.
+AGREEMENT_MAX_RANK = 13
 # Without both channels, a chunk needs this rank in two independent queries.
 CORROBORATION_RANK = 3
 

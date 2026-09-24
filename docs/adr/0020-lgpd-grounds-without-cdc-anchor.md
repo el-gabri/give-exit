@@ -25,9 +25,9 @@ same run, was led by LGPD articles:
 Whenever no CDC article clears the agreement gate, the anchor removes every
 LGPD ground that did, so such a case ends without grounds unless a
 constitutional provision cleared the gate, and the service answers it with a
-503 asking for a retry. (That run did not record
-which chunks cleared the gate, so it cannot say how many LGPD grounds were
-dropped; the offline stack below shows the anchor doing it.) A consumer whose
+503 asking for a retry. The configured run under this ADR confirms it: the
+same retrieval then cites four LGPD grounds in those two cases, which had
+cleared the gate and been dropped by the anchor. A consumer whose
 complaint is about how a supplier handled their personal data gets no notice,
 although the LGPD is the statute that governs exactly that.
 
@@ -70,5 +70,20 @@ decides: `python -m app.evaluation.consumer_runner --evaluate-notice
   consumer's data. As with every ground, applicability is left to legal
   review (`requires_legal_review`); the optional verifier can remove a ground
   whose text does not match the account.
-- (-) The effect on the configured stack is not measured yet. It should be
-  recorded here after the next configured notice evaluation.
+
+## Configured-stack result (JUÁ 4B, PostgreSQL, 2026-09-24)
+
+With this rule and agreement depth 20 the notice evaluation cites 57 grounds
+instead of 53, the four new ones LGPD grounds in the two cases that cited
+nothing. Known-bad citations and exact recall (0.225) did not change.
+
+- `vazamento_de_dados_cadastrais`: LGPD arts. 42 § 1 II (joint liability of
+  the processor) and 44 (processing is irregular without the security the
+  data subject can expect).
+- `compartilhamento_de_dados_sem_consentimento`: LGPD arts. 7 § 5 (sharing
+  needs specific consent) and 5 XVI.
+
+Neither case cites a labelled unit (42, 46, 48 and CDC 14; 18 VII, 7 I and
+CDC 43), so exact recall does not move, but every new ground is on topic. The
+optional verifier kept arts. 42 § 1 II, 44 and 7 § 5. At depth 12 both cases
+still have grounds (ADR 0019).

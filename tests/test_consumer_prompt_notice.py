@@ -13,9 +13,11 @@ from fastapi import FastAPI
 from app.api.main import create_app
 from app.core.config import LLMProvider, Settings, VectorStoreBackend
 
+# The offline hashed embedder grounds few one-line complaints within the
+# agreement depth; this one it does.
 NUBANK = (
-    "O Nubank debitou R$ 100,00 em julho de 2026 sem autorização. "
-    "Quero o estorno imediato da cobrança."
+    "O Nubank me cobrou em julho de 2026 uma quantia indevida que eu já tinha pago. "
+    "Quero a devolução em dobro do valor pago em excesso."
 )
 
 
@@ -107,8 +109,9 @@ async def test_missing_facts_stay_placeholders_and_the_request_is_not_the_accoun
         "/consumer/prompt-notices",
         data={
             "text": (
-                "A loja cobrou duas vezes a mesma compra no cartão de crédito. "
-                "Quero a devolução do valor cobrado em dobro."
+                "A loja cobrou duas vezes a mesma compra no cartão de crédito e eu "
+                "paguei a quantia indevida. Quero a devolução em dobro do valor pago "
+                "em excesso."
             )
         },
     )
@@ -120,9 +123,10 @@ async def test_missing_facts_stay_placeholders_and_the_request_is_not_the_accoun
     assert "Destinatário" not in text
     assert "\nConsumidor\n" not in text
     assert notice["facts_summary"] == (
-        "A loja cobrou duas vezes a mesma compra no cartão de crédito."
+        "A loja cobrou duas vezes a mesma compra no cartão de crédito e eu paguei a "
+        "quantia indevida."
     )
-    assert notice["requests"][0] == "Quero a devolução do valor cobrado em dobro."
+    assert notice["requests"][0] == "Quero a devolução em dobro do valor pago em excesso."
     assert any("Preencha antes de enviar" in warning for warning in notice["warnings"])
 
 

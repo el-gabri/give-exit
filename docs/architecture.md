@@ -66,7 +66,7 @@ flowchart LR
    Reranking is optional and orders candidates only within their
    channel-agreement tier.
 9. Legal chunks must pass status, provenance and agreement rules: both
-   channels must rank a chunk within their top 20. When retrieval degrades to
+   channels must rank a chunk within their top 13. When retrieval degrades to
    one channel, the complaint and the requested remedy are searched
    separately and must both rank the chunk in their top three. An optional
    LLM verifier may then drop grounds it shows do not apply, with verbatim

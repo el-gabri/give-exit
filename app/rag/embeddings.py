@@ -301,6 +301,8 @@ class SentenceTransformerEmbeddingClient:
         batch_size: int = 8,
         model_revision: str | None = None,
         show_progress_bar: bool = False,
+        hf_token: str | None = None,
+        local_files_only: bool = False,
     ) -> None:
         self._model_name = model
         self._query_instruction = query_instruction
@@ -308,6 +310,8 @@ class SentenceTransformerEmbeddingClient:
         self._batch_size = batch_size
         self._model_revision = model_revision
         self._show_progress_bar = show_progress_bar
+        self._hf_token = hf_token
+        self._local_files_only = local_files_only
         self._encode_lock = asyncio.Lock()
         self._model: Any | None = None
 
@@ -352,6 +356,8 @@ class SentenceTransformerEmbeddingClient:
                 self._model_name,
                 device=self._device,
                 revision=self._model_revision,
+                token=self._hf_token,
+                local_files_only=self._local_files_only,
             )
             logger.info(
                 "local_embedding_model_loaded",

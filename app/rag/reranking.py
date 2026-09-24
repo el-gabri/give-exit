@@ -28,6 +28,7 @@ class SentenceTransformerReranker:
         device: str | None = None,
         batch_size: int = 8,
         model_revision: str | None = None,
+        local_files_only: bool = False,
     ) -> None:
         try:
             import sentence_transformers
@@ -41,8 +42,10 @@ class SentenceTransformerReranker:
         self._batch_size = batch_size
         self._model_revision = model_revision
         self._predict_lock = asyncio.Lock()
+        # CrossEncoder takes a token argument only in recent sentence-transformers
+        # releases; reranker models are public, so only the offline flag is set.
         self._model: Any = sentence_transformers.CrossEncoder(
-            model, device=device, revision=model_revision
+            model, device=device, revision=model_revision, local_files_only=local_files_only
         )
 
     @property

@@ -105,7 +105,7 @@ back safely. Embeddings are independent.
   retrieval matched to unrelated complaints.
 - The load-bearing precision control is retrieval agreement: an article
   becomes a ground only when dense and lexical retrieval both ranked it within
-  their top 20. Each chunk's rank in each channel is recorded in the trace and
+  their top 13. Each chunk's rank in each channel is recorded in the trace and
   the gate reads it from there, so it holds for any fusion weights and with a
   reranker enabled (ADR 0019). When retrieval degrades to lexical-only, the
   complaint and the requested remedy are also searched separately, and an
@@ -292,6 +292,14 @@ writes checksummed gzip shards and a manifest under
 `data/embedding_generations/<generation-id>/`, resumes only verified shards,
 validates full chunk coverage/dimension/L2 normalization and activates the
 destination namespace only after a successful import.
+
+Once the pinned revision is in the local Hugging Face cache, set
+`LITIGATION_HF_HUB_OFFLINE=1` (or `HF_HUB_OFFLINE=1`) in `.env`: the model then
+loads without contacting the Hub, start-up is faster and the "unauthenticated
+requests to the HF Hub" warning goes away. An optional `HF_TOKEN` in `.env` is
+passed to the embedding model when the Hub is contacted. The app reads both
+from `.env` itself; the Hugging Face libraries alone read only the process
+environment.
 
 Chroma is the default backend. PostgreSQL uses server-side Portuguese full-text
 search plus pgvector. To move an existing local collection to PostgreSQL without

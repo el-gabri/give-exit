@@ -10,7 +10,7 @@ from enum import Enum
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import Field, model_validator
+from pydantic import AliasChoices, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -147,6 +147,22 @@ class Settings(BaseSettings):
     embedding_query_queue_timeout_seconds: float = Field(default=30.0, gt=0, le=600)
     embedding_lexical_fallback: bool = True
     gemini_embedding_dimensions: int = Field(default=768, ge=128, le=3072)
+    # Hugging Face access for local sentence-transformers models, under the
+    # names the Hugging Face libraries use. Those libraries read only the
+    # process environment, so without these a token or offline flag kept in
+    # .env never reached them.
+    hf_token: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("LITIGATION_HF_TOKEN", "HF_TOKEN"),
+        repr=False,
+    )
+    # Load local models from the Hugging Face cache without contacting the Hub.
+    # Safe once the pinned revision is cached; start-up is then faster and
+    # deterministic.
+    hf_hub_offline: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("LITIGATION_HF_HUB_OFFLINE", "HF_HUB_OFFLINE"),
+    )
 
     # --- Storage ---
     data_dir: Path = Path("./data")
@@ -231,6 +247,18 @@ class Settings(BaseSettings):
     # Configure this through a secret manager when references must correlate
     # across processes. If omitted, correlation is process-local by design.
     telemetry_pseudonym_key: str | None = Field(default=None, repr=False)
+
+    @field_validator("hf_token", mode="before")
+    @classmethod
+    def _ignore_placeholder_token(cls, value: object) -> object:
+        """Treat an empty value or a .env.example placeholder as no token.
+
+        A placeholder sent to the Hub as a token is rejected with 401 even for
+        a public model, so it must not replace anonymous access.
+        """
+        if isinstance(value, str) and (not value.strip() or value.strip().startswith("<")):
+            return None
+        return value
 
     @model_validator(mode="after")
     def _production_requires_authentication(self) -> "Settings":

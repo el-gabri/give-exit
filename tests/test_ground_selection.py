@@ -274,19 +274,22 @@ def test_degraded_retrieval_cites_no_complementary_source() -> None:
 
 
 def test_channel_agreement_holds_for_any_fusion_weights() -> None:
-    """A rank-20 hit in both channels is supported even with a light lexical weight.
+    """A hit at the gate depth in both channels is supported with a light lexical weight.
 
     The former score-inferred gate compared the fused score with the best
-    single-channel score, so 1/80 + 0.3/80 fell below 1/61 and a genuine
+    single-channel score, so 1/73 + 0.1/73 fell below 1/61 and a genuine
     two-channel hit was discarded.
     """
-    from app.consumer.legal_policy import strongly_supported_chunk_ids
+    from app.consumer.legal_policy import AGREEMENT_MAX_RANK, strongly_supported_chunk_ids
 
+    depth = AGREEMENT_MAX_RANK
     chunk = _chunk_for_unit("br-cdc-art-42-paragrafo-unico")
-    trace = _trace([RetrievedChunk(chunk=chunk, score=1.3 / 80)]).model_copy(
-        update={"lexical_weight": 0.3}
+    trace = _trace([RetrievedChunk(chunk=chunk, score=1.1 / (60 + depth))]).model_copy(
+        update={"lexical_weight": 0.1}
     )
-    item = trace.results[0].model_copy(update={"channel_ranks": {"dense": 20, "lexical": 20}})
+    item = trace.results[0].model_copy(
+        update={"channel_ranks": {"dense": depth, "lexical": depth}}
+    )
     trace = trace.model_copy(update={"results": [item]})
 
     assert strongly_supported_chunk_ids([trace]) == {chunk.chunk_id}

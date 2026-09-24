@@ -163,17 +163,23 @@ async def test_offline_notice_baseline_on_the_seed_dataset() -> None:
     cases that cited nothing now cite LGPD articles (arts. 5, 18 VII and 47;
     art. 50 § 2), so 24 grounds and 7 complementary. Still no known-bad
     citation and the same exact hit.
+
+    Re-measured on 2026-09-24 for AGREEMENT_MAX_RANK 13 (ADR 0019), chosen on
+    the configured JUÁ stack, where exact recall was 0.225 at every depth from
+    12 to 24. Offline: 17 grounds, 5 complementary, no known-bad citation, and
+    the single exact hit (CDC art. 12 for the allergen case) is lost, as it is
+    at every depth below 20 on this hashed-embedder stack.
     """
 
     summary = await run_notice_evaluation(load_consumer_legal_dataset(DATASET_PATH))
 
     assert summary.failed_case_count == 0
     assert summary.totals == {
-        "consumer_notice_complementary_grounds": 7,
-        "consumer_notice_grounds": 24,
+        "consumer_notice_complementary_grounds": 5,
+        "consumer_notice_grounds": 17,
         "consumer_notice_known_bad_citations": 0,
     }
-    assert summary.averages["consumer_notice_exact_recall"] == 0.017
+    assert summary.averages["consumer_notice_exact_recall"] == 0.0
     assert summary.averages["consumer_notice_abstention"] == 1.0
     assert summary.averages["consumer_notice_semantic_success"] == 1.0
     assert summary.run is not None
@@ -325,11 +331,11 @@ async def test_an_agreement_sweep_retrieves_each_case_once(
     # 22 cases, two of them stopped by the scope gate before retrieval.
     assert len(calls) == 20
     assert shallow.run is not None and shallow.run.agreement_max_rank == 8
-    assert default.run is not None and default.run.agreement_max_rank == 20
+    assert default.run is not None and default.run.agreement_max_rank == 13
     assert default.run.ground_verifier == "none"
     # A shallower gate can only drop grounds.
     assert shallow.totals["consumer_notice_grounds"] == 9
-    assert default.totals["consumer_notice_grounds"] == 24
+    assert default.totals["consumer_notice_grounds"] == 17
 
 
 class _RejectEveryGround:
@@ -351,7 +357,7 @@ async def test_verifier_removals_are_counted_per_case() -> None:
     summary = await evaluator.run(load_consumer_legal_dataset(DATASET_PATH))
 
     assert summary.totals["consumer_notice_grounds"] == 0
-    assert summary.totals["consumer_notice_verifier_removed"] == 24
+    assert summary.totals["consumer_notice_verifier_removed"] == 17
     assert summary.totals["consumer_notice_verifier_failures"] == 0
     assert summary.run is not None and summary.run.ground_verifier == "llm"
 
