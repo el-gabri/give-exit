@@ -156,6 +156,7 @@ data-protection cases now cite the LGPD.
 | Configuration | Grounds | Complementary | Known-bad | Exact recall | In-scope cases with no ground |
 |---|---|---|---|---|---|
 | depth 12 | 31 | 5 | 0 | 0.225 | 1 |
+| depth 13 (chosen) | 34 | 7 | 1 | 0.225 | 1 |
 | depth 16 | 47 | 17 | 1 | 0.225 | 1 |
 | depth 20 | 57 | 20 | 1 | 0.225 | 0 |
 | depth 24 | 67 | 25 | 2 | 0.225 | 0 |
@@ -176,13 +177,18 @@ data-protection cases now cite the LGPD.
   `does_not_apply`, so unlabelled grounds it is unsure of stay.
 
 **Decision: `AGREEMENT_MAX_RANK = 13`.** 12 is the shallowest measured depth
-that kept every labelled hit, and 13 keeps one rank of margin above it. 13 was
-not measured itself. Two consequences follow from the runs above:
-`venda_casada_seguro` gets no ground at 13 either, because a shallower gate
-only removes support and it had none at 16; and the known-bad CDC art. 18
-citation that 12 removed is expected back, because its whole-article chunk
-ranked 5th and 13th. The next configured run confirms both:
-`--evaluate-notice --notice-pipeline configured --agreement-max-rank 13`.
+that kept every labelled hit, and 13 keeps one rank of margin above it. Two
+consequences were predicted from the runs above: `venda_casada_seguro` gets no
+ground at 13 either, because a shallower gate only removes support and it had
+none at 16; and the known-bad CDC art. 18 citation that 12 removed comes back,
+because its whole-article chunk ranked 5th and 13th.
+
+A configured run at depth 13 confirmed both: 34 grounds, 7 complementary,
+1 known-bad citation (CDC art. 18, now quoted as the whole article, in
+`arrependimento_compra_online`), exact recall 0.225, and `venda_casada_seguro`
+the only in-scope case without a ground. Against depth 12 it adds exactly
+three grounds: that citation, Civil Code art. 446 in `produto_duravel_com_vicio`
+and LGPD art. 41 § 1 in `cobranca_com_ameacas`.
 
 The verifier stays optional (`LITIGATION_GROUND_VERIFIER=none` by default): it
 is the only control that removed the negated-defect citation, but it costs a
