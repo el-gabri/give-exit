@@ -210,6 +210,15 @@ known-bad citations and abstention, not exact recall.
   ranking lowered offline recall@5 to 0.067.
 - **Excluding uncitable chunks without tightening agreement.** It exposed how
   weak "anywhere in both 32-deep lists" was: 41 grounds, 2 known bad.
+- **An English query instruction** ("Given a Brazilian legal search query,
+  retrieve relevant legal passages or documents."), following Qwen3-Embedding's
+  advice to write instructions in English, instead of the Portuguese one. On
+  the configured stack (2026-09-24) it reordered the top five in 12 of 22
+  cases, but every @5 metric was identical (recall 0.283, article recall
+  0.438, nDCG 0.265, hard negatives 0.045); @10 moved within noise (article
+  recall 0.546 → 0.571, hard negatives 0.036 → 0.045). At depth 13 the notices
+  cited 38 grounds instead of 34 (10 complementary instead of 7), with the same
+  known-bad citation and exact recall. The Portuguese instruction stays.
 
 ## Consequences
 
