@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from typing import Literal
 
 from pydantic import (
@@ -129,7 +129,13 @@ class EvaluationRunMetadata(BaseModel):
     corpus_release_id: str
     corpus_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
     query_builder_version: str
-    queries_per_case: int = Field(ge=1)
+    queries_per_case: int = Field(
+        ge=1,
+        description=(
+            "Largest number of retrieval queries the builder produced for one case; "
+            "the facet builder varies it with the number of complaint sentences"
+        ),
+    )
     cutoffs: tuple[int, ...] = Field(min_length=1)
     retrieval: RetrievalEvaluationConfiguration
     ground_policy_version: str | None = None
@@ -399,3 +405,8 @@ class ConsumerLegalRetrievalHit(BaseModel):
     @property
     def retrieval_id(self) -> str:
         return self.unit_id or self.provision_id
+
+
+def max_queries_per_case(cases: Sequence[CaseResult]) -> int:
+    """The largest query count across evaluated cases, at least one."""
+    return max((len(case.queries) for case in cases), default=1) or 1

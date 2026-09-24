@@ -48,19 +48,23 @@ FastAPI /consumer/cases API
         +--> PostgreSQL/Chroma hybrid RAG
         |      +--> accepted case evidence
         |      +--> versioned CDC, LGPD, scoped Civil Code + selected CF
-        |      +--> dense retrieval + lexical ranking + reciprocal-rank fusion
-        |      +--> optional cross-encoder reranking
+        |      +--> dense retrieval + BM25 (same ranking in every backend) + RRF
+        |      +--> optional cross-encoder reranking within agreement tiers
         |
         +--> deterministic legal-policy and settlement-scenario gates
+        |      +--> optional span-verified LLM check of each legal ground
         |
         +--> auditable notice --> Markdown / PDF / DOCX
 ```
 
 There is no conversational legal-advice LLM. A configured LLM may perform
-bounded semantic review of suspicious document excerpts. An optional,
-separately configured OpenAI composer may phrase five prose fields only after
-facts, evidence, legal grounds, requests, values and citations have been fixed
-deterministically; invalid output falls back safely. Embeddings are independent.
+bounded semantic review of suspicious document excerpts. An optional ground
+verifier may judge whether each selected legal ground fits the confirmed facts,
+but only verdicts backed by two verbatim quotes count, and it can only remove
+grounds, never add them. An optional, separately configured OpenAI composer may
+phrase five prose fields only after facts, evidence, legal grounds, requests,
+values and citations have been fixed deterministically; invalid output falls
+back safely. Embeddings are independent.
 
 ## Legal grounding and citations
 
@@ -68,6 +72,8 @@ deterministically; invalid output falls back safely. Embeddings are independent.
   snapshots by one generic statute parser, with manifests pinning raw and
   extracted-text hashes. Only the Civil Code's general part and law of
   obligations are indexed; its other books stay in the corpus for audit.
+  Provisions a notice may never cite (below) are not indexed either, so they
+  cannot take retrieval slots from citable ones (ADR 0019).
 - Selected constitutional provisions are versioned in the legal corpus.
 - LGPD and Civil Code grounds complement the CDC: at most three per notice,
   only beside a CDC ground, and none under lexical-only retrieval.
@@ -90,23 +96,29 @@ deterministically; invalid output falls back safely. Embeddings are independent.
   specific contract types (Título VI of the law of obligations), which
   retrieval matched to unrelated complaints.
 - The load-bearing precision control is retrieval agreement: an article
-  becomes a ground only when dense and lexical retrieval both ranked it (or,
-  in degraded mode, when the same chunk corroborates in the top three of
-  both queries built from the narrative — two framings of the same
-  narrative, not independently constructed queries; query 2 is the bare
-  complaint/remedy text, a strict subset of query 1's wording).
+  becomes a ground only when dense and lexical retrieval both ranked it within
+  their top 20. Each chunk's rank in each channel is recorded in the trace and
+  the gate reads it from there, so it holds for any fusion weights and with a
+  reranker enabled (ADR 0019). When retrieval degrades to lexical-only, the
+  complaint and the requested remedy are also searched separately, and an
+  article needs a top-three rank in both; otherwise the service asks for a
+  retry instead of citing a single keyword match.
 - Notice citations are reconstructed from retrieved evidence and canonical
   legal metadata; they are not trusted model-generated citation strings.
 - An evidence citation names exactly one file and one page. A retrieved chunk
   whose text spans more than one evidence page is dropped rather than quoted
   under the first page's filename: a shorter notice is recoverable, one that
   attributes another document's words to this file is not.
+- Evidence is searched with the consumer's own words and the identifiers
+  documents print (protocols, the incident date, amounts), and indexed as the
+  document's text only. The quote shown is the passage of the chunk that best
+  matches the confirmed facts, not its first characters.
 - Excerpts taken from uploaded files are escaped before they enter the notice
   Markdown, so a document cannot inject links or emphasis into the draft the
   consumer reads and exports.
 - Retrieval traces record the query, hashes, model/revision, active generation
-  ID, ranking/degraded mode, cache hits, scores, chunk IDs, source metadata and
-  final inclusion decisions.
+  ID, ranking/degraded mode, cache hits, scores, per-channel ranks, chunk IDs,
+  source metadata and final inclusion decisions.
 
 The Consumer retrieval audit is available at:
 
@@ -210,6 +222,24 @@ legal grounds to OpenAI only when a notice is generated. The database,
 embeddings and legal corpus stay local. The model returns strict structured
 prose through the Responses API (`store=False`); a provider failure or invalid
 output falls back to the deterministic composer and is recorded in the notice.
+Prose that cites an article, states an amount or contains any number absent
+from what the model was given is rejected the same way.
+
+To have the configured LLM provider check each selected legal ground against
+the confirmed facts:
+
+```env
+LITIGATION_GROUND_VERIFIER=llm
+LITIGATION_GROUND_VERIFIER_MAX_OUTPUT_TOKENS=2000
+```
+
+For each ground the model answers `applies`, `does_not_apply` or `uncertain`
+and, for `applies`, copies one passage from the consumer's account and one from
+the provision's official text. Code accepts a verdict only when both passages
+are found verbatim; the notice then shows them under the citation. Only
+`does_not_apply` removes a ground; everything else keeps it, and a provider
+failure keeps every ground with a warning. This sends the complaint, the
+requested remedy and the selected provisions' official text to the provider.
 
 Brazilian legal embedding bake-off:
 
@@ -279,8 +309,14 @@ python -m app.consumer.preindex_legal --check
 The first JUÁ CPU run can take tens of minutes or hours, depending on the
 hardware and chunk sizes. Each completed shard is durable, so an interrupted
 run can be restarted with the same command. Once complete, the API reuses the
-2,455 persisted legal chunks instead of recomputing them inside a notice request.
+1,644 persisted legal chunks instead of recomputing them inside a notice request.
 Use `--force` only for a deliberate rebuild.
+
+Chunking `legal-hierarchy-v4` (ADR 0019) leaves uncitable chapters out of the
+index. An index built with v3 is reported as not ready; running the pre-index
+command once rebuilds it. Every remaining chunk text is unchanged, so when an
+earlier embedded (not adopted) generation of the same model exists, the reuse
+below supplies all of their vectors and nothing is re-embedded.
 
 A new corpus release reuses the vectors of every chunk whose text did not
 change, taken from verified earlier generations of the same model, revision

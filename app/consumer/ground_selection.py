@@ -23,11 +23,15 @@ from app.schemas.rag import RetrievedChunk
 from app.schemas.trace import RetrievalTrace
 
 # A notice cites law; a weakly ranked article is worse than a shorter notice.
-# Only the strongest merged hits are eligible, each hit must stay within reach
-# of the best one, and the score-type-aware gate in legal_policy must show
-# dense/lexical agreement (or cross-query corroboration for non-RRF scores).
-# Unlike the former relative-only floor, an arbitrary low-scoring top hit can
-# no longer become authority merely because every other hit is even weaker.
+# Only the strongest merged hits are eligible, and the gate in legal_policy
+# must show dense/lexical agreement (or independent-query corroboration when
+# a trace lacks one of the channels).
+#
+# The relative floor applies only to reranker and single-channel scores. On
+# reciprocal-rank fusion it can never bind: the best fused score is
+# (w_dense + w_lexical) / (c + 1), and any chunk both channels returned within
+# the candidate depth K scores at least (w_dense + w_lexical) / (c + K), which
+# is above half the best whenever K <= c + 2 (62 at the default c = 60).
 MAX_GROUND_CANDIDATES = 8
 MIN_GROUND_SCORE_RATIO = 0.5
 MAX_LEGAL_GROUNDS = 8
@@ -60,7 +64,7 @@ def select_legal_grounds(
     merged = merge_results(result_sets)
     if not merged:
         return []
-    score_floor = merged[0].score * MIN_GROUND_SCORE_RATIO
+    score_floor = _score_floor(merged, traces or [])
     provision_candidates = _provision_candidates(
         corpus,
         _eligible_candidates(corpus, merged, strongly_supported),
@@ -97,6 +101,14 @@ def select_legal_grounds(
         if len(selected) >= MAX_LEGAL_GROUNDS:
             break
     return [ground for _, ground in enforce_cdc_anchor(selected)]
+
+
+def _score_floor(merged: list[RetrievedChunk], traces: list[RetrievalTrace]) -> float:
+    """Half the best score, except on fused ranks where the gate already dominates."""
+
+    if all(trace.score_type == "rrf_score" for trace in traces if trace.error is None):
+        return float("-inf")
+    return merged[0].score * MIN_GROUND_SCORE_RATIO
 
 
 def _eligible_candidates(

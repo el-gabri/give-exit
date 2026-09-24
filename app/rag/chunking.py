@@ -16,6 +16,11 @@ one untitled section and every nonempty block is body text. Uploaded evidence
 is not a petition. A receipt or bank statement read by OCR is often nothing but
 short uppercase lines, which the heuristic turns into section titles, and a
 title with no body text after it is discarded - with the receipt's only content.
+Evidence is the only document the application chunks, so this is the default.
+
+A paragraph longer than the target is split at a sentence end or, failing
+that, a word break, never inside a word or an amount, and the overlap carried
+into the next chunk starts on a word boundary.
 """
 
 from dataclasses import dataclass, field
@@ -26,6 +31,8 @@ from app.schemas.rag import Chunk
 HEADING_MAX_CHARS = 80
 HEADING_MIN_LETTERS = 3
 HEADING_UPPER_RATIO = 0.9
+# A word break right after one of these would split an amount from its value.
+_CURRENCY_SYMBOLS = ("R$", "US$", "$", "€")
 
 
 def is_heading(line: str) -> bool:
@@ -80,14 +87,14 @@ def _page_sections(document: ParsedDocument) -> list[_Section]:
 class SectionAwareChunker:
     """Splits a ParsedDocument into retrieval-ready chunks."""
 
-    VERSION = "section-aware-v1"
+    VERSION = "section-aware-v2"
 
     def __init__(
         self,
         target_chars: int = 1200,
         overlap_chars: int = 150,
         *,
-        page_preserving: bool = False,
+        page_preserving: bool = True,
     ) -> None:
         if overlap_chars >= target_chars:
             raise ValueError("overlap_chars must be smaller than target_chars")
@@ -140,12 +147,19 @@ class SectionAwareChunker:
             )
             # keep tail of the last paragraph as overlap for continuity
             last_page, last_paragraph = buffer[-1]
-            tail = last_paragraph[-self._overlap :]
+            tail = _word_aligned_tail(last_paragraph, self._overlap)
             buffer = [(last_page, tail)] if len(last_paragraph) > self._overlap else []
             size = sum(len(p) for _, p in buffer)
 
         for page, paragraph in section.paragraphs:
-            for piece in _hard_split(paragraph, self._target):
+            # Leave room for the overlap so a split piece plus the carried
+            # tail still fits the target.
+            pieces = (
+                [paragraph]
+                if len(paragraph) <= self._target
+                else split_at_boundaries(paragraph, self._target - self._overlap)
+            )
+            for piece in pieces:
                 if size + len(piece) > self._target and buffer:
                     flush()
                 buffer.append((page, piece))
@@ -168,8 +182,35 @@ class SectionAwareChunker:
         return chunks
 
 
-def _hard_split(paragraph: str, max_chars: int) -> list[str]:
-    """Split a pathological paragraph that alone exceeds the target size."""
-    if len(paragraph) <= max_chars:
-        return [paragraph]
-    return [paragraph[i : i + max_chars] for i in range(0, len(paragraph), max_chars)]
+def split_at_boundaries(text: str, max_chars: int) -> list[str]:
+    """Split text into pieces of at most ``max_chars`` at natural boundaries.
+
+    The last sentence or clause end in reach wins when it keeps at least half
+    the budget, then the last word break that does not separate a currency
+    symbol from its amount; only a single word longer than half the budget is
+    cut where it stands.
+    """
+    pieces: list[str] = []
+    remaining = text
+    while len(remaining) > max_chars:
+        boundary = max(remaining.rfind(". ", 0, max_chars), remaining.rfind("; ", 0, max_chars))
+        if boundary < max_chars // 2:
+            boundary = remaining.rfind(" ", 0, max_chars)
+            while boundary > 0 and remaining[:boundary].endswith(_CURRENCY_SYMBOLS):
+                boundary = remaining.rfind(" ", 0, boundary)
+        if boundary < max_chars // 2:
+            boundary = max_chars
+        else:
+            boundary += 1
+        pieces.append(remaining[:boundary].strip())
+        remaining = remaining[boundary:].strip()
+    if remaining:
+        pieces.append(remaining)
+    return pieces
+
+
+def _word_aligned_tail(paragraph: str, overlap: int) -> str:
+    """The paragraph's last ``overlap`` characters, starting at a word."""
+    tail = paragraph[-overlap:]
+    space = tail.find(" ")
+    return tail[space + 1 :] if 0 <= space < len(tail) - 1 else tail

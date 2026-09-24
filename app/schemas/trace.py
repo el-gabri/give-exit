@@ -25,6 +25,13 @@ class RetrievedItemTrace(BaseModel):
     page_start: int = Field(ge=1)
     page_end: int = Field(ge=1)
     score: float
+    channel_ranks: dict[str, int] = Field(
+        default_factory=dict,
+        description=(
+            "Rank in each retrieval channel that returned the chunk before fusion; "
+            "the legal-support gate reads channel agreement from here"
+        ),
+    )
     content_sha256: str
     source_metadata: dict[str, MetadataValue] = Field(
         default_factory=dict,

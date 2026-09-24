@@ -269,3 +269,32 @@ async def test_scanned_pdf_with_failing_ocr_is_rejected_when_text_required(
 
     with pytest.raises(DocumentTextUnavailableError, match="texto suficiente"):
         await service.ingest(scanned_pdf, require_text=True)
+
+
+def test_pdf_text_blocks_arrive_as_separate_paragraphs(tmp_path: Path) -> None:
+    """The chunker splits paragraphs on blank lines; the layout's blocks are them.
+
+    Line-by-line extraction gave one paragraph per page, which the chunker
+    could only cut at fixed character offsets.
+    """
+    document = fitz.open()
+    page = document.new_page()
+    page.insert_text(fitz.Point(72, 72), "EXTRATO BANCARIO")
+    for row, day in enumerate(range(1, 4)):
+        page.insert_text(
+            fitz.Point(72, 120 + row * 14), f"{day:02d}/03/2026 COMPRA VALOR R$ 1.250,00"
+        )
+    page.insert_text(fitz.Point(72, 260), "Protocolo de contestacao PROTOCOLO-123.")
+    path = tmp_path / "extrato.pdf"
+    document.save(path)
+    document.close()
+
+    [text] = extract_text(path).page_texts
+
+    assert text.split("\n\n") == [
+        "EXTRATO BANCARIO",
+        "01/03/2026 COMPRA VALOR R$ 1.250,00\n"
+        "02/03/2026 COMPRA VALOR R$ 1.250,00\n"
+        "03/03/2026 COMPRA VALOR R$ 1.250,00",
+        "Protocolo de contestacao PROTOCOLO-123.",
+    ]

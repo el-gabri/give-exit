@@ -16,11 +16,11 @@ from app.api.main import create_app
 from app.consumer.evidence_support import (
     clean_chunk_quote,
     evidence_supports_confirmed_facts,
+    supporting_quote,
 )
 from app.consumer.notice_markdown import markdown_inline
 from app.consumer.schemas import ConsumerCaseFacts
 from app.core.config import LLMProvider, Settings, VectorStoreBackend
-from app.rag.chunking import is_heading
 from app.reporting.convert import strip_markdown_escapes
 from app.schemas.rag import RetrievedChunk
 from app.schemas.trace import RetrievalTrace, RetrievedItemTrace
@@ -33,6 +33,9 @@ CONTRATO = (
     "CONTRATO DA OPERADORA XPTO. O cliente autorizou expressamente o debito "
     "automatico mensal e declarou ciencia integral das clausulas contratuais."
 )
+
+
+BOTH_CHANNELS = {"dense": 1, "lexical": 1}
 
 
 def _confirmed_facts() -> ConsumerCaseFacts:
@@ -79,6 +82,7 @@ def _evidence_traces(
                         page_start=result.chunk.page_start,
                         page_end=result.chunk.page_end,
                         score=result.score,
+                        channel_ranks=result.channel_ranks,
                         content_sha256=hashlib.sha256(
                             result.chunk.text.encode()
                         ).hexdigest(),
@@ -126,7 +130,10 @@ async def notice_client(tmp_path: Path, monkeypatch):
 
 
 async def _case_with_documents(
-    client: httpx.AsyncClient, documents: list[tuple[str, str]]
+    client: httpx.AsyncClient,
+    documents: list[tuple[str, str]],
+    *,
+    complaint: str = "A Loja Exemplo cobrou R$ 250,00 na fatura sem autorizacao.",
 ) -> tuple[str, dict[str, str]]:
     created = (await client.post("/consumer/cases")).json()
     case_id, headers = created["case_id"], {"X-Consumer-Case-Token": created["case_token"]}
@@ -143,7 +150,7 @@ async def _case_with_documents(
         json={
             "consumer_name": "Maria Souza",
             "bank_name": "Loja Exemplo",
-            "complaint_summary": "A Loja Exemplo cobrou R$ 250,00 na fatura sem autorizacao.",
+            "complaint_summary": complaint,
             "incident_date_or_period": "10/03/2026",
             "desired_resolution": "Quero o estorno integral da cobranca indevida.",
             "facts_confirmed": True,
@@ -204,23 +211,6 @@ async def test_notice_has_no_subject_line(notice_client: httpx.AsyncClient) -> N
     assert "**Assunto:**" not in markdown
 
 
-def test_evidence_page_marker_is_always_recognised_as_a_heading() -> None:
-    """Section detection is what keeps one chunk inside one evidence page.
-
-    The marker embeds two uuid4 hex fragments. In lower case those carry a-f,
-    which pushed the upper-case ratio below the heading threshold for ~97% of
-    random ids, so pages silently merged into a single section.
-    """
-    import uuid
-
-    for _ in range(200):
-        marker = (
-            f"CASO {uuid.uuid4().hex[:8].upper()} EVIDENCIA "
-            f"{uuid.uuid4().hex[:8].upper()} PAGINA 1"
-        )
-        assert is_heading(marker), marker
-
-
 def test_chunk_spanning_pages_is_dropped_rather_than_misattributed() -> None:
     """The guard must not depend on the heading heuristic staying correct."""
     from app.consumer.schemas import ConsumerEvidence, EvidenceStatus
@@ -253,6 +243,7 @@ def test_chunk_spanning_pages_is_dropped_rather_than_misattributed() -> None:
             page_end=2,
         ),
         score=0.9,
+        channel_ranks=BOTH_CHANNELS,
     )
 
     result_sets = [[spanning]]
@@ -297,6 +288,7 @@ def test_evidence_references_exclude_hits_without_retrieval_support() -> None:
             page_end=1,
         ),
         score=0.032,
+        channel_ranks=BOTH_CHANNELS,
     )
     unrelated = RetrievedChunk(
         chunk=Chunk(
@@ -307,6 +299,7 @@ def test_evidence_references_exclude_hits_without_retrieval_support() -> None:
             page_end=2,
         ),
         score=0.016,
+        channel_ranks={"dense": 2},
     )
     result_sets = [[relevant, unrelated]]
     page_sources = {
@@ -357,6 +350,7 @@ def test_dual_channel_hit_without_confirmed_fact_overlap_is_not_cited() -> None:
             page_end=1,
         ),
         score=0.032,
+        channel_ranks=BOTH_CHANNELS,
     )
     unrelated = RetrievedChunk(
         chunk=Chunk(
@@ -366,9 +360,9 @@ def test_dual_channel_hit_without_confirmed_fact_overlap_is_not_cited() -> None:
             page_start=2,
             page_end=2,
         ),
-        # Consistent with appearing at rank 24 in both RRF channels and safely
-        # above the maximum possible contribution from either channel alone.
-        score=2 / (60 + 24),
+        # Rank 20 in both RRF channels: the retrieval gate is satisfied.
+        score=2 / (60 + 20),
+        channel_ranks={"dense": 20, "lexical": 20},
     )
     result_sets = [[relevant, unrelated]]
     page_sources = {
@@ -481,6 +475,34 @@ def test_untrusted_excerpt_cannot_inject_a_markdown_link() -> None:
     assert strip_markdown_escapes(escaped) == raw
 
 
+def test_supporting_quote_is_the_passage_that_matches_the_facts() -> None:
+    """The first 700 characters of a long statement are rarely the disputed line."""
+    filler = " ".join(
+        f"Lancamento {day:02d}/02/2026 supermercado pago normalmente."
+        for day in range(1, 29)
+    )
+    disputed = "Cobranca nao reconhecida de R$ 250,00 lancada na fatura sem autorizacao."
+    text = f"{filler} {disputed} Saldo final do periodo."
+    assert text.index(disputed) > 700
+
+    quote = supporting_quote(text, _confirmed_facts())
+
+    assert disputed in quote
+    assert len(quote) <= 700
+    assert quote in " ".join(text.split())
+
+
+def test_supporting_quote_keeps_short_chunks_whole_and_falls_back_to_the_opening() -> None:
+    facts = _confirmed_facts()
+    unrelated = " ".join(f"Item {index} do cardapio executivo." for index in range(60))
+
+    assert supporting_quote("Compra cobrada na fatura.", facts) == "Compra cobrada na fatura."
+    opening = supporting_quote(unrelated, facts)
+    assert unrelated.startswith(opening)
+    assert len(opening) <= 700
+    assert opening.endswith(".")
+
+
 def test_clean_chunk_quote_strips_the_marker_anywhere_in_the_text() -> None:
     text = (
         "CASO A1B2C3D4 EVIDENCIA 99887766 PAGINA 1\n"
@@ -499,10 +521,46 @@ async def test_lexical_only_retrieval_is_declared_in_the_notice(
     lexical-only notice was indistinguishable from a hybrid one in both the API
     response and the UI.
     """
+    # The complaint and the remedy, searched separately, both rank CDC art. 42,
+    # sole paragraph, first: independent corroboration without the dense channel.
+    case_id, headers = await _case_with_documents(
+        notice_client,
+        [("fatura.pdf", FATURA)],
+        complaint="A Loja Exemplo me cobrou quantia indevida na fatura e eu paguei.",
+    )
+    _disable_semantic_retrieval(monkeypatch)
+    notice = (await notice_client.post(f"/consumer/cases/{case_id}/notice", headers=headers)).json()
+
+    assert notice["retrieval_degraded_modes"] == ["lexical_only"]
+    assert any("busca semântica" in warning for warning in notice["warnings"])
+    assert [ground["authority"]["unit_id"] for ground in notice["legal_grounds"]] == [
+        "br-cdc-art-42-paragrafo-unico"
+    ]
+    agents = {trace["agent"] for trace in notice["retrievals"]}
+    assert "consumer_legal_corroboration" in agents
+
+
+async def test_lexical_only_retrieval_abstains_without_independent_corroboration(
+    notice_client: httpx.AsyncClient, monkeypatch
+) -> None:
+    """Without the dense channel, one framing of the narrative is not support.
+
+    Here no article ranks in the lexical top three for both the complaint and
+    the requested remedy, so the service refuses and asks for a retry rather
+    than citing whatever one keyword search ranked first.
+    """
+    case_id, headers = await _case_with_documents(notice_client, [("fatura.pdf", FATURA)])
+    _disable_semantic_retrieval(monkeypatch)
+
+    response = await notice_client.post(f"/consumer/cases/{case_id}/notice", headers=headers)
+
+    assert response.status_code == 503
+    assert "fundamentos jurídicos" in response.json()["detail"]
+
+
+def _disable_semantic_retrieval(monkeypatch) -> None:  # noqa: ANN001
     from app.rag import pipeline as pipeline_module
     from app.rag.resilience import EmbeddingUnavailableError
-
-    case_id, headers = await _case_with_documents(notice_client, [("fatura.pdf", FATURA)])
 
     async def _unavailable(self, queries):  # noqa: ANN001, ANN202
         raise EmbeddingUnavailableError("embedding circuit breaker is open")
@@ -510,10 +568,6 @@ async def test_lexical_only_retrieval_is_declared_in_the_notice(
     monkeypatch.setattr(
         pipeline_module.QueryEmbeddingGuard, "embed", _unavailable, raising=True
     )
-    notice = (await notice_client.post(f"/consumer/cases/{case_id}/notice", headers=headers)).json()
-
-    assert notice["retrieval_degraded_modes"] == ["lexical_only"]
-    assert any("busca semântica" in warning for warning in notice["warnings"])
 
 
 async def test_delivered_notice_carries_no_retrieval_identifiers(

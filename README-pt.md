@@ -37,40 +37,56 @@ FastAPI /consumer/cases
         |
         +--> triagem determinística + confirmação explícita
         +--> upload limitado --> extração/OCR --> segurança de documento
-        +--> PostgreSQL/Chroma + dense + busca textual + RRF
+        +--> PostgreSQL/Chroma + dense + BM25 (igual em todo backend) + RRF
         |      +--> evidências aceitas
         |      +--> CDC, LGPD e Código Civil (escopo limitado) + dispositivos da CF
         +--> política jurídica e cenário financeiro determinísticos
+        |      +--> verificação opcional, por LLM, de cada fundamento com trechos literais
         +--> notificação auditável --> Markdown / PDF / DOCX
 ```
 
 Não existe LLM conversacional dando aconselhamento jurídico. Um LLM configurado
-pode revisar semanticamente trechos suspeitos de documentos. Um compositor
-OpenAI opcional e separado pode redigir somente cinco campos de prosa depois
-que fatos, evidências, fundamentos, pedidos, valores e citações já foram fixados
-de forma determinística; saída inválida aciona o compositor determinístico.
+pode revisar semanticamente trechos suspeitos de documentos. Um verificador
+opcional pode julgar se cada fundamento selecionado se aplica aos fatos
+confirmados, mas só contam veredictos sustentados por dois trechos literais, e
+ele só pode retirar fundamentos, nunca acrescentar. Um compositor OpenAI
+opcional e separado pode redigir somente cinco campos de prosa depois que
+fatos, evidências, fundamentos, pedidos, valores e citações já foram fixados de
+forma determinística; saída inválida aciona o compositor determinístico.
 
 ## Fontes e citações
 
 - CDC, LGPD e Código Civil vêm de snapshots fixados do Planalto, lidos por um
   único parser de leis, com manifestos que fixam os hashes do arquivo e do texto
   extraído. Do Código Civil só a Parte Geral e o Livro I da Parte Especial entram
-  no índice; os demais livros ficam no corpus para auditoria.
+  no índice; os demais livros ficam no corpus para auditoria. Dispositivos que
+  uma notificação nunca pode citar também ficam fora do índice, para não
+  ocuparem posições da busca (ADR 0019).
 - Dispositivos constitucionais selecionados são versionados no corpus.
 - Fundamentos da LGPD e do Código Civil complementam o CDC: no máximo três por
   notificação, só ao lado de um fundamento do CDC e nenhum em recuperação apenas
   lexical. O Título VI do Livro I da Parte Especial do Código Civil (espécies
-  de contrato) é indexado, mas não é citado.
+  de contrato) não é citado nem indexado.
 - Os chunks preservam lei, artigo, subdivisão, URL oficial, release, vigência e
   hashes de origem.
 - A recuperação jurídica combina semântica e correspondência lexical exata.
+- O principal controle de precisão é a concordância: um artigo só vira
+  fundamento quando a busca densa e a lexical o colocam entre os 20 primeiros.
+  A posição em cada canal fica no trace e o controle a lê de lá, então vale para
+  quaisquer pesos de fusão e com reranker. Em modo apenas lexical, o relato e a
+  solução desejada também são buscados separadamente e o artigo precisa estar
+  entre os três primeiros nas duas buscas; senão o serviço pede nova tentativa.
+- Evidências são buscadas com as palavras do consumidor e com os
+  identificadores que os documentos imprimem (protocolos, data, valores), e
+  indexadas apenas com o texto do próprio documento. O trecho citado é a
+  passagem do chunk que melhor corresponde aos fatos confirmados.
 - Recuperar um chunk não o transforma automaticamente em fundamento: uma
   política determinística controla sua elegibilidade e está marcada como
   `requires_legal_review`.
 - As citações são reconstruídas no backend; não são strings de citação geradas
   e aceitas do modelo.
 - Os traces registram revisão e geração ativa do embedding, cache, eventual
-  modo degradado, ranking, chunk IDs e hashes das fontes.
+  modo degradado, ranking, posição em cada canal, chunk IDs e hashes das fontes.
 
 Auditoria:
 
@@ -181,8 +197,15 @@ python -m app.consumer.preindex_legal --check
 O primeiro comando pode levar dezenas de minutos ou horas com o JUÁ em CPU,
 dependendo do hardware e do tamanho dos chunks. Cada shard concluído é durável;
 reiniciar o mesmo comando continua do último shard verificado. Depois de
-concluído, a API reutiliza os 2.455 chunks persistidos. Use `--force` somente para
+concluído, a API reutiliza os 1.644 chunks persistidos. Use `--force` somente para
 uma reconstrução deliberada.
+
+O chunking `legal-hierarchy-v4` (ADR 0019) deixa fora do índice os capítulos que
+não podem ser citados. Um índice construído com a v3 aparece como não pronto;
+executar a pré-indexação uma vez o reconstrói. O texto de todos os chunks
+restantes não mudou, então, havendo uma geração anterior embedada (não adotada)
+do mesmo modelo, o reaproveitamento abaixo fornece todos os vetores sem novo
+embedding.
 
 Um novo release do corpus reaproveita os vetores de todo chunk cujo texto não
 mudou, vindos de gerações anteriores verificadas do mesmo modelo, revisão e

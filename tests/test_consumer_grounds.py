@@ -56,7 +56,16 @@ def _corpus_chunks(count: int, facts: ConsumerCaseFacts | None = None) -> list:
     return resolved[:count]
 
 
-def _traces(result_sets: list[list[RetrievedChunk]]) -> list[RetrievalTrace]:
+def _traces(
+    result_sets: list[list[RetrievedChunk]],
+    *,
+    agreed: bool = True,
+    score_type: str = "rrf_score",
+) -> list[RetrievalTrace]:
+    """Hybrid traces; ``agreed`` records both channels for every result."""
+    channel_ranks = (lambda rank: {"dense": rank, "lexical": rank}) if agreed else (
+        lambda rank: {"dense": rank}
+    )
     traces: list[RetrievalTrace] = []
     for query_index, results in enumerate(result_sets):
         query = f"consulta {query_index}"
@@ -76,7 +85,7 @@ def _traces(result_sets: list[list[RetrievedChunk]]) -> list[RetrievalTrace]:
                 vector_store="memory",
                 index_version="test",
                 chunking_version="test",
-                score_type="rrf_score",
+                score_type=score_type,
                 rrf_constant=60,
                 dense_weight=1.0,
                 lexical_weight=1.0,
@@ -88,6 +97,7 @@ def _traces(result_sets: list[list[RetrievedChunk]]) -> list[RetrievalTrace]:
                         page_start=result.chunk.page_start,
                         page_end=result.chunk.page_end,
                         score=result.score,
+                        channel_ranks=channel_ranks(rank),
                         content_sha256=hashlib.sha256(
                             result.chunk.text.encode()
                         ).hexdigest(),
@@ -99,30 +109,51 @@ def _traces(result_sets: list[list[RetrievedChunk]]) -> list[RetrievalTrace]:
     return traces
 
 
-def test_weakly_ranked_articles_are_not_cited_as_authority() -> None:
+def test_weakly_reranked_articles_are_not_cited_as_authority() -> None:
     service = _service()
     strong, weak = _corpus_chunks(2)
     results = [
         [
             RetrievedChunk(chunk=strong, score=1.0),
-            # Below half the top score: retrieved, but not authority.
+            # Below half the top reranker score: retrieved, but not authority.
             RetrievedChunk(chunk=weak, score=MIN_GROUND_SCORE_RATIO / 2),
         ]
     ]
 
-    grounds = service._legal_grounds(results, _facts(), _traces(results))
+    grounds = service._legal_grounds(
+        results, _facts(), _traces(results, score_type="reranker_score")
+    )
 
     assert grounds, "the top-ranked article must still ground the notice"
     cited = {ground.authority.chunk_id for ground in grounds}
     assert weak.chunk_id not in cited
 
 
-def test_low_scoring_top_article_does_not_bypass_the_absolute_support_gate() -> None:
+def test_rrf_scores_are_not_filtered_by_the_relative_floor() -> None:
+    """On fused ranks the channel-agreement gate, not a score ratio, decides."""
+    service = _service()
+    strong, weak = _corpus_chunks(2)
+    results = [
+        [
+            RetrievedChunk(chunk=strong, score=2 / 61),
+            RetrievedChunk(chunk=weak, score=MIN_GROUND_SCORE_RATIO / 61),
+        ]
+    ]
+
+    grounds = service._legal_grounds(results, _facts(), _traces(results))
+
+    assert {ground.authority.chunk_id for ground in grounds} == {
+        strong.chunk_id,
+        weak.chunk_id,
+    }
+
+
+def test_top_article_without_channel_agreement_is_not_cited() -> None:
     service = _service()
     [only] = _corpus_chunks(1)
 
-    results = [[RetrievedChunk(chunk=only, score=0.0001)]]
-    grounds = service._legal_grounds(results, _facts(), _traces(results))
+    results = [[RetrievedChunk(chunk=only, score=2 / 61)]]
+    grounds = service._legal_grounds(results, _facts(), _traces(results, agreed=False))
 
     assert grounds == []
 
@@ -156,7 +187,7 @@ def test_no_results_yield_no_grounds() -> None:
 def _chunk_for(provision_id: str):
     return next(
         chunk
-        for chunk in get_default_legal_corpus().as_chunks()
+        for chunk in get_default_legal_corpus().as_chunks(include_uncitable=True)
         if chunk.metadata.get("provision_id") == provision_id
     )
 
@@ -234,7 +265,8 @@ def test_article_outside_the_notice_scope_is_not_cited() -> None:
     """Eligibility is about what an individual notice can rest on.
 
     Criminal offences, administrative sanctions and collective-action
-    procedure stay out however well they rank.
+    procedure stay out however well they rank. The index no longer holds
+    them; this guards stores built before that, and any future regression.
     """
     service = _service()
     for provision_id in ("br-cdc-art-71", "br-cdc-art-95", "br-cdc-art-56"):

@@ -27,6 +27,7 @@ from app.api.security import (
     SlidingWindowRateLimiter,
 )
 from app.consumer.composer import create_notice_composer
+from app.consumer.ground_verifier import create_ground_verifier
 from app.consumer.runtime import create_consumer_rag
 from app.consumer.service import ConsumerCaseService
 from app.consumer.store import ConsumerCaseNotFoundError, ConsumerCaseStore
@@ -84,6 +85,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             rag=consumer_rag,
             legal_corpus=legal_corpus,
             notice_composer=create_notice_composer(settings),
+            ground_verifier=create_ground_verifier(settings),
             store=ConsumerCaseStore(
                 max_active_cases=settings.max_active_cases,
                 idle_ttl_seconds=settings.case_idle_ttl_seconds,

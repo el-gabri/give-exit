@@ -108,6 +108,12 @@ jobs:
         # 878/880/881 stopped being cited, CDC art. 52 started being cited).
         # consumer_notice_abstention stays pinned at 1.0 regardless of
         # measurement.
+        #
+        # Re-measured on 2026-09-24 for ADR 0019 (explicit channel-agreement
+        # gate within rank 20, citable-only legal index): 20 grounds instead
+        # of 23, 3 complementary instead of 5, known-bad still 0, same exact
+        # hit. The retrieval gates above are unchanged (nDCG@5 0.069 ->
+        # 0.075, every other metric equal).
         run: |
           python -m app.evaluation.consumer_runner \
             eval_data/consumer_legal_retrieval \

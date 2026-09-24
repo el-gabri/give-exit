@@ -152,14 +152,19 @@ async def test_offline_notice_baseline_on_the_seed_dataset() -> None:
     arts. 878, 880 and 881 (the undue-payment chapter, premised on a payment
     that never happened) stopped being cited and CDC art. 52 started being
     cited (3 grounds instead of 5, same relevant hit).
+
+    Re-measured on 2026-09-24 for the explicit channel-agreement gate
+    (consumer-notice-scope-eligibility-v4) and the index without uncitable
+    chapters (legal-hierarchy-v4): 20 grounds instead of 23, 3 complementary
+    instead of 5, still no known-bad citation and the same exact hit.
     """
 
     summary = await run_notice_evaluation(load_consumer_legal_dataset(DATASET_PATH))
 
     assert summary.failed_case_count == 0
     assert summary.totals == {
-        "consumer_notice_complementary_grounds": 5,
-        "consumer_notice_grounds": 23,
+        "consumer_notice_complementary_grounds": 3,
+        "consumer_notice_grounds": 20,
         "consumer_notice_known_bad_citations": 0,
     }
     assert summary.averages["consumer_notice_exact_recall"] == 0.017

@@ -62,7 +62,7 @@ def extract_text(path: Path, max_pages: int | None = None) -> PdfExtraction:
             raise ValueError(
                 f"Document exceeds the {max_pages}-page limit: {path.name} has {len(doc)} pages"
             )
-        page_texts = [page.get_text("text") for page in doc]
+        page_texts = [_page_text(page) for page in doc]
 
     if not page_texts:
         return PdfExtraction(page_texts=[], page_needs_ocr=[])
@@ -72,6 +72,21 @@ def extract_text(path: Path, max_pages: int | None = None) -> PdfExtraction:
         page_needs_ocr=[
             len(page_text.strip()) < MIN_AVG_CHARS_PER_PAGE for page_text in page_texts
         ],
+    )
+
+
+def _page_text(page: fitz.Page) -> str:
+    """The page's text blocks in reading order, one blank line between blocks.
+
+    ``get_text("text")`` ends every visual line with a single newline and never
+    marks a paragraph, so the chunker saw each page as one paragraph and cut it
+    at fixed character offsets, splitting amounts such as ``R$ 1.2|50,00``
+    across chunks. PyMuPDF's blocks are the layout's own paragraphs, table
+    cells and statement rows; image blocks carry no text.
+    """
+    blocks = page.get_text("blocks", sort=True)
+    return "\n\n".join(
+        text.strip() for *_, text, _, block_type in blocks if block_type == 0 and text.strip()
     )
 
 

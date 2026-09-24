@@ -248,7 +248,7 @@ async def test_optional_reranker_controls_final_order_without_model_download() -
 
     chunks = [
         _chunk("cdc:18", "devolucao produto"),
-        _chunk("cdc:42", "repeticao do indebito"),
+        _chunk("cdc:42", "cobranca indevida repeticao do indebito"),
     ]
     pipeline = RagPipeline(
         embedder=MockEmbeddingClient(),
@@ -263,11 +263,96 @@ async def test_optional_reranker_controls_final_order_without_model_download() -
     )
 
     assert results[0].chunk.chunk_id == "cdc:42"
+    # The reranker rebuilt the result, but the channels that found it survive.
+    assert set(results[0].channel_ranks) == {"dense", "lexical"}
+    assert trace.results[0].channel_ranks == results[0].channel_ranks
     assert trace.score_type == "reranker_score"
     assert trace.candidate_k == 4
     assert trace.reranker_model == "fake-legal-reranker"
     assert trace.reranker_model_revision == "revision-abc123"
     assert "reranker=fake-legal-reranker" in trace.index_version
+
+
+async def test_reranker_orders_within_channel_agreement_tiers() -> None:
+    """A reranker cannot lift a one-channel candidate above a two-channel one.
+
+    The support gate discards one-channel candidates, so letting the reranker
+    promote them would fill the requested slots with results nobody may cite.
+    """
+
+    class PreferLexicalMiss:
+        model_name = "prefers-the-dense-only-chunk"
+
+        async def rerank(
+            self, query: str, candidates: list[RetrievedChunk], k: int
+        ) -> list[RetrievedChunk]:
+            assert k == len(candidates), "the pipeline truncates after tiering"
+            order = {"cdc:dense-only": 0, "cdc:42": 1, "cdc:43": 2}
+            return sorted(
+                (RetrievedChunk(chunk=item.chunk, score=float(-order[item.chunk.chunk_id]))
+                 for item in candidates),
+                key=lambda item: -item.score,
+            )
+
+    chunks = [
+        _chunk("cdc:dense-only", "texto sem nenhum termo da consulta"),
+        _chunk("cdc:42", "cobranca indevida"),
+        _chunk("cdc:43", "cobranca de divida"),
+    ]
+    pipeline = RagPipeline(
+        embedder=MockEmbeddingClient(),
+        store=InMemoryVectorStore(),
+        reranker=PreferLexicalMiss(),
+        default_k=2,
+    )
+    await pipeline.index_chunks(chunks)
+
+    results, _ = await pipeline.retrieve_with_trace(
+        "cobranca", doc_id=chunks[0].doc_id, agent="consumer_legal"
+    )
+
+    assert [item.chunk.chunk_id for item in results] == ["cdc:42", "cdc:43"]
+
+
+def test_rrf_records_the_rank_each_channel_gave() -> None:
+    dense_only = RetrievedChunk(chunk=_chunk("cdc:18", "vicio"), score=0.9)
+    shared = RetrievedChunk(chunk=_chunk("cdc:42", "cobranca"), score=0.8)
+    lexical_shared = RetrievedChunk(chunk=_chunk("cdc:42", "cobranca"), score=7.0)
+
+    fused = reciprocal_rank_fusion(
+        [[dense_only, shared], [lexical_shared]],
+        k=2,
+        channels=["dense", "lexical"],
+    )
+
+    ranks = {item.chunk.chunk_id: item.channel_ranks for item in fused}
+    assert ranks == {"cdc:42": {"dense": 2, "lexical": 1}, "cdc:18": {"dense": 1}}
+
+
+def test_rrf_rejects_missing_or_repeated_channel_names() -> None:
+    ranking = [RetrievedChunk(chunk=_chunk("cdc:18", "vicio"), score=0.9)]
+
+    with pytest.raises(ValueError, match="channel name"):
+        reciprocal_rank_fusion([ranking, ranking], k=1, channels=["dense"])
+    with pytest.raises(ValueError, match="channel name"):
+        reciprocal_rank_fusion([ranking, ranking], k=1, channels=["dense", "dense"])
+
+
+async def test_single_channel_modes_record_their_channel() -> None:
+    chunk = _chunk("cdc:42", "cobranca indevida")
+    dense = RagPipeline(
+        embedder=MockEmbeddingClient(),
+        store=InMemoryVectorStore(),
+        retrieval_mode=RetrievalMode.DENSE,
+    )
+    await dense.index_chunks([chunk])
+
+    results, trace = await dense.retrieve_with_trace(
+        "cobranca", doc_id=chunk.doc_id, agent="consumer_legal"
+    )
+
+    assert results[0].channel_ranks == {"dense": 1}
+    assert trace.results[0].channel_ranks == {"dense": 1}
 
 
 async def test_document_replacement_failure_preserves_previous_index() -> None:
@@ -375,16 +460,39 @@ def test_postgres_lexical_search_ranks_and_limits_inside_database(monkeypatch) -
     store._schema_ready = True
     monkeypatch.setattr(store, "_connect", lambda: FakeConnection())
 
-    results = store._lexical_query_sync("cobrança indevida", chunk.doc_id, 3)
+    results = store._lexical_query_sync("cobrança indevida da cobrança", chunk.doc_id, 3)
+    stopword_only = store._lexical_query_sync("do e da", chunk.doc_id, 3)
 
     assert [item.chunk.chunk_id for item in results] == [chunk.chunk_id]
     assert results[0].score == 0.75
+    assert stopword_only == []
     [(statement, parameters)] = statements
-    assert "tsvector_to_array(to_tsvector('portuguese'::regconfig" in statement
-    assert "string_agg(quote_literal(lexeme), ' | ')::tsquery" in statement
-    assert "search_vector @@ parsed_query.value" in statement
+    # BM25 over the same tokens the in-process adapters use, inside the database.
+    assert "lexical_tokens && %s::text[]" in statement
+    assert "ln(1 + (corpus.documents - document_frequencies.frequency + 0.5)" in statement
+    assert "ORDER BY scores.score DESC, candidates.chunk_id ASC" in statement
     assert "LIMIT %s" in statement
-    assert parameters == ("cobrança indevida", "legal-index", chunk.doc_id, 3)
+    terms = ["cobranca", "indevida"]
+    assert parameters == (
+        "legal-index", chunk.doc_id, terms, [2, 1],
+        "legal-index", chunk.doc_id, terms, terms,
+        1.5, 1.5, 0.75, 0.75, 3,
+    )
+
+
+def test_postgres_rows_store_the_lexical_tokens_bm25_reads() -> None:
+    from app.rag.vector_store import _postgres_rows
+
+    chunk = _chunk("cdc:42", "Artigo 42. Cobrança indevida do consumidor.")
+
+    [row] = _postgres_rows([chunk], [[1.0, 0.0]], namespace="legal-index")
+
+    assert row[-1] == ["artigo", "42", "cobranca", "indevida", "consumidor"]
+
+
+def test_postgres_store_rejects_an_empty_pool() -> None:
+    with pytest.raises(ValueError, match="pool_max_size"):
+        PostgresVectorStore(dsn="postgresql://unused", index_name="x", pool_max_size=0)
 
 
 async def test_chroma_roundtrip_preserves_structured_metadata(tmp_path) -> None:

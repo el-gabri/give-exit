@@ -14,7 +14,12 @@ from typing import Literal
 from app.consumer.ground_selection import select_legal_grounds
 from app.consumer.legal_corpus import LegalCorpus, get_default_legal_corpus
 from app.consumer.legal_policy import LEGAL_GROUND_POLICY_VERSION
-from app.consumer.retrieval import build_legal_queries, is_consumer_scope
+from app.consumer.retrieval import (
+    LEGAL_REQUESTED_K,
+    build_legal_queries,
+    is_consumer_scope,
+    retrieve_legal_candidates,
+)
 from app.consumer.schemas import ConsumerCaseFacts, LegalGround
 from app.core.config import RetrievalMode
 from app.evaluation.consumer_golden import validate_consumer_legal_labels
@@ -35,9 +40,10 @@ from app.schemas.evaluation import (
     MetricResult,
     RankedEvaluationRetrievalHit,
     RetrievalEvaluationConfiguration,
+    max_queries_per_case,
 )
 
-NOTICE_REQUESTED_K = 8
+NOTICE_REQUESTED_K = LEGAL_REQUESTED_K
 # Sources that may only complement the CDC in a notice (ADR 0016); their grounds
 # are counted separately.
 COMPLEMENTARY_LAW_IDS = frozenset({"br-lgpd", "br-cc"})
@@ -188,7 +194,7 @@ class ConsumerNoticeGroundEvaluator:
             corpus_release_id=corpus.release_id,
             corpus_sha256=corpus.corpus_sha256,
             query_builder_version=QUERY_BUILDER_VERSION,
-            queries_per_case=2,
+            queries_per_case=max_queries_per_case(cases),
             cutoffs=(NOTICE_REQUESTED_K,),
             retrieval=retrieval,
             ground_policy_version=LEGAL_GROUND_POLICY_VERSION,
@@ -209,12 +215,8 @@ class ConsumerNoticeGroundEvaluator:
                 outcome = "scope_gate_abstained"
             else:
                 queries = build_legal_queries(facts)
-                result_sets, traces = await self._pipeline.retrieve_many_with_traces(
-                    queries,
-                    doc_id=doc_id,
-                    agent="consumer_legal_authorities",
-                    k=NOTICE_REQUESTED_K,
-                    mode=RetrievalMode.HYBRID,
+                result_sets, traces = await retrieve_legal_candidates(
+                    self._pipeline, facts, doc_id=doc_id, k=NOTICE_REQUESTED_K
                 )
                 grounds = select_legal_grounds(self._corpus, facts, result_sets, traces)
                 outcome = (

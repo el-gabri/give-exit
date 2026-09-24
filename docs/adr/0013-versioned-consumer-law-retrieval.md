@@ -2,7 +2,8 @@
 
 ## Status
 
-Accepted · Amended by [ADR 0016](0016-multi-statute-consumer-corpus.md)
+Accepted · Amended by [ADR 0016](0016-multi-statute-consumer-corpus.md) and
+[ADR 0019](0019-explicit-retrieval-agreement.md)
 
 ## Context
 

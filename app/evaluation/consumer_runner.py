@@ -35,6 +35,7 @@ from app.schemas.evaluation import (
     MetricResult,
     RankedEvaluationRetrievalHit,
     RetrievalEvaluationConfiguration,
+    max_queries_per_case,
 )
 
 ConsumerRetriever = Callable[[str, int], object]
@@ -49,7 +50,7 @@ _INACTIVE_STATUSES = {
     "vetoed",
 }
 _UNKNOWN_STATUSES = {"", "desconhecido", "unknown"}
-QUERY_BUILDER_VERSION = "consumer-legal-narrative-v6"
+QUERY_BUILDER_VERSION = "consumer-legal-narrative-v7"
 
 
 def _threshold(raw: str) -> tuple[str, float]:
@@ -384,7 +385,7 @@ class ConsumerLegalRetrievalEvaluator:
             corpus_release_id=corpus.release_id,
             corpus_sha256=corpus.corpus_sha256,
             query_builder_version=QUERY_BUILDER_VERSION,
-            queries_per_case=2,
+            queries_per_case=max_queries_per_case(results),
             cutoffs=self._cutoffs,
             retrieval=retrieval,
         )

@@ -30,6 +30,13 @@ class NoticeComposer(str, Enum):
     OPENAI = "openai"
 
 
+class GroundVerifierMode(str, Enum):
+    """Whether selected legal grounds are checked against the facts by an LLM."""
+
+    NONE = "none"
+    LLM = "llm"
+
+
 class VectorStoreBackend(str, Enum):
     """Supported vector store backends (see ADR 0003)."""
 
@@ -110,6 +117,11 @@ class Settings(BaseSettings):
     # Five short prose fields are sufficient for the renderer. This also caps
     # hidden reasoning/output time for a latency-sensitive UI path.
     notice_composer_max_output_tokens: int = Field(default=1_200, ge=256, le=16_384)
+    # Optional span-verified check of each selected legal ground against the
+    # confirmed facts, using the configured LLM provider. Off by default: the
+    # draft stays fully deterministic unless an operator opts in.
+    ground_verifier: GroundVerifierMode = GroundVerifierMode.NONE
+    ground_verifier_max_output_tokens: int = Field(default=2_000, ge=256, le=16_384)
     embedding_provider: EmbeddingProvider = EmbeddingProvider.AUTO
     # Optional override. AUTO resolves a provider-specific default instead of
     # accidentally sending another vendor's model name.
