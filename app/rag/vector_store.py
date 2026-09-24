@@ -59,6 +59,13 @@ class DocumentExportingVectorStore(Protocol):
     async def export_document(self, doc_id: str) -> list[tuple[Chunk, list[float]]]: ...
 
 
+@runtime_checkable
+class ClosableVectorStore(Protocol):
+    """Store holding connections that its owner releases before exiting."""
+
+    def close(self) -> None: ...
+
+
 class InMemoryVectorStore:
     """Reference implementation with exact cosine similarity."""
 

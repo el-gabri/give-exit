@@ -26,6 +26,7 @@ from app.rag.embeddings import (
 from app.rag.reranking import Reranker
 from app.rag.resilience import EmbeddingUnavailableError, QueryEmbeddingGuard
 from app.rag.vector_store import (
+    ClosableVectorStore,
     DocumentExportingVectorStore,
     DocumentListingVectorStore,
     DocumentReplacingVectorStore,
@@ -177,6 +178,16 @@ class RagPipeline:
     @property
     def embedding_shard_size(self) -> int:
         return self._embedding_shard_size
+
+    def close(self) -> None:
+        """Release the store's pooled connections; the next search reopens them.
+
+        A connection pool left to garbage collection stops its worker threads
+        during interpreter shutdown, which Python 3.14 refuses with a
+        PythonFinalizationError, so every owner of a pipeline closes it.
+        """
+        if isinstance(self._store, ClosableVectorStore):
+            self._store.close()
 
     def embedding_contract_configuration(self) -> dict[str, str | int | bool | None]:
         """Return the document/query vector contract without loading model weights."""

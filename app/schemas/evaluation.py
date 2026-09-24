@@ -139,6 +139,14 @@ class EvaluationRunMetadata(BaseModel):
     cutoffs: tuple[int, ...] = Field(min_length=1)
     retrieval: RetrievalEvaluationConfiguration
     ground_policy_version: str | None = None
+    agreement_max_rank: int | None = Field(
+        default=None,
+        ge=1,
+        description="Depth within which both hybrid channels must rank a citable chunk",
+    )
+    ground_verifier: str | None = Field(
+        default=None, description="Verifier applied to the selected grounds, if any"
+    )
 
 
 class EvaluationSummary(BaseModel):

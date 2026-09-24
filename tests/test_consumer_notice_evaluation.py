@@ -157,14 +157,20 @@ async def test_offline_notice_baseline_on_the_seed_dataset() -> None:
     (consumer-notice-scope-eligibility-v4) and the index without uncitable
     chapters (legal-hierarchy-v4): 20 grounds instead of 23, 3 complementary
     instead of 5, still no known-bad citation and the same exact hit.
+
+    Re-measured on 2026-09-24 for LGPD grounds without a CDC anchor
+    (consumer-notice-scope-eligibility-v5, ADR 0020): the two data-protection
+    cases that cited nothing now cite LGPD articles (arts. 5, 18 VII and 47;
+    art. 50 § 2), so 24 grounds and 7 complementary. Still no known-bad
+    citation and the same exact hit.
     """
 
     summary = await run_notice_evaluation(load_consumer_legal_dataset(DATASET_PATH))
 
     assert summary.failed_case_count == 0
     assert summary.totals == {
-        "consumer_notice_complementary_grounds": 3,
-        "consumer_notice_grounds": 20,
+        "consumer_notice_complementary_grounds": 7,
+        "consumer_notice_grounds": 24,
         "consumer_notice_known_bad_citations": 0,
     }
     assert summary.averages["consumer_notice_exact_recall"] == 0.017
@@ -286,3 +292,138 @@ async def test_the_expansion_adds_no_known_bad_citation_to_the_original_cases() 
 
     assert len(original) == 15
     assert sum(case.counts["consumer_notice_known_bad_citations"] for case in original) <= 4
+
+
+async def _offline_evaluator(**kwargs: Any) -> ConsumerNoticeGroundEvaluator:
+    corpus = get_default_legal_corpus()
+    pipeline = RagPipeline(MockEmbeddingClient(), InMemoryVectorStore())
+    await pipeline.index_chunks(corpus.as_chunks())
+    return ConsumerNoticeGroundEvaluator(
+        pipeline, corpus, retriever_id="sweep_test", **kwargs
+    )
+
+
+async def test_an_agreement_sweep_retrieves_each_case_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.evaluation import consumer_notice
+
+    calls: list[str] = []
+    retrieve = consumer_notice.retrieve_legal_candidates
+
+    async def counting(pipeline: RagPipeline, facts: Any, **kwargs: Any) -> Any:
+        calls.append(facts.complaint_summary)
+        return await retrieve(pipeline, facts, **kwargs)
+
+    monkeypatch.setattr(consumer_notice, "retrieve_legal_candidates", counting)
+    evaluator = await _offline_evaluator()
+    dataset = load_consumer_legal_dataset(DATASET_PATH)
+
+    shallow = await evaluator.run(dataset, agreement_max_rank=8)
+    default = await evaluator.run(dataset)
+
+    # 22 cases, two of them stopped by the scope gate before retrieval.
+    assert len(calls) == 20
+    assert shallow.run is not None and shallow.run.agreement_max_rank == 8
+    assert default.run is not None and default.run.agreement_max_rank == 20
+    assert default.run.ground_verifier == "none"
+    # A shallower gate can only drop grounds.
+    assert shallow.totals["consumer_notice_grounds"] == 9
+    assert default.totals["consumer_notice_grounds"] == 24
+
+
+class _RejectEveryGround:
+    async def verify(self, facts: Any, grounds: list[LegalGround]) -> Any:
+        from app.consumer.ground_verifier import GroundVerificationResult
+        from app.consumer.schemas import GroundVerificationSummary
+        from app.core.config import GroundVerifierMode
+
+        del facts
+        return GroundVerificationResult(
+            grounds=[],
+            summary=GroundVerificationSummary(mode=GroundVerifierMode.LLM, removed=len(grounds)),
+        )
+
+
+async def test_verifier_removals_are_counted_per_case() -> None:
+    evaluator = await _offline_evaluator(ground_verifier=_RejectEveryGround())
+
+    summary = await evaluator.run(load_consumer_legal_dataset(DATASET_PATH))
+
+    assert summary.totals["consumer_notice_grounds"] == 0
+    assert summary.totals["consumer_notice_verifier_removed"] == 24
+    assert summary.totals["consumer_notice_verifier_failures"] == 0
+    assert summary.run is not None and summary.run.ground_verifier == "llm"
+
+
+def test_cli_prints_an_agreement_sweep(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    output = tmp_path / "sweep.json"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "consumer_runner",
+            str(DATASET_PATH),
+            "--evaluate-notice",
+            "--agreement-max-rank",
+            "20",
+            "--agreement-max-rank",
+            "16",
+            "--output",
+            str(output),
+        ],
+    )
+
+    asyncio.run(consumer_runner._cli())
+
+    # Log lines from loggers an earlier test configured may precede the table.
+    printed = capsys.readouterr().out.splitlines()
+    start = next(i for i, line in enumerate(printed) if line.startswith("agreement_max_rank"))
+    table = printed[start : start + 3]
+    assert table[0].split()[:4] == ["agreement_max_rank", "grounds", "complementary", "known_bad"]
+    assert [line.split()[:2] for line in table[1:]] == [["16", "20"], ["20", "24"]]
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    assert sorted(payload["agreement_sweep"]) == ["16", "20"]
+    assert payload["agreement_sweep"]["20"]["run"]["agreement_max_rank"] == 20
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        ["--agreement-max-rank", "16"],
+        ["--ground-verifier", "llm"],
+        ["--evaluate-notice", "--agreement-max-rank", "0"],
+        [
+            "--evaluate-notice",
+            "--agreement-max-rank",
+            "16",
+            "--agreement-max-rank",
+            "20",
+            "--max",
+            "consumer_notice_known_bad_citations=0",
+        ],
+    ],
+)
+def test_cli_rejects_notice_options_that_cannot_apply(
+    arguments: list[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(sys, "argv", ["consumer_runner", *arguments])
+
+    with pytest.raises(SystemExit) as excinfo:
+        asyncio.run(consumer_runner._cli())
+
+    assert excinfo.value.code == 2
+
+
+def test_cli_builds_the_llm_ground_verifier_from_settings(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.consumer.ground_verifier import LLMGroundVerifier
+
+    # The CLI reads the developer's .env; the test must not depend on it.
+    monkeypatch.setenv("LITIGATION_LLM_PROVIDER", "mock")
+
+    assert consumer_runner._ground_verifier("none") is None
+    assert isinstance(consumer_runner._ground_verifier("llm"), LLMGroundVerifier)

@@ -53,6 +53,11 @@ class _LazyConsumerRetriever:
             configuration["corpus_sha256"] = self._corpus.corpus_sha256
         return configuration
 
+    def close(self) -> None:
+        """Release the stack's store connections; a later query reopens them."""
+        if self._pipeline is not None:
+            self._pipeline.close()
+
     async def _ready(self) -> tuple[RagPipeline, str]:
         if self._pipeline is not None and self._doc_id is not None:
             return self._pipeline, self._doc_id

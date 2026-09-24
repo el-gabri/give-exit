@@ -131,6 +131,20 @@ def test_removing_the_last_cdc_ground_drops_complementary_sources() -> None:
     assert kept == []
 
 
+def test_removing_the_last_cdc_ground_keeps_lgpd_grounds() -> None:
+    cdc_42 = _ground("br-cdc-art-42-paragrafo-unico")
+    lgpd = _ground("br-lgpd-art-18-inciso-vi")
+    civil_code = _ground("br-cc-art-876-caput")
+
+    kept = apply_verdicts(
+        FACTS,
+        [cdc_42, lgpd, civil_code],
+        [_ModelVerdict(ground_index=0, verdict="does_not_apply")],
+    )
+
+    assert [ground.authority.unit_id for ground in kept] == ["br-lgpd-art-18-inciso-vi"]
+
+
 async def test_default_verifier_passes_grounds_through() -> None:
     grounds = [_ground("br-cdc-art-42-paragrafo-unico")]
 

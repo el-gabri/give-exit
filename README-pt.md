@@ -71,9 +71,10 @@ forma determinística; saída inválida aciona o compositor determinístico.
   uma notificação nunca pode citar também ficam fora do índice, para não
   ocuparem posições da busca (ADR 0019).
 - Dispositivos constitucionais selecionados são versionados no corpus.
-- Fundamentos da LGPD e do Código Civil complementam o CDC: no máximo três por
-  notificação, só ao lado de um fundamento do CDC e nenhum em recuperação apenas
-  lexical. O Título VI do Livro I da Parte Especial do Código Civil (espécies
+- Fundamentos da LGPD e do Código Civil dividem no máximo três vagas por
+  notificação e nenhuma em recuperação apenas lexical. O Código Civil só é
+  citado ao lado de um fundamento do CDC; a LGPD pode sustentar sozinha uma
+  notificação sobre dados pessoais (ADR 0020). O Título VI do Livro I da Parte Especial do Código Civil (espécies
   de contrato) não é citado nem indexado.
 - Os chunks preservam lei, artigo, subdivisão, URL oficial, release, vigência e
   hashes de origem.
@@ -320,7 +321,19 @@ python -m app.evaluation.consumer_runner --evaluate-notice --notice-pipeline con
 
 O relatório traz fundamentos citados, citações ruins conhecidas (hard negatives
 rotulados que foram citados), recall exato das unidades citadas, abstenção e
-sucesso da recuperação semântica.
+sucesso da recuperação semântica. Duas opções medem os controles de precisão em
+qualquer stack. `--agreement-max-rank N`, repetida, compara profundidades do
+gate a partir de uma única recuperação e imprime uma tabela;
+`--ground-verifier llm` executa o verificador de fundamentos configurado e
+conta os fundamentos que ele remove:
+
+```powershell
+python -m app.evaluation.consumer_runner --evaluate-notice --notice-pipeline configured `
+  --agreement-max-rank 12 --agreement-max-rank 16 --agreement-max-rank 20 `
+  --output configured-notice-sweep.json
+python -m app.evaluation.consumer_runner --evaluate-notice --notice-pipeline configured `
+  --ground-verifier llm --output configured-notice-verified.json
+```
 
 ## Privacidade e limitações
 

@@ -125,9 +125,10 @@ same typed legal schema. Runtime requests never fetch or silently update law.
 
 Retrieval does not decide legal applicability. A deterministic policy filters
 inactive, unknown, weak or insufficiently corroborated chunks. LGPD and Civil
-Code grounds only complement the CDC: at most three per notice, only beside a
-CDC ground, none under lexical-only retrieval, and never from the Civil Code's
-title on specific contract types (ADR 0016). The policy and
+Code grounds share at most three slots per notice, none under lexical-only
+retrieval, and never come from the Civil Code's title on specific contract
+types (ADR 0016). Civil Code grounds stand only beside a CDC ground; the LGPD
+may ground a notice alone (ADR 0020). The policy and
 corpus both declare review status so the application cannot present engineering
 labels as lawyer-certified law.
 
@@ -206,3 +207,4 @@ production claims.
 - [0017](adr/0017-cross-generation-vector-reuse.md) — cross-generation vector reuse
 - [0018](adr/0018-narrative-only-consumer-intake.md) — narrative-only consumer intake
 - [0019](adr/0019-explicit-retrieval-agreement.md) — explicit retrieval agreement, citable-only index and verified grounds
+- [0020](adr/0020-lgpd-grounds-without-cdc-anchor.md) — the LGPD may ground a notice alone

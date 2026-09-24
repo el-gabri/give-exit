@@ -544,6 +544,35 @@ def test_postgres_store_rejects_an_empty_pool() -> None:
         PostgresVectorStore(dsn="postgresql://unused", index_name="x", pool_max_size=0)
 
 
+def test_closing_the_pipeline_closes_the_store_pool(monkeypatch) -> None:
+    """A pool left to garbage collection fails at interpreter shutdown on 3.14."""
+
+    events: list[str] = []
+
+    class Pool:
+        def __init__(self, dsn: str, **kwargs: object) -> None:
+            events.append("pool opened")
+
+        def connection(self) -> str:
+            return "pooled connection"
+
+        def close(self) -> None:
+            events.append("pool closed")
+
+    probe = SimpleNamespace(close=lambda: None)
+    monkeypatch.setitem(sys.modules, "psycopg", SimpleNamespace(connect=lambda dsn: probe))
+    monkeypatch.setitem(sys.modules, "psycopg_pool", SimpleNamespace(ConnectionPool=Pool))
+    store = PostgresVectorStore(dsn="postgresql://db", index_name="x")
+    pipeline = RagPipeline(MockEmbeddingClient(), store)
+    store._connect()
+
+    pipeline.close()
+    pipeline.close()  # nothing left to release
+    RagPipeline(MockEmbeddingClient(), InMemoryVectorStore()).close()  # no pool at all
+
+    assert events == ["pool opened", "pool closed"]
+
+
 async def test_chroma_roundtrip_preserves_structured_metadata(tmp_path) -> None:
     pytest.importorskip("chromadb")
     from app.rag.vector_store import ChromaVectorStore

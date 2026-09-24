@@ -82,8 +82,9 @@ back safely. Embeddings are independent.
   Provisions a notice may never cite (below) are not indexed either, so they
   cannot take retrieval slots from citable ones (ADR 0019).
 - Selected constitutional provisions are versioned in the legal corpus.
-- LGPD and Civil Code grounds complement the CDC: at most three per notice,
-  only beside a CDC ground, and none under lexical-only retrieval.
+- LGPD and Civil Code grounds share at most three slots per notice and none
+  under lexical-only retrieval. Civil Code grounds stand only beside a CDC
+  ground; the LGPD can ground a data-protection notice on its own (ADR 0020).
 - Statutory chunks preserve law, article, subdivision, official URL, release,
   status and source hashes.
 - Legal retrieval is hybrid because exact article references and institutional
@@ -472,6 +473,18 @@ python -m app.evaluation.consumer_runner --evaluate-notice --notice-pipeline con
 
 It reports cited grounds, known-bad citations (labelled hard negatives that
 were cited), exact recall over cited units, abstention and semantic success.
+Two options measure precision controls on any stack. `--agreement-max-rank N`,
+repeated, compares gate depths from one retrieval pass and prints a table;
+`--ground-verifier llm` runs the configured ground verifier and counts the
+grounds it removes:
+
+```bash
+python -m app.evaluation.consumer_runner --evaluate-notice --notice-pipeline configured \
+  --agreement-max-rank 12 --agreement-max-rank 16 --agreement-max-rank 20 \
+  --output configured-notice-sweep.json
+python -m app.evaluation.consumer_runner --evaluate-notice --notice-pipeline configured \
+  --ground-verifier llm --output configured-notice-verified.json
+```
 
 CI runs Ruff, strict MyPy, Python 3.10/3.12 tests, scoped coverage, import-linter
 architecture checks, dead-code detection (vulture), dependency auditing, Consumer
