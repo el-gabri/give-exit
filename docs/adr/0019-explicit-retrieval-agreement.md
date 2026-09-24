@@ -44,7 +44,8 @@ several details around it did not do what they were described as doing:
 1. **Record channel ranks and gate on them.** Every retrieved chunk carries
    `channel_ranks` (its rank in the dense and lexical lists) through fusion,
    reranking and the audit trace. A chunk is supported when both channels
-   ranked it within `AGREEMENT_MAX_RANK = 20`. The gate holds for any fusion
+   ranked it within `AGREEMENT_MAX_RANK` (20 at first, 13 after the configured
+   sweep below). The gate holds for any fusion
    weights and with a reranker, which now orders candidates only within
    their agreement tier. The relative floor applies only to reranker and
    single-channel scores.
@@ -146,7 +147,51 @@ python -m app.evaluation.consumer_runner --evaluate-notice --notice-pipeline con
   --ground-verifier llm --output configured-notice-verified.json
 ```
 
-`AGREEMENT_MAX_RANK` stays 20 until that sweep says otherwise.
+### Depth sweep and verifier (configured stack, 2026-09-24)
+
+Both runs used the ADR 0020 policy (`consumer-notice-scope-eligibility-v5`),
+which is why depth 20 cites 57 grounds here instead of 53: the two
+data-protection cases now cite the LGPD.
+
+| Configuration | Grounds | Complementary | Known-bad | Exact recall | In-scope cases with no ground |
+|---|---|---|---|---|---|
+| depth 12 | 31 | 5 | 0 | 0.225 | 1 |
+| depth 16 | 47 | 17 | 1 | 0.225 | 1 |
+| depth 20 | 57 | 20 | 1 | 0.225 | 0 |
+| depth 24 | 67 | 25 | 2 | 0.225 | 0 |
+| depth 20 with the LLM verifier | 23 | 7 | 0 | 0.225 | 2 |
+
+- Exact recall is flat: every labelled hit ranked within 12 in both channels.
+  What depth adds above 12 is grounds the labels do not support, most of them
+  complementary.
+- The case left without a ground at 12 and 16 is `venda_casada_seguro`. At 20
+  it cited CDC arts. 54-C IV and 52, neither labelled; its labelled article
+  (39 I) is never retrieved.
+- The verifier (gpt-4o-mini, one call per notice, no failures) removed 34
+  grounds and every known-bad one without losing a labelled hit. It also left
+  two cases with nothing: `publicidade_enganosa_por_omissao`, whose only ground
+  was CDC art. 51 (wrong for misleading advertising), and
+  `atraso_na_devolucao_combinada`, which lost Civil Code arts. 404 and 407,
+  next to the labelled 395 and 406. It only removes a ground it judges
+  `does_not_apply`, so unlabelled grounds it is unsure of stay.
+
+**Decision: `AGREEMENT_MAX_RANK = 13`.** 12 is the shallowest measured depth
+that kept every labelled hit, and 13 keeps one rank of margin above it. 13 was
+not measured itself. Two consequences follow from the runs above:
+`venda_casada_seguro` gets no ground at 13 either, because a shallower gate
+only removes support and it had none at 16; and the known-bad CDC art. 18
+citation that 12 removed is expected back, because its whole-article chunk
+ranked 5th and 13th. The next configured run confirms both:
+`--evaluate-notice --notice-pipeline configured --agreement-max-rank 13`.
+
+The verifier stays optional (`LITIGATION_GROUND_VERIFIER=none` by default): it
+is the only control that removed the negated-defect citation, but it costs a
+provider call per notice and lost two notices at depth 20. Its combination with
+depth 13 has not been measured.
+
+On the offline stack depth 13 cites 17 grounds with no known-bad citation, and
+its single exact hit (which needs depth 20 there) is lost. The CI gates read
+known-bad citations and abstention, not exact recall.
 
 ## Alternatives tried and rejected
 

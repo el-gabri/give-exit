@@ -18,6 +18,7 @@ from app.consumer.evidence_support import (
     evidence_supports_confirmed_facts,
     supporting_quote,
 )
+from app.consumer.legal_policy import AGREEMENT_MAX_RANK
 from app.consumer.notice_markdown import markdown_inline
 from app.consumer.schemas import ConsumerCaseFacts
 from app.core.config import LLMProvider, Settings, VectorStoreBackend
@@ -360,9 +361,10 @@ def test_dual_channel_hit_without_confirmed_fact_overlap_is_not_cited() -> None:
             page_start=2,
             page_end=2,
         ),
-        # Rank 20 in both RRF channels: the retrieval gate is satisfied.
-        score=2 / (60 + 20),
-        channel_ranks={"dense": 20, "lexical": 20},
+        # At the gate depth in both RRF channels: the retrieval gate is satisfied,
+        # so only the topical check can reject it.
+        score=2 / (60 + AGREEMENT_MAX_RANK),
+        channel_ranks={"dense": AGREEMENT_MAX_RANK, "lexical": AGREEMENT_MAX_RANK},
     )
     result_sets = [[relevant, unrelated]]
     page_sources = {

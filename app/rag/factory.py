@@ -50,6 +50,8 @@ def create_embedding_client(settings: Settings) -> EmbeddingBackend:
             batch_size=settings.embedding_batch_size,
             model_revision=settings.embedding_model_revision,
             show_progress_bar=settings.embedding_show_progress_bar,
+            hf_token=settings.hf_token,
+            local_files_only=settings.hf_hub_offline,
         )
     if provider is EmbeddingProvider.GEMINI:
         api_key = _embedding_api_key(settings.gemini_api_key, provider="Gemini")
@@ -132,6 +134,7 @@ def create_reranker(settings: Settings) -> Reranker | None:
         device=settings.reranker_device,
         batch_size=settings.reranker_batch_size,
         model_revision=settings.reranker_model_revision,
+        local_files_only=settings.hf_hub_offline,
     )
 
 

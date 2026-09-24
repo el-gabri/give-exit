@@ -57,6 +57,19 @@ def _install_fake_cross_encoder(
     return fake
 
 
+def test_the_cross_encoder_loads_from_the_local_cache_when_offline(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[dict[str, object]] = []
+    fake_module = types.ModuleType("sentence_transformers")
+    fake_module.CrossEncoder = lambda *args, **kwargs: calls.append(kwargs)  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "sentence_transformers", fake_module)
+
+    SentenceTransformerReranker("some/cross-encoder-model", local_files_only=True)
+
+    assert calls == [{"device": None, "revision": None, "local_files_only": True}]
+
+
 def test_model_name_returns_the_configured_model(monkeypatch: pytest.MonkeyPatch) -> None:
     _install_fake_cross_encoder(monkeypatch, {})
     reranker = SentenceTransformerReranker("some/cross-encoder-model")

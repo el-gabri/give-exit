@@ -80,7 +80,7 @@ forma determinística; saída inválida aciona o compositor determinístico.
   hashes de origem.
 - A recuperação jurídica combina semântica e correspondência lexical exata.
 - O principal controle de precisão é a concordância: um artigo só vira
-  fundamento quando a busca densa e a lexical o colocam entre os 20 primeiros.
+  fundamento quando a busca densa e a lexical o colocam entre os 13 primeiros.
   A posição em cada canal fica no trace e o controle a lê de lá, então vale para
   quaisquer pesos de fusão e com reranker. Em modo apenas lexical, o relato e a
   solução desejada também são buscados separadamente e o artigo precisa estar
@@ -188,6 +188,14 @@ formatador ou hash da instrução cria uma geração diferente. A indexação gr
 shards gzip com checksum e manifesto em
 `data/embedding_generations/<generation-id>/`, retoma somente shards válidos e
 só ativa o namespace após validar cobertura, dimensão e normalização.
+
+Com a revisão fixada já no cache local do Hugging Face, defina
+`LITIGATION_HF_HUB_OFFLINE=1` (ou `HF_HUB_OFFLINE=1`) no `.env`: o modelo passa a
+carregar sem consultar o Hub, a inicialização fica mais rápida e o aviso
+"unauthenticated requests to the HF Hub" some. Um `HF_TOKEN` opcional no `.env`
+é repassado ao modelo de embedding quando o Hub é consultado. A aplicação lê os
+dois do `.env`; as bibliotecas do Hugging Face sozinhas leem apenas o ambiente
+do processo.
 
 Por padrão o backend é Chroma. No PostgreSQL, a busca lexical ocorre no banco
 com full-text search em português e a busca densa usa pgvector. Para migrar uma
