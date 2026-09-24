@@ -8,8 +8,10 @@ from pydantic import ValidationError
 from app.consumer.legal_corpus import (
     CONSUMER_LAW_CORPUS_RELEASE_ID,
     LegalCorpus,
+    _split_text,
     get_default_legal_corpus,
 )
+from app.consumer.legal_policy import provision_is_eligible
 from app.consumer.schemas import (
     LegalAuthorityCitation,
     LegalContentKind,
@@ -191,7 +193,7 @@ def test_legal_aware_chunks_never_cross_articles_and_expose_metadata() -> None:
         "alinea": None,
         "status": "active",
         "content_kind": "official",
-        "chunking_version": "legal-hierarchy-v3:target=1200",
+        "chunking_version": "legal-hierarchy-v4:target=1200",
         "chunk_level": "unit",
         "lead_in_unit_ids": None,
         "official_url": CDC.source_url,
@@ -546,7 +548,13 @@ def test_constant_provenance_fields_left_the_embedded_text_for_metadata() -> Non
 
 
 def test_cdc_and_cf_chunk_texts_are_unchanged() -> None:
-    """Pinned before the statute refactor; their vectors are reused (ADR 0017)."""
+    """Pinned so an index rebuild reuses their vectors (ADR 0017).
+
+    Re-pinned when uncitable chapters left the index (472 texts to 317). Every
+    remaining text is byte-identical to one under the former pin; the sentence
+    boundary fix in ``_split_text`` changed only two chunks, both in excluded
+    chapters.
+    """
 
     texts = sorted(
         chunk.text
@@ -554,7 +562,42 @@ def test_cdc_and_cf_chunk_texts_are_unchanged() -> None:
         if chunk.metadata["law_id"] in {"br-cf", "br-cdc"}
     )
 
-    assert len(texts) == 472
+    assert len(texts) == 317
     assert hashlib.sha256("\x1e".join(texts).encode("utf-8")).hexdigest() == (
-        "50d79e182c6a08c5945182f708a64ba3a8d8e09d6ac19f9250462aeeade219ff"
+        "0c99235b4ab4fa57a705b96f7af2f48d617967964caf20fbcc62e650a66e4547"
     )
+
+
+def test_uncitable_divisions_stay_in_the_corpus_but_out_of_the_index() -> None:
+    """Criminal offences (CDC Título II), ANPD powers (LGPD art. 55-J) and the
+    Civil Code's specific contract types are audited, never retrieved: their
+    consumer vocabulary used to fill the retrieval window with candidates the
+    selector then had to discard."""
+
+    corpus = get_default_legal_corpus()
+    uncitable = {"br-cdc-art-71", "br-cdc-art-56", "br-lgpd-art-55-j", "br-cc-art-481"}
+    indexed = {chunk.metadata["provision_id"] for chunk in corpus.as_chunks()}
+    audited = {provision.provision_id for provision in corpus.provisions}
+    retrievable = {provision.provision_id for provision in corpus.retrievable_provisions()}
+    with_uncitable = {
+        chunk.metadata["provision_id"] for chunk in corpus.as_chunks(include_uncitable=True)
+    }
+
+    assert uncitable <= audited
+    assert not uncitable & (indexed | retrievable)
+    assert uncitable <= with_uncitable
+    assert indexed <= retrievable
+    assert all(
+        provision_is_eligible(corpus.get(provision_id)) for provision_id in indexed
+    )
+
+
+def test_long_legal_units_split_at_a_sentence_end_when_one_is_in_reach() -> None:
+    text = ("Primeira frase completa do dispositivo legal que termina aqui. " * 3) + (
+        "palavra " * 40
+    )
+
+    pieces = _split_text(text, 200)
+
+    assert pieces[0].endswith("termina aqui.")
+    assert "".join(pieces).replace(" ", "") == text.replace(" ", "")

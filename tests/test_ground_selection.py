@@ -32,8 +32,12 @@ def _trace(
     *,
     query_index: int = 0,
     error: str | None = None,
+    channels: tuple[str, ...] = ("dense", "lexical"),
+    query: str | None = None,
+    retrieval_mode: str = "hybrid",
+    degraded_mode: str | None = None,
 ) -> RetrievalTrace:
-    query = f"consulta {query_index}"
+    query = query or f"consulta {query_index}"
     return RetrievalTrace(
         batch_id="batch",
         agent="consumer_legal_authorities",
@@ -44,7 +48,8 @@ def _trace(
         requested_k=max(1, len(results)),
         candidate_k=max(1, len(results)),
         returned_count=len(results),
-        retrieval_mode="hybrid",
+        retrieval_mode=retrieval_mode,
+        degraded_mode=degraded_mode,
         embedding_model="test",
         vector_store="memory",
         index_version="test",
@@ -62,6 +67,7 @@ def _trace(
                 page_start=item.chunk.page_start,
                 page_end=item.chunk.page_end,
                 score=item.score,
+                channel_ranks={channel: rank for channel in channels},
                 content_sha256=hashlib.sha256(item.chunk.text.encode()).hexdigest(),
             )
             for rank, item in enumerate(results, start=1)
@@ -102,7 +108,7 @@ def test_support_gate_is_injectable() -> None:
     corpus = get_default_legal_corpus()
     chunk = _chunk_for_unit("br-cdc-art-42-paragrafo-unico")
     results = [[RetrievedChunk(chunk=chunk, score=0.0001)]]
-    traces = [_trace(results[0])]
+    traces = [_trace(results[0], channels=("dense",))]
 
     assert select_legal_grounds(corpus, _facts(), results, traces) == []
     grounds = select_legal_grounds(
@@ -265,3 +271,138 @@ def test_degraded_retrieval_cites_no_complementary_source() -> None:
     )
 
     assert [ground.authority.law_id for ground in grounds] == ["br-cdc"]
+
+
+def test_channel_agreement_holds_for_any_fusion_weights() -> None:
+    """A rank-20 hit in both channels is supported even with a light lexical weight.
+
+    The former score-inferred gate compared the fused score with the best
+    single-channel score, so 1/80 + 0.3/80 fell below 1/61 and a genuine
+    two-channel hit was discarded.
+    """
+    from app.consumer.legal_policy import strongly_supported_chunk_ids
+
+    chunk = _chunk_for_unit("br-cdc-art-42-paragrafo-unico")
+    trace = _trace([RetrievedChunk(chunk=chunk, score=1.3 / 80)]).model_copy(
+        update={"lexical_weight": 0.3}
+    )
+    item = trace.results[0].model_copy(update={"channel_ranks": {"dense": 20, "lexical": 20}})
+    trace = trace.model_copy(update={"results": [item]})
+
+    assert strongly_supported_chunk_ids([trace]) == {chunk.chunk_id}
+
+
+def test_one_channel_hits_in_healthy_hybrid_mode_need_both_channels() -> None:
+    from app.consumer.legal_policy import strongly_supported_chunk_ids
+
+    chunk = _chunk_for_unit("br-cdc-art-42-paragrafo-unico")
+    traces = [
+        _trace([RetrievedChunk(chunk=chunk, score=1 / 61)], query_index=index,
+               query=query, channels=("dense",))
+        for index, query in enumerate(("cobrou duas vezes", "quero o dinheiro de volta"))
+    ]
+
+    # Two independent queries do not stand in for the missing lexical channel.
+    assert strongly_supported_chunk_ids(traces) == frozenset()
+
+
+def test_degraded_corroboration_needs_two_independent_queries() -> None:
+    from app.consumer.legal_policy import strongly_supported_chunk_ids
+
+    chunk = _chunk_for_unit("br-cdc-art-42-paragrafo-unico")
+    narrative = "A loja cobrou duas vezes. Quero o dinheiro de volta."
+
+    def degraded(query: str, index: int) -> RetrievalTrace:
+        return _trace(
+            [RetrievedChunk(chunk=chunk, score=8.0)],
+            query_index=index,
+            query=query,
+            channels=("lexical",),
+            degraded_mode="lexical_only",
+        )
+
+    nested = [degraded(narrative, 0), degraded("A loja cobrou duas vezes", 1)]
+    independent = [*nested, degraded("Quero o dinheiro de volta", 2)]
+
+    # The narrative contains its clause, so the pair is one signal, not two.
+    assert strongly_supported_chunk_ids(nested) == frozenset()
+    assert strongly_supported_chunk_ids(independent) == {chunk.chunk_id}
+
+
+def test_dense_only_traces_use_independent_query_corroboration() -> None:
+    from app.consumer.legal_policy import strongly_supported_chunk_ids
+
+    chunk = _chunk_for_unit("br-cdc-art-42-paragrafo-unico")
+    traces = [
+        _trace(
+            [RetrievedChunk(chunk=chunk, score=0.9)],
+            query_index=index,
+            query=query,
+            channels=("dense",),
+            retrieval_mode="dense",
+        )
+        for index, query in enumerate(("A loja cobrou duas vezes", "Quero o dinheiro de volta"))
+    ]
+
+    assert strongly_supported_chunk_ids(traces) == {chunk.chunk_id}
+
+
+def test_corroboration_ignores_hits_below_the_top_three() -> None:
+    from app.consumer.legal_policy import strongly_supported_chunk_ids
+
+    target = _chunk_for_unit("br-cdc-art-42-paragrafo-unico")
+    fillers = [
+        _chunk_for_unit(unit_id)
+        for unit_id in (
+            "br-cdc-art-43-paragrafo-2",
+            "br-cdc-art-43-paragrafo-4",
+            "br-cdc-art-6-inciso-iii",
+        )
+    ]
+    traces = [
+        _trace(
+            [*(RetrievedChunk(chunk=chunk, score=9.0) for chunk in fillers),
+             RetrievedChunk(chunk=target, score=1.0)],
+            query_index=index,
+            query=query,
+            channels=("lexical",),
+            degraded_mode="lexical_only",
+        )
+        for index, query in enumerate(("A loja cobrou duas vezes", "Quero o dinheiro de volta"))
+    ]
+
+    assert target.chunk_id not in strongly_supported_chunk_ids(traces)
+
+
+def test_reranked_scores_keep_the_relative_floor() -> None:
+    corpus = get_default_legal_corpus()
+    strong = _chunk_for_unit("br-cdc-art-42-paragrafo-unico")
+    weak = _chunk_for_unit("br-cdc-art-43-paragrafo-2")
+    results = [
+        [RetrievedChunk(chunk=strong, score=0.9), RetrievedChunk(chunk=weak, score=0.2)]
+    ]
+    trace = _trace(results[0]).model_copy(update={"score_type": "reranker_score"})
+
+    grounds = select_legal_grounds(corpus, _facts(), results, [trace])
+
+    assert [ground.authority.unit_id for ground in grounds] == [
+        "br-cdc-art-42-paragrafo-unico"
+    ]
+
+
+def test_agreement_must_fall_within_the_depth_of_both_channels() -> None:
+    from app.consumer.legal_policy import AGREEMENT_MAX_RANK, strongly_supported_chunk_ids
+
+    chunk = _chunk_for_unit("br-cdc-art-42-paragrafo-unico")
+    trace = _trace([RetrievedChunk(chunk=chunk, score=0.02)])
+
+    def with_ranks(dense: int, lexical: int) -> RetrievalTrace:
+        item = trace.results[0].model_copy(
+            update={"channel_ranks": {"dense": dense, "lexical": lexical}}
+        )
+        return trace.model_copy(update={"results": [item]})
+
+    assert strongly_supported_chunk_ids([with_ranks(AGREEMENT_MAX_RANK, 1)]) == {
+        chunk.chunk_id
+    }
+    assert strongly_supported_chunk_ids([with_ranks(1, AGREEMENT_MAX_RANK + 1)]) == frozenset()

@@ -1,6 +1,9 @@
 # ADR 0006: Section-aware chunking for legal documents
 
-Status: accepted · Date: 2026-07-23
+Status: accepted · Date: 2026-07-23 · Amended by
+[ADR 0019](0019-explicit-retrieval-agreement.md): uploaded evidence is the only
+document the application chunks, so page-preserving mode is the default;
+oversized paragraphs split at sentence ends or word breaks, not fixed offsets.
 
 ## Context
 

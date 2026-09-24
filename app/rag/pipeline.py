@@ -33,7 +33,7 @@ from app.rag.vector_store import (
     VectorStore,
 )
 from app.schemas.document import ParsedDocument
-from app.schemas.rag import Chunk, RetrievedChunk
+from app.schemas.rag import DENSE_CHANNEL, LEXICAL_CHANNEL, Chunk, RetrievedChunk
 from app.schemas.security import PromptInjectionAssessment
 from app.schemas.trace import RetrievalTrace, RetrievedItemTrace
 from app.security.sanitization import SANITIZER_VERSION, sanitized_document
@@ -509,7 +509,10 @@ class RagPipeline:
 
         async def search(query: str, vector: list[float]) -> list[RetrievedChunk]:
             if effective_mode is not RetrievalMode.HYBRID:
-                return await self._store.query(vector, doc_id=doc_id, k=batch.candidate_k)
+                return _ranked_in(
+                    DENSE_CHANNEL,
+                    await self._store.query(vector, doc_id=doc_id, k=batch.candidate_k),
+                )
             lexical_store = cast(LexicalVectorStore, self._store)
             dense_items, lexical_items = await asyncio.gather(
                 self._store.query(vector, doc_id=doc_id, k=batch.candidate_k),
@@ -520,6 +523,7 @@ class RagPipeline:
                 k=batch.candidate_k,
                 constant=self._rrf_constant,
                 weights=[self._dense_weight, self._lexical_weight],
+                channels=[DENSE_CHANNEL, LEXICAL_CHANNEL],
             )
 
         timed_results = await self._run_searches(
@@ -566,12 +570,17 @@ class RagPipeline:
         """Return conservative lexical results when the semantic dependency is unavailable."""
 
         lexical_store = cast(LexicalVectorStore, self._store)
+
+        async def search(query: str) -> list[RetrievedChunk]:
+            return _ranked_in(
+                LEXICAL_CHANNEL,
+                await lexical_store.lexical_query(
+                    query, doc_id=batch.doc_id, k=batch.candidate_k
+                ),
+            )
+
         timed_results = await self._run_searches(
-            batch,
-            [
-                lexical_store.lexical_query(query, doc_id=batch.doc_id, k=batch.candidate_k)
-                for query in batch.queries
-            ],
+            batch, [search(query) for query in batch.queries]
         )
         traces = self._batch_traces(
             batch,
@@ -601,6 +610,12 @@ class RagPipeline:
     ) -> list[_TimedResult]:
         """Run each query's candidate search concurrently, then rerank or truncate it.
 
+        A reranker scores every candidate but orders them only within their
+        channel-agreement tier: a chunk both channels returned stays ahead of
+        a chunk only one channel returned, exactly as reciprocal-rank fusion
+        already ranks them. Without that, enabling a reranker would fill the
+        requested slots with candidates the support gate then discards.
+
         A failed query keeps its error and an empty result, so the audit of
         its siblings survives.
         """
@@ -610,9 +625,9 @@ class RagPipeline:
             try:
                 items = await search
                 if self._reranker is not None:
-                    items = await self._reranker.rerank(query, items, batch.requested_k)
-                else:
-                    items = items[: batch.requested_k]
+                    reranked = await self._reranker.rerank(query, items, len(items))
+                    items = _within_agreement_tiers(reranked, items)
+                items = items[: batch.requested_k]
             except Exception as exc:
                 return [], _elapsed_ms(started), exc
             return items, _elapsed_ms(started), None
@@ -718,6 +733,7 @@ class RagPipeline:
                     page_start=item.chunk.page_start,
                     page_end=item.chunk.page_end,
                     score=item.score,
+                    channel_ranks=dict(item.channel_ranks),
                     content_sha256=sha256_hex(item.chunk.text),
                     source_metadata=item.chunk.metadata,
                     source_url=_metadata_text(item.chunk.metadata, "official_url", "source_url"),
@@ -745,8 +761,13 @@ def reciprocal_rank_fusion(
     k: int,
     constant: int = 60,
     weights: list[float] | None = None,
+    channels: list[str] | None = None,
 ) -> list[RetrievedChunk]:
-    """Fuse rankings without assuming their raw scores share a scale."""
+    """Fuse rankings without assuming their raw scores share a scale.
+
+    ``channels`` names each ranking; every fused chunk records its rank in the
+    channels that returned it, so callers can check agreement directly.
+    """
     if k < 1:
         return []
     if constant < 1:
@@ -756,25 +777,54 @@ def reciprocal_rank_fusion(
         raise ValueError("one RRF weight is required per ranking")
     if any(weight <= 0 for weight in effective_weights):
         raise ValueError("RRF weights must be positive")
+    names = channels or [f"ranking-{index}" for index in range(len(rankings))]
+    if len(names) != len(rankings) or len(set(names)) != len(names):
+        raise ValueError("one distinct channel name is required per ranking")
 
     chunks: dict[str, Chunk] = {}
     fused_scores: defaultdict[str, float] = defaultdict(float)
-    for ranking, weight in zip(rankings, effective_weights, strict=True):
-        seen: set[str] = set()
+    channel_ranks: defaultdict[str, dict[str, int]] = defaultdict(dict)
+    for ranking, weight, name in zip(rankings, effective_weights, names, strict=True):
         for rank, item in enumerate(ranking, start=1):
             chunk_id = item.chunk.chunk_id
-            if chunk_id in seen:
+            if name in channel_ranks[chunk_id]:
                 continue
-            seen.add(chunk_id)
+            channel_ranks[chunk_id][name] = rank
             chunks[chunk_id] = item.chunk
             fused_scores[chunk_id] += weight / (constant + rank)
 
     fused = [
-        RetrievedChunk(chunk=chunks[chunk_id], score=score)
+        RetrievedChunk(
+            chunk=chunks[chunk_id], score=score, channel_ranks=channel_ranks[chunk_id]
+        )
         for chunk_id, score in fused_scores.items()
     ]
     fused.sort(key=lambda item: (-item.score, item.chunk.chunk_id))
     return fused[:k]
+
+
+def _ranked_in(channel: str, items: list[RetrievedChunk]) -> list[RetrievedChunk]:
+    """Record each item's rank in the single channel that produced the list."""
+    return [
+        item.model_copy(update={"channel_ranks": {channel: rank}})
+        for rank, item in enumerate(items, start=1)
+    ]
+
+
+def _within_agreement_tiers(
+    reranked: list[RetrievedChunk], candidates: list[RetrievedChunk]
+) -> list[RetrievedChunk]:
+    """Keep the reranker's order inside each channel-agreement tier.
+
+    Rerankers rebuild result objects, so the candidates' channel ranks are
+    restored by chunk id before tiers are compared. ``sorted`` is stable.
+    """
+    ranks = {item.chunk.chunk_id: item.channel_ranks for item in candidates}
+    restored = [
+        item.model_copy(update={"channel_ranks": dict(ranks.get(item.chunk.chunk_id, {}))})
+        for item in reranked
+    ]
+    return sorted(restored, key=lambda item: -len(item.channel_ranks))
 
 
 def _require_unique_chunk_ids(chunks: list[Chunk]) -> None:

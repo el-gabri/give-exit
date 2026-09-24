@@ -3,6 +3,8 @@
 ## Status
 
 Accepted; supersedes ADR 0007 while retaining its deterministic default.
+Amended by [ADR 0019](0019-explicit-retrieval-agreement.md): prose that cites
+an article, states an amount or adds a number absent from its input is rejected.
 
 ## Context
 

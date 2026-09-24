@@ -82,7 +82,9 @@ def test_heading_detection() -> None:
 
 
 def test_chunker_respects_sections_and_provenance() -> None:
-    chunks = SectionAwareChunker(target_chars=1200, overlap_chars=100).chunk(_petition())
+    chunks = SectionAwareChunker(
+        target_chars=1200, overlap_chars=100, page_preserving=False
+    ).chunk(_petition())
 
     sections = {c.section for c in chunks}
     assert sections == {"DOS FATOS", "DO DIREITO", "DOS PEDIDOS"}
@@ -107,6 +109,31 @@ def test_chunker_splits_oversized_sections_with_overlap() -> None:
 
     assert len(chunks) > 1
     assert all(len(c.text) <= 500 + 100 for c in chunks)  # target + heading prefix slack
+
+
+def test_oversized_paragraphs_split_between_words_not_inside_amounts() -> None:
+    """PDF text used to arrive as one paragraph per page and was cut at fixed
+    offsets, leaving "VALOR R$ " at the end of one chunk and "1.250,00" in the
+    next."""
+    rows = " ".join(
+        f"{day:02d}/03/2026 COMPRA LOJA XYZ PARCELA {day} DE 10 VALOR R$ 1.250,00"
+        for day in range(1, 41)
+    )
+    document = ParsedDocument(
+        filename="extrato.pdf",
+        pages=[DocumentPage(number=1, text=rows)],
+        language="pt",
+        extraction_method=ExtractionMethod.NATIVE_TEXT,
+    )
+
+    chunks = SectionAwareChunker(target_chars=1200, overlap_chars=150).chunk(document)
+
+    assert len(chunks) > 1
+    assert all(len(chunk.text) <= 1200 for chunk in chunks)
+    words = set(rows.split())
+    for chunk in chunks:
+        assert set(chunk.text.split()) <= words, "a word was cut in half"
+        assert not chunk.text.endswith("R$")
 
 
 def test_chunker_rejects_invalid_overlap() -> None:
@@ -137,10 +164,11 @@ def test_page_preserving_chunker_keeps_every_block_on_its_own_page() -> None:
 
 
 def test_page_preserving_mode_has_its_own_index_version() -> None:
-    default = SectionAwareChunker(target_chars=1200, overlap_chars=150)
-    evidence = SectionAwareChunker(target_chars=1200, overlap_chars=150, page_preserving=True)
+    sections = SectionAwareChunker(target_chars=1200, overlap_chars=150, page_preserving=False)
+    evidence = SectionAwareChunker(target_chars=1200, overlap_chars=150)
 
-    assert evidence.index_version != default.index_version
+    assert evidence.index_version != sections.index_version
+    assert evidence.index_version.endswith(":page-preserving")
 
 
 async def test_consumer_pipeline_indexes_evidence_made_of_uppercase_blocks(tmp_path) -> None:
@@ -156,10 +184,7 @@ async def test_consumer_pipeline_indexes_evidence_made_of_uppercase_blocks(tmp_p
         pages=[
             DocumentPage(
                 number=1,
-                text=(
-                    "CASO ABCDEF12 EVIDENCIA ABCDEF34 PAGINA 1\n\n"
-                    "PAGAMENTO APROVADO\n\nTOTAL R$ 149,90"
-                ),
+                text="PAGAMENTO APROVADO\n\nTOTAL R$ 149,90",
             )
         ],
         language="pt",
@@ -168,9 +193,7 @@ async def test_consumer_pipeline_indexes_evidence_made_of_uppercase_blocks(tmp_p
 
     chunks = await pipeline.index_document(receipt)
 
-    assert [c.text for c in chunks] == [
-        "CASO ABCDEF12 EVIDENCIA ABCDEF34 PAGINA 1\nPAGAMENTO APROVADO\nTOTAL R$ 149,90"
-    ]
+    assert [c.text for c in chunks] == ["PAGAMENTO APROVADO\nTOTAL R$ 149,90"]
 
 
 async def test_mock_embeddings_are_deterministic_and_semanticish() -> None:
@@ -188,6 +211,7 @@ async def test_pipeline_indexes_and_retrieves_relevant_section() -> None:
     pipeline = RagPipeline(
         embedder=MockEmbeddingClient(),
         store=InMemoryVectorStore(),
+        chunker=SectionAwareChunker(page_preserving=False),
         default_k=2,
         include_trace_previews=True,
     )
@@ -283,7 +307,7 @@ async def test_retrieval_trace_preserves_rank_score_and_source_provenance() -> N
     assert trace.returned_count == len(results) == 2
     assert trace.embedding_model.startswith("mock-hashed-bow-v1")
     assert trace.vector_store == "InMemoryVectorStore"
-    assert "section-aware-v1" in trace.index_version
+    assert "section-aware-v2" in trace.index_version
     assert trace.batch_id
     assert trace.batch_duration_ms >= 0
     assert [item.rank for item in trace.results] == [1, 2]

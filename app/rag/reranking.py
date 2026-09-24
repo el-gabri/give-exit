@@ -62,7 +62,7 @@ class SentenceTransformerReranker:
                 batch_size=self._batch_size,
             )
         rescored = [
-            RetrievedChunk(chunk=item.chunk, score=float(score))
+            item.model_copy(update={"score": float(score)})
             for item, score in zip(candidates, scores, strict=True)
         ]
         rescored.sort(key=lambda item: (-item.score, item.chunk.chunk_id))

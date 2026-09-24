@@ -106,6 +106,15 @@ def render_notice_markdown(
             f"- **[{authority.citation_label}{unit_suffix}]({authority.official_url})** — "
             f"{official_excerpt or authority.summary}"
         )
+        # A verified relation quotes the consumer's own account and the
+        # provision verbatim; both quotes were checked as exact substrings.
+        verification = ground.verification
+        if verification is not None and verification.verified:
+            lines.append(
+                "  - *Relação com os fatos:* o(a) consumidor(a) relata que "
+                f"\"{markdown_inline(verification.fact_quote or '')}\", e o dispositivo "
+                f"estabelece que \"{markdown_inline(verification.provision_quote or '')}\"."
+            )
     lines.extend(["", "## 5. Providências solicitadas", ""])
     if prose is not None:
         lines.extend([prose.requests_transition, ""])

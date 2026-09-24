@@ -87,6 +87,38 @@ def test_composer_rejects_source_bearing_model_prose() -> None:
         _validate_prose(_prose(legal_transition="Veja https://exemplo.test."))
 
 
+@pytest.mark.parametrize(
+    "legal_transition",
+    [
+        "Conforme o art. 42 do código, cabe a devolução.",
+        "Nos termos do artigo 6º, a informação é direito básico.",
+        "O inciso III garante informação adequada.",
+        "A Lei nº 8.078 disciplina a matéria.",
+        "O § 1º do dispositivo se aplica.",
+    ],
+)
+def test_composer_rejects_article_level_citations(legal_transition: str) -> None:
+    with pytest.raises(ValueError, match="source-bearing|legal provision"):
+        _validate_prose(_prose(legal_transition=legal_transition))
+
+
+def test_composer_rejects_amounts_and_numbers_it_invented() -> None:
+    packet = '{"relato":"Cobrança de 250 reais em 10/03/2026","protocolos":["ABC-123"]}'
+
+    with pytest.raises(ValueError, match="source-bearing"):
+        _validate_prose(_prose(closing="Propõe-se o pagamento de R$ 500,00."), source_packet=packet)
+    with pytest.raises(ValueError, match="absent from its input"):
+        _validate_prose(
+            _prose(requests_transition="Aguarda-se resposta em 5 dias úteis."),
+            source_packet=packet,
+        )
+    # Numbers taken from the packet are the consumer's own facts.
+    _validate_prose(
+        _prose(facts_framing="Relata-se cobrança de 250 reais em 10/03/2026, protocolo ABC-123."),
+        source_packet=packet,
+    )
+
+
 def test_notice_composer_is_offline_by_default_and_requires_openai_key() -> None:
     assert Settings(_env_file=None).notice_composer is NoticeComposer.DETERMINISTIC
     with pytest.raises(ValueError, match="OPENAI_API_KEY"):

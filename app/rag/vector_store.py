@@ -298,17 +298,33 @@ class PostgresVectorStore:
     The Consumer corpus is small (a few thousand chunks), so exact search is
     both fast and avoids an index that could silently mix incompatible
     dimensions.
+
+    Lexical search is the same BM25 the in-process adapters run, over the same
+    tokens, which are computed in Python at write time and stored per row. It
+    used to rank with ``ts_rank_cd`` over a Portuguese ``tsvector`` - stemmed,
+    without inverse document frequency - and on the golden queries its top 8
+    shared about a fifth of its chunks with the BM25 top 8 that the offline
+    evaluation measures, so the evaluated lexical channel was not the shipped
+    one.
+
+    Connections come from a small pool when ``psycopg_pool`` is installed;
+    opening one per query cost as much as the query itself.
     """
 
     TABLE = "give_exit_vector_chunks"
 
-    def __init__(self, *, dsn: str, index_name: str) -> None:
+    def __init__(self, *, dsn: str, index_name: str, pool_max_size: int = 8) -> None:
         if not dsn.strip():
             raise ValueError("Postgres DSN must be non-empty")
+        if pool_max_size < 1:
+            raise ValueError("pool_max_size must be positive")
         self._dsn = dsn
         self._index_name = index_name
         self._schema_ready = False
         self._schema_lock = threading.Lock()
+        self._pool_max_size = pool_max_size
+        self._pool: Any | None = None
+        self._pool_lock = threading.Lock()
 
     @property
     def index_name(self) -> str:
@@ -345,14 +361,37 @@ class PostgresVectorStore:
     async def delete_document(self, doc_id: str) -> None:
         await asyncio.to_thread(self._delete_document_sync, doc_id)
 
+    def close(self) -> None:
+        """Close pooled connections; the store reopens a pool on next use."""
+        with self._pool_lock:
+            pool, self._pool = self._pool, None
+        if pool is not None:
+            pool.close()
+
     def _connect(self) -> Any:
+        """A context manager yielding a connection that commits on success."""
         try:
             import psycopg
         except ImportError as exc:  # pragma: no cover - depends on optional extra
             raise RuntimeError(
                 "Postgres vector storage requires `pip install -e \".[postgres]\"`"
             ) from exc
-        return psycopg.connect(self._dsn)
+        pool = self._connection_pool()
+        return pool.connection() if pool is not None else psycopg.connect(self._dsn)
+
+    def _connection_pool(self) -> Any | None:
+        if self._pool is not None:
+            return self._pool
+        try:
+            from psycopg_pool import ConnectionPool
+        except ImportError:  # pragma: no cover - pool is part of the postgres extra
+            return None
+        with self._pool_lock:
+            if self._pool is None:
+                self._pool = ConnectionPool(
+                    self._dsn, min_size=1, max_size=self._pool_max_size, open=True
+                )
+            return self._pool
 
     def _ensure_schema_sync(self) -> None:
         if self._schema_ready:
@@ -403,7 +442,33 @@ class PostgresVectorStore:
                     ON {self.TABLE} USING GIN (search_vector)
                     """
                 )
+                cursor.execute(
+                    f"ALTER TABLE {self.TABLE} ADD COLUMN IF NOT EXISTS lexical_tokens TEXT[]"
+                )
+                cursor.execute(
+                    f"""
+                    CREATE INDEX IF NOT EXISTS {self.TABLE}_lexical_tokens_idx
+                    ON {self.TABLE} USING GIN (lexical_tokens)
+                    """
+                )
+                self._backfill_lexical_tokens(cursor)
             self._schema_ready = True
+
+    def _backfill_lexical_tokens(self, cursor: Any) -> None:
+        """Tokenize rows written before lexical tokens were stored."""
+        cursor.execute(
+            f"SELECT namespace, chunk_id, content FROM {self.TABLE} WHERE lexical_tokens IS NULL"
+        )
+        rows = cursor.fetchall()
+        if rows:
+            cursor.executemany(
+                f"UPDATE {self.TABLE} SET lexical_tokens = %s "
+                "WHERE namespace = %s AND chunk_id = %s",
+                [
+                    (portuguese_lexical_tokens(str(content)), namespace, chunk_id)
+                    for namespace, chunk_id, content in rows
+                ],
+            )
 
     def _upsert_sync(self, rows: list[tuple[object, ...]]) -> None:
         self._ensure_schema_sync()
@@ -450,26 +515,29 @@ class PostgresVectorStore:
         ]
 
     def _lexical_query_sync(self, query: str, doc_id: str, k: int) -> list[RetrievedChunk]:
+        query_terms = Counter(portuguese_lexical_tokens(query))
+        if not query_terms:
+            return []
         self._ensure_schema_sync()
+        terms = list(query_terms)
         with self._connect() as connection, connection.cursor() as cursor:
             cursor.execute(
-                f"""
-                WITH parsed_query AS (
-                    SELECT string_agg(quote_literal(lexeme), ' | ')::tsquery AS value
-                    FROM unnest(
-                        tsvector_to_array(to_tsvector('portuguese'::regconfig, %s))
-                    ) AS lexeme
-                )
-                SELECT chunk_id, content, chunk_payload,
-                       ts_rank_cd(search_vector, parsed_query.value) AS score
-                FROM {self.TABLE}, parsed_query
-                WHERE namespace = %s
-                  AND doc_id = %s
-                  AND search_vector @@ parsed_query.value
-                ORDER BY score DESC, chunk_id ASC
-                LIMIT %s
-                """,
-                (query, self._index_name, doc_id, k),
+                _POSTGRES_BM25_SQL,
+                (
+                    self._index_name,
+                    doc_id,
+                    terms,
+                    [query_terms[term] for term in terms],
+                    self._index_name,
+                    doc_id,
+                    terms,
+                    terms,
+                    _BM25_K1,
+                    _BM25_K1,
+                    _BM25_B,
+                    _BM25_B,
+                    k,
+                ),
             )
             return self._retrieved(cursor.fetchall())
 
@@ -513,8 +581,9 @@ class PostgresVectorStore:
 
 _POSTGRES_UPSERT_SQL = f"""
 INSERT INTO {PostgresVectorStore.TABLE} (
-    namespace, chunk_id, doc_id, content, section, page_start, page_end, chunk_payload, embedding
-) VALUES (%s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s::vector)
+    namespace, chunk_id, doc_id, content, section, page_start, page_end, chunk_payload,
+    embedding, lexical_tokens
+) VALUES (%s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s::vector, %s)
 ON CONFLICT (namespace, chunk_id) DO UPDATE SET
     doc_id = EXCLUDED.doc_id,
     content = EXCLUDED.content,
@@ -522,7 +591,67 @@ ON CONFLICT (namespace, chunk_id) DO UPDATE SET
     page_start = EXCLUDED.page_start,
     page_end = EXCLUDED.page_end,
     chunk_payload = EXCLUDED.chunk_payload,
-    embedding = EXCLUDED.embedding
+    embedding = EXCLUDED.embedding,
+    lexical_tokens = EXCLUDED.lexical_tokens
+"""
+
+_BM25_K1 = 1.5
+_BM25_B = 0.75
+
+# BM25 exactly as ``_bm25_rank`` computes it: the corpus statistics cover every
+# chunk of the document, term frequencies come from the stored token arrays,
+# and ties break on chunk id.
+_POSTGRES_BM25_SQL = f"""
+WITH corpus AS (
+    SELECT count(*)::float8 AS documents,
+           avg(cardinality(lexical_tokens))::float8 AS average_length
+    FROM {PostgresVectorStore.TABLE}
+    WHERE namespace = %s AND doc_id = %s
+),
+query_terms AS (
+    SELECT term, query_frequency
+    FROM unnest(%s::text[], %s::int[]) AS query(term, query_frequency)
+),
+candidates AS (
+    SELECT chunk_id, content, chunk_payload, lexical_tokens,
+           cardinality(lexical_tokens)::float8 AS length
+    FROM {PostgresVectorStore.TABLE}
+    WHERE namespace = %s AND doc_id = %s AND lexical_tokens && %s::text[]
+),
+term_frequencies AS (
+    SELECT candidates.chunk_id, token AS term, count(*)::float8 AS frequency
+    FROM candidates, unnest(candidates.lexical_tokens) AS token
+    WHERE token = ANY(%s::text[])
+    GROUP BY candidates.chunk_id, token
+),
+document_frequencies AS (
+    SELECT term, count(*)::float8 AS frequency
+    FROM term_frequencies
+    GROUP BY term
+),
+scores AS (
+    SELECT term_frequencies.chunk_id,
+           sum(
+               query_terms.query_frequency
+               * ln(1 + (corpus.documents - document_frequencies.frequency + 0.5)
+                        / (document_frequencies.frequency + 0.5))
+               * term_frequencies.frequency * (%s + 1)
+               / (term_frequencies.frequency
+                  + %s * (1 - %s + %s * candidates.length
+                          / coalesce(nullif(corpus.average_length, 0), 1)))
+           ) AS score
+    FROM term_frequencies
+    JOIN query_terms USING (term)
+    JOIN document_frequencies USING (term)
+    JOIN candidates USING (chunk_id)
+    CROSS JOIN corpus
+    GROUP BY term_frequencies.chunk_id
+)
+SELECT candidates.chunk_id, candidates.content, candidates.chunk_payload, scores.score
+FROM scores JOIN candidates USING (chunk_id)
+WHERE scores.score > 0
+ORDER BY scores.score DESC, candidates.chunk_id ASC
+LIMIT %s
 """
 
 
@@ -555,6 +684,7 @@ def _postgres_rows(
                 separators=(",", ":"),
             ),
             _vector_literal(vector),
+            portuguese_lexical_tokens(chunk.text),
         )
         for chunk, vector in zip(chunks, vectors, strict=True)
     ]

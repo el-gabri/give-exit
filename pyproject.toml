@@ -40,7 +40,7 @@ local-embeddings = [
     "transformers>=4.51.0",
 ]
 postgres = [
-    "psycopg[binary]>=3.2,<4",
+    "psycopg[binary,pool]>=3.2,<4",
 ]
 dev = [
     "pytest>=8.0",
@@ -131,6 +131,12 @@ module = [
     "reportlab.*",
     "sentence_transformers.*",
 ]
+ignore_missing_imports = true
+
+# The connection pool comes with the optional postgres extra, which the CI type
+# check does not install; the adapter falls back to direct connections.
+[[tool.mypy.overrides]]
+module = ["psycopg_pool", "psycopg_pool.*"]
 ignore_missing_imports = true
 
 # We never call numpy directly; it arrives through chromadb.

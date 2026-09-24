@@ -16,6 +16,7 @@ from datetime import date
 from functools import lru_cache
 from types import MappingProxyType
 
+from app.consumer.legal_policy import provision_is_eligible
 from app.consumer.schemas import (
     LegalAuthorityCitation,
     LegalProvision,
@@ -40,6 +41,7 @@ from app.consumer.statutes import (
     strip_article_heading,
 )
 from app.core.hashing import canonical_json_sha256, sha256_hex
+from app.rag.chunking import split_at_boundaries
 from app.schemas.document import DocumentPage, ExtractionMethod, ParsedDocument
 from app.schemas.rag import Chunk, MetadataValue, RetrievedChunk
 
@@ -49,7 +51,7 @@ CONSTITUTION_URL = "https://www.planalto.gov.br/ccivil_03/constituicao/constitui
 
 _SOURCE_NAME_CF = "Constituição da República Federativa do Brasil de 1988"
 _LEGACY_ID_ALIASES = {"br-cdc-art-3-p2": "br-cdc-art-3"}
-LEGAL_CHUNKING_VERSION = "legal-hierarchy-v3"
+LEGAL_CHUNKING_VERSION = "legal-hierarchy-v4"
 DEFAULT_LEGAL_CHUNK_TARGET_CHARS = 1_200
 
 
@@ -565,18 +567,32 @@ class LegalCorpus:
 
         Amendment-only articles are excluded: their normative payload is the
         text of another statute, so retrieving one would attach this law's
-        citation label to a different law's words.
+        citation label to a different law's words. So are provisions a notice
+        may never cite (see ``as_chunks``).
         """
 
-        return tuple(provision for provision in self._provisions if _is_retrievable(provision))
+        return tuple(
+            provision
+            for provision in self._provisions
+            if _is_retrievable(provision) and provision_is_eligible(provision)
+        )
 
     def as_chunks(
         self,
         *,
         target_chars: int = DEFAULT_LEGAL_CHUNK_TARGET_CHARS,
         include_inactive: bool = False,
+        include_uncitable: bool = False,
     ) -> list[Chunk]:
-        """Create hierarchy-aware chunks that never cross article boundaries."""
+        """Create hierarchy-aware chunks that never cross article boundaries.
+
+        Only provisions a notice may cite are chunked. The criminal, sanction,
+        collective-procedure and authority chapters that ``provision_is_eligible``
+        rejects stay in the corpus for audit, but indexing them let their
+        consumer vocabulary fill the retrieval window with candidates the
+        selector then discarded. ``include_uncitable`` restores them for audit
+        and tests; the retrieval index never uses it.
+        """
 
         if target_chars < 200:
             raise ValueError("target_chars must be at least 200")
@@ -585,6 +601,8 @@ class LegalCorpus:
         chunks: list[Chunk] = []
         for page_number, provision in enumerate(self._provisions, start=1):
             if not _is_retrievable(provision):
+                continue
+            if not include_uncitable and not provision_is_eligible(provision):
                 continue
             units: Sequence[LegalTextUnit | None] = provision.units or (None,)
             for unit in units:
@@ -1079,25 +1097,7 @@ def _pack_units(parts: Sequence[str], max_chars: int) -> list[str]:
 def _split_text(text: str, max_chars: int) -> list[str]:
     if max_chars < 100:
         raise ValueError("target_chars is too small for legal provenance context")
-    if len(text) <= max_chars:
-        return [text]
-    pieces: list[str] = []
-    remaining = text
-    while len(remaining) > max_chars:
-        boundary = max(
-            remaining.rfind(". ", 0, max_chars),
-            remaining.rfind("; ", 0, max_chars),
-            remaining.rfind(" ", 0, max_chars),
-        )
-        if boundary < max_chars // 2:
-            boundary = max_chars
-        else:
-            boundary += 1
-        pieces.append(remaining[:boundary].strip())
-        remaining = remaining[boundary:].strip()
-    if remaining:
-        pieces.append(remaining)
-    return pieces
+    return split_at_boundaries(text, max_chars)
 
 
 @lru_cache(maxsize=1)

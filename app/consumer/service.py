@@ -21,12 +21,12 @@ from app.consumer.composer import (
     NoticeDraftComposer,
 )
 from app.consumer.evidence_support import (
-    clean_chunk_quote,
-    evidence_page_heading,
     evidence_supports_confirmed_facts,
+    supporting_quote,
 )
 from app.consumer.ground_selection import merge_results as _merge_results
 from app.consumer.ground_selection import select_legal_grounds
+from app.consumer.ground_verifier import GroundVerifier, NoGroundVerifier
 from app.consumer.intake import (
     extract_explicit_facts,
     merge_explicit_facts,
@@ -47,9 +47,10 @@ from app.consumer.legal_policy import (
 from app.consumer.monetary import extract_brl_mentions
 from app.consumer.notice_markdown import notice_requests, render_notice_markdown
 from app.consumer.retrieval import (
+    LEGAL_REQUESTED_K,
     build_evidence_queries,
-    build_legal_queries,
     is_consumer_scope,
+    retrieve_legal_candidates,
 )
 from app.consumer.schemas import (
     ConsumerCaseFacts,
@@ -124,6 +125,7 @@ class ConsumerCaseService:
         legal_corpus: LegalCorpus | None = None,
         settlement_calculator: SettlementCalculator | None = None,
         notice_composer: NoticeDraftComposer | None = None,
+        ground_verifier: GroundVerifier | None = None,
         max_documents_per_case: int = DEFAULT_MAX_DOCUMENTS_PER_CASE,
         purge_orphaned_evidence: bool = True,
     ) -> None:
@@ -134,6 +136,7 @@ class ConsumerCaseService:
         self._legal_corpus = legal_corpus or get_default_legal_corpus()
         self._settlement = settlement_calculator or SettlementCalculator()
         self._notice_composer = notice_composer or DeterministicNoticeComposer()
+        self._ground_verifier = ground_verifier or NoGroundVerifier()
         self._max_documents_per_case = max_documents_per_case
         self._purge_orphaned_evidence = purge_orphaned_evidence
         self._legal_index_lock = asyncio.Lock()
@@ -358,14 +361,11 @@ class ConsumerCaseService:
         evidence_index_reused = await self._ensure_evidence_indexed(record, evidence_document)
         evidence_index_ms = (perf_counter() - index_started) * 1000
 
-        legal_queries = build_legal_queries(record.facts)
-        evidence_queries = build_evidence_queries(record.facts)
         retrieval_started = perf_counter()
         try:
             legal_results, legal_traces, evidence_results, evidence_traces = (
                 await self._retrieve_notice_support(
-                    legal_queries=legal_queries,
-                    evidence_queries=evidence_queries,
+                    facts=record.facts,
                     evidence_doc_id=evidence_document.doc_id,
                 )
             )
@@ -382,7 +382,10 @@ class ConsumerCaseService:
             }
         )
 
-        legal_grounds = self._legal_grounds(legal_results, record.facts, legal_traces)
+        verification = await self._ground_verifier.verify(
+            record.facts, self._legal_grounds(legal_results, record.facts, legal_traces)
+        )
+        legal_grounds = verification.grounds
         evidence_references = self._evidence_references(
             evidence_results, page_sources, evidence_traces, record.facts
         )
@@ -440,6 +443,7 @@ class ConsumerCaseService:
             legal_ground_policy_review_status=LEGAL_GROUND_POLICY_REVIEW_STATUS,
             composition_mode=composition.mode,
             composition_metadata=composition.metadata,
+            ground_verification=verification.summary,
             generation_timing=NoticeGenerationTiming(
                 evidence_index_ms=evidence_index_ms,
                 evidence_index_reused=evidence_index_reused,
@@ -449,7 +453,11 @@ class ConsumerCaseService:
             ),
             retrievals=[*legal_traces, *evidence_traces],
             retrieval_degraded_modes=degraded_modes,
-            warnings=[*composition_warnings, *_degraded_retrieval_warnings(degraded_modes)],
+            warnings=[
+                *verification.warnings,
+                *composition_warnings,
+                *_degraded_retrieval_warnings(degraded_modes),
+            ],
         )
         record.notice = notice
         record.touch()
@@ -463,8 +471,7 @@ class ConsumerCaseService:
     async def _retrieve_notice_support(
         self,
         *,
-        legal_queries: list[str],
-        evidence_queries: list[str],
+        facts: ConsumerCaseFacts,
         evidence_doc_id: str,
     ) -> tuple[
         list[list[RetrievedChunk]],
@@ -474,15 +481,14 @@ class ConsumerCaseService:
     ]:
         """Retrieve both source sets without making them compete for one model slot."""
 
-        legal_results, legal_traces = await self._rag.retrieve_many_with_traces(
-            legal_queries,
+        legal_results, legal_traces = await retrieve_legal_candidates(
+            self._rag,
+            facts,
             doc_id=self._legal_corpus.document_id,
-            agent="consumer_legal_authorities",
-            k=8,
-            mode="hybrid",
+            k=LEGAL_REQUESTED_K,
         )
         evidence_results, evidence_traces = await self._rag.retrieve_many_with_traces(
-            evidence_queries,
+            build_evidence_queries(facts),
             doc_id=evidence_doc_id,
             agent="consumer_case_evidence",
             k=6,
@@ -704,11 +710,10 @@ class ConsumerCaseService:
         for evidence in self._accepted_documents(record):
             assert evidence.safe_document is not None
             for original in evidence.safe_document.pages:
+                # Pages stay apart through the page-preserving chunker; the
+                # document's own text is all that is embedded and searched.
                 global_page = len(pages) + 1
-                heading = evidence_page_heading(
-                    record.case_id, evidence.public.evidence_id, original.number
-                )
-                pages.append(DocumentPage(number=global_page, text=f"{heading}\n\n{original.text}"))
+                pages.append(DocumentPage(number=global_page, text=original.text))
                 sources[global_page] = (evidence, original.number)
         return (
             ParsedDocument(
@@ -770,7 +775,7 @@ class ConsumerCaseService:
             if source is None:
                 continue
             evidence, original_page = source
-            quote = clean_chunk_quote(chunk.text)
+            quote = supporting_quote(chunk.text, facts)
             if not quote or not evidence_supports_confirmed_facts(quote, facts):
                 continue
             citations.append(

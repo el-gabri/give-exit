@@ -1,9 +1,9 @@
-"""Evidence page markers and whether an excerpt supports the confirmed facts.
+"""Evidence quotes and whether an excerpt supports the confirmed facts.
 
 Notice generation indexes every accepted upload as one synthetic document with
-one marked section per page, and it cites only excerpts that share the
-confirmed case's topic. The marker, the rule that strips it from citations
-and the support heuristics live together here.
+one page per uploaded page, and it cites only excerpts that share the
+confirmed case's topic. The quote shown for a citation is the passage of the
+chunk that best matches the confirmed facts, not simply its first characters.
 """
 
 from __future__ import annotations
@@ -15,10 +15,10 @@ from app.consumer.monetary import extract_brl_mentions
 from app.consumer.schemas import ConsumerCaseFacts
 from app.rag.vector_store import portuguese_lexical_tokens
 
-# Scaffolding injected between evidence pages so the generic chunker keeps
-# them in separate sections. It identifies the case, so it must never survive
-# into a citation, and it is matched here in upper case because that is the
-# only form ``evidence_page_heading`` emits.
+# Page markers the service once injected between evidence pages. Indexing it
+# made every page lexically match any query containing "evidência", "caso" or
+# "página", so pages are now kept apart by the page-preserving chunker alone.
+# The marker names the case, so any occurrence is still removed from quotes.
 _EVIDENCE_PAGE_MARKER_RE = re.compile(
     r"\[?\s*CASO\s+[0-9A-F]{8}\s+EVIDENCIA\s+[0-9A-F]{8}\s+PAGINA\s+\d+\s*\]?",
     re.IGNORECASE,
@@ -66,37 +66,109 @@ _EMBEDDED_IDENTIFIER_RE = re.compile(
 )
 
 
-def evidence_page_heading(case_id: str, evidence_id: str, page: int) -> str:
-    """The heading that keeps one uploaded page in its own chunker section.
-
-    It must satisfy SectionAwareChunker.is_heading, which requires ~all
-    letters to be upper case. uuid4 hex carries lower-case a-f, so an
-    unmodified id made this a heading only ~3% of the time; the rest of the
-    time every evidence page fell into one section and chunks packed text
-    across two different uploaded files under a single page number. Upper
-    case makes detection deterministic, and the notice service still refuses
-    to cite any chunk that spans pages. The consumer pipeline now chunks
-    evidence per page (SectionAwareChunker's page-preserving mode), which
-    keeps pages apart on its own; the marker stays a heading for the default
-    chunker.
-    """
-    return f"CASO {case_id[:8].upper()} EVIDENCIA {evidence_id[:8].upper()} PAGINA {page}"
+QUOTE_MAX_CHARS = 700
+_WORD_RE = re.compile(r"\S+")
+_SENTENCE_END_RE = re.compile(r"[.!?;]\s")
 
 
 def clean_chunk_quote(text: str) -> str:
-    """Return the document's own words, without the evidence page marker.
+    """Return the document's own words, without scaffolding, whitespace-normalized.
 
-    The ``CASO ... EVIDENCIA ... PAGINA n`` marker is scaffolding injected to
-    keep evidence pages in separate chunker sections. It names the case, so it
-    must never reach an exported notice, and it is removed wherever it appears
-    rather than only as a leading section title.
+    A leading ``[SECTION]`` line is chunker context, and any page marker names
+    the case; neither may reach an exported notice.
     """
     without_marker = _EVIDENCE_PAGE_MARKER_RE.sub(" ", text)
     lines = without_marker.splitlines()
     first = lines[0].strip() if lines else ""
     if first.startswith("[") and first.endswith("]"):
         lines = lines[1:]
-    return " ".join(" ".join(lines).split())[:700]
+    return " ".join(" ".join(lines).split())
+
+
+def supporting_quote(
+    text: str, facts: ConsumerCaseFacts, *, max_chars: int = QUOTE_MAX_CHARS
+) -> str:
+    """The contiguous passage of a chunk that best matches the confirmed facts.
+
+    Quoting the first ``max_chars`` characters left out the supporting fact
+    whenever it sat later in a long chunk. The passage is chosen by a sliding
+    window over whole words, scored by the case's topic terms and, twice as
+    heavily, by its protocols, amounts and dates; it starts at its sentence
+    when that fits. With no matching term the chunk's opening is quoted.
+    """
+
+    quotable = clean_chunk_quote(text)
+    if len(quotable) <= max_chars:
+        return quotable
+    weights = _fact_term_weights(facts)
+    words = [
+        (match.start(), match.end(), _word_weight(match.group(0), weights))
+        for match in _WORD_RE.finditer(quotable)
+    ]
+    start = _best_window_start(words, max_chars)
+    return _word_bounded(quotable, _sentence_start(quotable, start, max_chars), max_chars)
+
+
+def _fact_term_weights(facts: ConsumerCaseFacts) -> dict[str, int]:
+    supplier = set(portuguese_lexical_tokens(facts.bank_name or ""))
+    narrative = " ".join(
+        value for value in (facts.complaint_summary, facts.desired_resolution) if value
+    )
+    weights = dict.fromkeys(_topic_tokens(portuguese_lexical_tokens(narrative), supplier), 1)
+    amounts = (facts.direct_loss_amount, facts.improper_payment_amount)
+    anchors = " ".join(
+        [
+            *facts.prior_protocols,
+            facts.incident_date_or_period or "",
+            *(f"{amount:,.2f}".replace(",", " ") for amount in amounts if amount is not None),
+        ]
+    )
+    for token in portuguese_lexical_tokens(anchors):
+        if len(token) >= 3 and token.strip("0"):
+            weights[token] = 2
+    return weights
+
+
+def _word_weight(word: str, weights: dict[str, int]) -> int:
+    return sum(weights.get(token, 0) for token in portuguese_lexical_tokens(word))
+
+
+def _best_window_start(words: list[tuple[int, int, int]], max_chars: int) -> int:
+    """Offset of the first matching word in the heaviest ``max_chars`` word window.
+
+    The earliest heaviest window ends on its matches; starting at the first of
+    them instead keeps every match and puts it at the head of the quote.
+    """
+    best_index, best_score, score, end = 0, 0, 0, 0
+    for index, (start, _, _) in enumerate(words):
+        while end < len(words) and words[end][1] - start <= max_chars:
+            score += words[end][2]
+            end += 1
+        if score > best_score:
+            best_index, best_score = index, score
+        score -= words[index][2]
+    if best_score == 0:
+        return 0
+    return next(start for start, _, weight in words[best_index:] if weight)
+
+
+def _sentence_start(text: str, start: int, max_chars: int) -> int:
+    """Move back to the start of the sentence when that costs a quarter at most."""
+    floor = max(0, start - max_chars // 4)
+    ends = [match.end() for match in _SENTENCE_END_RE.finditer(text, floor, start)]
+    return ends[-1] if ends else (0 if start <= max_chars // 4 else start)
+
+
+def _word_bounded(text: str, start: int, max_chars: int) -> str:
+    """At most ``max_chars`` from ``start``, ending at a sentence end or word break."""
+    window = text[start : start + max_chars]
+    if start + max_chars >= len(text):
+        return window.strip()
+    sentence_end = max(window.rfind(". "), window.rfind("; "))
+    if sentence_end >= max_chars // 2:
+        return window[: sentence_end + 1].strip()
+    space = window.rfind(" ")
+    return (window[:space] if space > 0 else window).strip()
 
 
 def evidence_supports_confirmed_facts(text: str, facts: ConsumerCaseFacts) -> bool:

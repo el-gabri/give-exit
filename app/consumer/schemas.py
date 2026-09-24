@@ -14,7 +14,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from app.core.config import NoticeComposer
+from app.core.config import GroundVerifierMode, NoticeComposer
 from app.core.hashing import sha256_hex
 from app.llm.base import LLMCallMetadata
 from app.schemas.document import ExtractionMethod
@@ -433,9 +433,34 @@ class LegalAuthorityCitation(BaseModel):
         )
 
 
+class GroundVerification(BaseModel):
+    """How the optional verifier judged one ground, after its quotes were checked.
+
+    ``verified`` is true only for ``applies`` with both quotes found verbatim:
+    one in the consumer's account, one in the provision's official text.
+    """
+
+    verdict: Literal["applies", "does_not_apply", "uncertain"]
+    verified: bool
+    fact_quote: str | None = None
+    provision_quote: str | None = None
+
+
 class LegalGround(BaseModel):
     authority: LegalAuthorityCitation
     application_to_facts: str = Field(min_length=1, max_length=4_000)
+    verification: GroundVerification | None = None
+
+
+class GroundVerificationSummary(BaseModel):
+    """What the ground verifier did for one notice."""
+
+    mode: GroundVerifierMode
+    metadata: LLMCallMetadata | None = None
+    removed: int = Field(default=0, ge=0)
+    error: str | None = Field(
+        default=None, description="Exception class when verification was unavailable"
+    )
 
 
 class SettlementComponentSource(BaseModel):
@@ -555,6 +580,7 @@ class ConsumerNotice(BaseModel):
     )
     composition_mode: NoticeComposer = NoticeComposer.DETERMINISTIC
     composition_metadata: LLMCallMetadata | None = None
+    ground_verification: GroundVerificationSummary | None = None
     generation_timing: NoticeGenerationTiming
     retrievals: list[RetrievalTrace] = Field(default_factory=list)
     # Degradation is a property of the notice, not only of its traces. A draft

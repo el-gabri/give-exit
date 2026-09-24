@@ -7,6 +7,7 @@ requests, monetary proposal and every source link remain renderer-owned.
 from __future__ import annotations
 
 import json
+import re
 from decimal import Decimal
 from typing import Protocol
 
@@ -18,7 +19,7 @@ from app.llm.base import LLMCallMetadata, LLMClient
 from app.llm.openai_client import OpenAIClient
 from app.llm.retry import RetryingLLMClient
 
-_PROMPT_VERSION = "consumer-notice-grounded-prose:v1"
+_PROMPT_VERSION = "consumer-notice-grounded-prose:v2"
 
 
 class NoticeProse(BaseModel):
@@ -88,21 +89,22 @@ class OpenAINoticeComposer:
         requests: list[str],
         public_proposal: Decimal | None,
     ) -> NoticeComposition:
+        user_input = _build_user_input(
+            facts=facts,
+            evidence=evidence,
+            legal_grounds=legal_grounds,
+            requests=requests,
+            public_proposal=public_proposal,
+        )
         result = await self._client.parse(
             system=_SYSTEM_PROMPT,
-            user=_build_user_input(
-                facts=facts,
-                evidence=evidence,
-                legal_grounds=legal_grounds,
-                requests=requests,
-                public_proposal=public_proposal,
-            ),
+            user=user_input,
             schema=NoticeProse,
             prompt_version=_PROMPT_VERSION,
             reasoning_effort=self._reasoning_effort,
             max_output_tokens=self._max_output_tokens,
         )
-        _validate_prose(result.data)
+        _validate_prose(result.data, source_packet=user_input)
         return NoticeComposition(
             mode=NoticeComposer.OPENAI,
             prose=result.data,
@@ -138,9 +140,10 @@ protocolos, documentos, fundamentos, pedidos, prazos, partes ou consequências
 jurídicas. Não apresente aconselhamento jurídico individualizado.
 
 Não crie títulos, listas, links, citações, nomes de artigos, identificadores de
-chunk, hashes nem referências a documentos. As citações e a proposta monetária
-são inseridas depois por código determinístico. Escreva em português brasileiro,
-formal, claro e conciso."""
+chunk, hashes nem referências a documentos. Não escreva valores em reais, números
+de artigos, incisos ou leis, nem qualquer número que não esteja no objeto de
+dados. As citações e a proposta monetária são inseridas depois por código
+determinístico. Escreva em português brasileiro, formal, claro e conciso."""
 
 
 def _build_user_input(
@@ -175,9 +178,33 @@ def _build_user_input(
     return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
 
 
-def _validate_prose(prose: NoticeProse) -> None:
-    """Reject accidental source claims; source-bearing text is renderer-owned."""
-    forbidden = ("http://", "https://", "chunk", "sha-256", "`", "[", "]")
-    rendered = "\n".join(prose.model_dump().values()).lower()
-    if any(token in rendered for token in forbidden):
+_FORBIDDEN_FRAGMENTS = ("http://", "https://", "chunk", "sha-256", "`", "[", "]", "r$", "§")
+# Article-level citations belong to the renderer, which quotes the official
+# text: "art. 42", "artigo 6º", "inciso III", "alínea b", "Lei nº 8.078".
+_LEGAL_REFERENCE_RE = re.compile(
+    r"\bart(?:igo)?s?\.?\s*\d|\bincisos?\s+[ivxlc]+\b|\bal[ií]neas?\s+[a-z]\b"
+    r"|\blei\s+n[º°o.]",
+    re.IGNORECASE,
+)
+_NUMBER_RE = re.compile(r"\d+")
+
+
+def _validate_prose(prose: NoticeProse, *, source_packet: str = "") -> None:
+    """Reject prose that makes source, citation or numeric claims of its own.
+
+    Links, hashes, citation syntax, article references and currency are
+    renderer-owned. Every number the prose contains must already appear in
+    the packet the model was given, so a date, amount, deadline or protocol it
+    invented fails here instead of reaching the consumer's draft.
+    """
+    rendered = "\n".join(prose.model_dump().values())
+    lowered = rendered.lower()
+    if any(fragment in lowered for fragment in _FORBIDDEN_FRAGMENTS):
         raise ValueError("notice composer attempted to emit source-bearing prose")
+    if _LEGAL_REFERENCE_RE.search(rendered):
+        raise ValueError("notice composer attempted to cite a legal provision")
+    invented = set(_NUMBER_RE.findall(rendered)) - set(_NUMBER_RE.findall(source_packet))
+    if invented:
+        raise ValueError(
+            f"notice composer introduced numbers absent from its input: {sorted(invented)}"
+        )

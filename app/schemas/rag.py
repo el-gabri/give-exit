@@ -4,6 +4,10 @@ from pydantic import BaseModel, Field
 
 MetadataValue = str | int | float | bool | None
 
+# Retrieval channels recorded in ``RetrievedChunk.channel_ranks``.
+DENSE_CHANNEL = "dense"
+LEXICAL_CHANNEL = "lexical"
+
 
 class Chunk(BaseModel):
     """A retrievable slice of a document, with provenance."""
@@ -30,3 +34,11 @@ class RetrievedChunk(BaseModel):
 
     chunk: Chunk
     score: float = Field(description="Similarity score (higher = more relevant)")
+    channel_ranks: dict[str, int] = Field(
+        default_factory=dict,
+        description=(
+            "1-based rank of this chunk in each retrieval channel that returned it, "
+            "such as {'dense': 3, 'lexical': 7}. A channel that did not return the "
+            "chunk is absent."
+        ),
+    )

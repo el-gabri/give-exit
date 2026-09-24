@@ -38,13 +38,15 @@ from __future__ import annotations
 import re
 import unicodedata
 from collections.abc import Sequence
+from itertools import combinations
 from typing import TypeVar
 
 from app.consumer.schemas import LegalProvision, LegalSource
 from app.consumer.statutes import division_numeral
+from app.schemas.rag import DENSE_CHANNEL, LEXICAL_CHANNEL
 from app.schemas.trace import RetrievalTrace
 
-LEGAL_GROUND_POLICY_VERSION = "consumer-notice-scope-eligibility-v3"
+LEGAL_GROUND_POLICY_VERSION = "consumer-notice-scope-eligibility-v4"
 LEGAL_GROUND_POLICY_REVIEW_STATUS = "requires_legal_review"
 
 # CDC divisions whose subject matter cannot support an individual consumer's
@@ -88,6 +90,18 @@ _EXCLUDED_LGPD_CHAPTERS = frozenset({"iv", "viii", "ix", "x"})
 # contributed to the evaluation notices were off-topic (ADR 0016). Título VII
 # (unjust enrichment, undue payment) and Título IX (civil liability) stay.
 _EXCLUDED_CIVIL_CODE_DIVISIONS = frozenset({("especial", "i", "vi")})
+
+# The two hybrid channels whose agreement makes a chunk citable.
+AGREEMENT_CHANNELS = frozenset({DENSE_CHANNEL, LEXICAL_CHANNEL})
+# Both channels must rank a chunk within this depth. Appearing anywhere in the
+# 32-deep candidate lists was near-vacuous: once the uncitable chapters left
+# the index, the offline notice evaluation cited 41 grounds, 2 of them known
+# bad. At 20 it cites 20 (3 fewer than before either change), none known bad,
+# and keeps its only exact hit; 16 and below lose that hit. Calibrated on the
+# 22-case offline seed; recheck it on the configured embedding stack.
+AGREEMENT_MAX_RANK = 20
+# Without both channels, a chunk needs this rank in two independent queries.
+CORROBORATION_RANK = 3
 
 _Candidate = TypeVar("_Candidate")
 
@@ -183,42 +197,62 @@ def _division_numeral(label: str | None, keyword: str) -> str:
 
 
 def strongly_supported_chunk_ids(traces: list[RetrievalTrace]) -> frozenset[str]:
-    """Return chunks that clear a score-type-aware retrieval safety gate.
-
-    For reciprocal-rank fusion, a score above the best possible contribution
-    from either single channel proves that both dense and lexical retrieval
-    contributed. Reranker and other score scales have no portable absolute
-    threshold, so they require the same chunk to rank in the top three for
-    both queries built from the narrative. Those two queries are two
-    framings of the same narrative, not independently constructed
-    formulations: query 2 is the bare complaint/remedy text, a strict subset
-    of query 1's wording. Re-deriving this gate for genuinely independent
-    queries is a follow-up (see ADR 0018).
+    """Return chunks that clear the retrieval-agreement safety gate.
 
     With the category allowlist gone this is the load-bearing precision
-    control: an article reaches a notice because two independent retrieval
-    channels agreed on it, not because one channel matched a shared word.
+    control: an article reaches a notice because two independent signals
+    agreed on it, not because one channel matched a shared word.
+
+    Hybrid retrieval records the rank each chunk earned in the dense and the
+    lexical channel. A chunk is supported when both channels ranked it within
+    ``AGREEMENT_MAX_RANK``; the gate reads that from the trace rather than
+    inferring it from a fused score, so it holds for any fusion weights and
+    survives a reranker, which only reorders candidates.
+
+    A trace without both channels (lexical-only degraded mode, dense-only
+    configuration) cannot show that agreement. There a chunk must rank in the
+    top three for two independent queries, where independent means neither
+    query's text contains the other's. The narrative ranking queries contain
+    the complaint and the remedy, so they never corroborate each other or
+    those two; the complaint and the remedy searched separately can.
     """
 
     supported: set[str] = set()
-    corroboration: dict[str, set[int]] = {}
+    corroborating_queries: dict[str, set[str]] = {}
     for trace in traces:
         if trace.error is not None:
             continue
-        if trace.score_type == "rrf_score" and trace.rrf_constant is not None:
-            weights = (trace.dense_weight or 1.0, trace.lexical_weight or 1.0)
-            single_channel_ceiling = max(weights) / (trace.rrf_constant + 1)
-            supported.update(
-                item.chunk_id
-                for item in trace.results
-                if item.score > single_channel_ceiling + 1e-12
-            )
-            continue
+        both_channels_ran = trace.retrieval_mode == "hybrid" and trace.degraded_mode is None
         for item in trace.results:
-            if item.rank <= 3:
-                corroboration.setdefault(item.chunk_id, set()).add(trace.query_index)
+            if both_channels_ran:
+                if _channels_agree(item.channel_ranks):
+                    supported.add(item.chunk_id)
+            elif item.rank <= CORROBORATION_RANK:
+                corroborating_queries.setdefault(item.chunk_id, set()).add(
+                    _query_key(trace.query)
+                )
 
     supported.update(
-        chunk_id for chunk_id, query_indexes in corroboration.items() if len(query_indexes) >= 2
+        chunk_id
+        for chunk_id, queries in corroborating_queries.items()
+        if _has_independent_pair(queries)
     )
     return frozenset(supported)
+
+
+def _channels_agree(channel_ranks: dict[str, int]) -> bool:
+    return all(
+        channel_ranks.get(channel, AGREEMENT_MAX_RANK + 1) <= AGREEMENT_MAX_RANK
+        for channel in AGREEMENT_CHANNELS
+    )
+
+
+def _query_key(query: str) -> str:
+    return " ".join(query.split()).casefold()
+
+
+def _has_independent_pair(queries: set[str]) -> bool:
+    return any(
+        left not in right and right not in left
+        for left, right in combinations(sorted(queries), 2)
+    )

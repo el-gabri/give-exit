@@ -59,11 +59,20 @@ flowchart LR
    API serves generation traffic. Notice generation fails fast when that exact
    versioned index is absent and only indexes the case's synthetic evidence
    document during the request.
-8. Legal and evidence queries run in hybrid mode. Dense and backend lexical
-   candidates are fused deterministically with reciprocal-rank fusion;
-   reranking is optional.
-9. Legal chunks must pass status, provenance, score and corroboration rules.
-   Evidence citations resolve back to original filename and page mappings.
+8. Legal and evidence queries run in hybrid mode. Dense and lexical
+   candidates are fused deterministically with reciprocal-rank fusion, and
+   every result records its rank in each channel. The lexical channel is the
+   same BM25 over the same tokens in every backend, PostgreSQL included.
+   Reranking is optional and orders candidates only within their
+   channel-agreement tier.
+9. Legal chunks must pass status, provenance and agreement rules: both
+   channels must rank a chunk within their top 20. When retrieval degrades to
+   one channel, the complaint and the requested remedy are searched
+   separately and must both rank the chunk in their top three. An optional
+   LLM verifier may then drop grounds it shows do not apply, with verbatim
+   quotes checked by code. Evidence citations resolve back to original
+   filename and page mappings and quote the passage that best matches the
+   confirmed facts.
 10. The settlement component is a transparent scenario calculation, not an
     outcome prediction. By default notice prose is deterministic. An optional
     structured composer may phrase five bounded fields after every source,
@@ -79,9 +88,13 @@ flowchart LR
 The LLM provider and embedding provider are independent.
 
 - The LLM may classify bounded suspicious excerpts for prompt-injection risk.
+- When enabled, the LLM may judge whether each already-selected legal ground
+  applies to the confirmed facts. A verdict counts only when its two quotes are
+  found verbatim; it can remove a ground, never add or rephrase one.
 - The LLM does not extract case facts, choose legal grounds, construct citations,
   choose requests or calculate values. An optional separate composer may phrase
-  only the bounded `NoticeProse` fields described above.
+  only the bounded `NoticeProse` fields described above, and prose citing an
+  article, an amount or any number absent from its input is rejected.
 - Embeddings represent legal chunks, evidence chunks and retrieval queries.
 - The offline mock embedding is deterministic and suitable only for tests.
 - Model name and revision are part of the collection identity; production local
@@ -106,9 +119,9 @@ The CDC, LGPD and Civil Code snapshots are stored with retrieval date, official
 URL, raw and extracted-text SHA-256 and a review status, and are read by one
 generic statute parser. Corpus parsing preserves stable provision/subdivision
 IDs, hierarchy and source hashes. Only the Civil Code's general part and law of
-obligations are indexed; its other books are kept for audit. Selected CF
-provisions use the same typed legal schema. Runtime requests never fetch or
-silently update law.
+obligations are indexed; its other books are kept for audit, and so are the
+chapters a notice may never cite (ADR 0019). Selected CF provisions use the
+same typed legal schema. Runtime requests never fetch or silently update law.
 
 Retrieval does not decide legal applicability. A deterministic policy filters
 inactive, unknown, weak or insufficiently corroborated chunks. LGPD and Civil
@@ -129,7 +142,8 @@ Each `RetrievalTrace` contains:
 - query instruction and hash;
 - retrieval mode, candidate depth and fusion parameters;
 - vector index and chunking versions;
-- rank, score, chunk ID, page range and source hashes;
+- rank, score, rank in each retrieval channel, chunk ID, page range and
+  source hashes;
 - merge and final-context selection flags;
 - latency and failure fields.
 - embedding cache hits and an explicit degraded-mode reason.
@@ -190,3 +204,5 @@ production claims.
 - [0015](adr/0015-bounded-notice-prose-composer.md) — bounded notice prose composer
 - [0016](adr/0016-multi-statute-consumer-corpus.md) — LGPD and scoped Civil Code as complementary sources
 - [0017](adr/0017-cross-generation-vector-reuse.md) — cross-generation vector reuse
+- [0018](adr/0018-narrative-only-consumer-intake.md) — narrative-only consumer intake
+- [0019](adr/0019-explicit-retrieval-agreement.md) — explicit retrieval agreement, citable-only index and verified grounds
