@@ -1,9 +1,10 @@
 """Schemas describing an ingested document (pre-analysis)."""
 
-import hashlib
 from enum import Enum
 
 from pydantic import BaseModel, Field, computed_field
+
+from app.core.hashing import sha256_hex
 
 
 class ExtractionMethod(str, Enum):
@@ -17,10 +18,6 @@ class DocumentPage(BaseModel):
 
     number: int = Field(ge=1, description="1-based page number")
     text: str
-
-    @property
-    def char_count(self) -> int:
-        return len(self.text.strip())
 
 
 class ParsedDocument(BaseModel):
@@ -44,8 +41,7 @@ class ParsedDocument(BaseModel):
 
         Makes vector-store upserts idempotent and supports reproducible indexing.
         """
-        digest = hashlib.sha256(self.full_text.encode("utf-8")).hexdigest()
-        return digest[:16]
+        return sha256_hex(self.full_text)[:16]
 
     @property
     def full_text(self) -> str:

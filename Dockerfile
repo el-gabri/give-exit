@@ -16,14 +16,20 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-por \
     && rm -rf /var/lib/apt/lists/*
 COPY app ./app
+COPY scripts/docker-entrypoint.sh /app/docker-entrypoint.sh
 ARG API_EXTRAS=ocr
 RUN pip install ".[${API_EXTRAS}]"
-# The API parses hostile PDFs and images, so it must not run as root. /app/data
-# is a mount point for ChromaDB, uploads and run history.
+# The API parses hostile PDFs and images, so it must not stay as root after
+# fixing named-volume ownership. /app/data is a mount point for ChromaDB,
+# embedding generations and uploads.
 RUN useradd --create-home --uid 10001 appuser \
     && mkdir -p /app/data \
+    && chmod +x /app/docker-entrypoint.sh \
     && chown -R appuser:appuser /app
-USER appuser
+# Compose starts the process as root so the entrypoint can chown fresh volumes,
+# then drops to appuser before exec'ing the real command.
+USER root
+ENTRYPOINT ["sh", "/app/docker-entrypoint.sh"]
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s \
     CMD python -c "import urllib.request as u; u.urlopen('http://localhost:8000/health')"

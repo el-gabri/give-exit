@@ -22,12 +22,14 @@ class LegalIndexResult:
     chunks: int
     generation_id: str | None = None
     manifest_path: Path | None = None
+    reused_vectors: int = 0
+    reuse_sources: tuple[str, ...] = ()
 
 
 async def legal_corpus_is_indexed(rag: RagPipeline, corpus: LegalCorpus) -> bool:
     """Check persistence and restore the corpus chunking version for audit traces."""
 
-    doc_id = corpus.as_parsed_document().doc_id
+    doc_id = corpus.document_id
     if doc_id not in await rag.list_document_ids():
         return False
     generation_id: str | None = None
@@ -63,11 +65,12 @@ async def preindex_legal_corpus(
     corpus: LegalCorpus,
     *,
     force: bool = False,
+    reuse: bool = True,
 ) -> LegalIndexResult:
     """Materialize the immutable corpus once and verify the persisted document."""
 
     chunks = corpus.as_chunks()
-    doc_id = corpus.as_parsed_document().doc_id
+    doc_id = corpus.document_id
     if not force and await legal_corpus_is_indexed(rag, corpus):
         manager = (
             EmbeddingGenerationManager(rag, corpus)
@@ -84,13 +87,15 @@ async def preindex_legal_corpus(
 
     if rag.embedding_artifacts_dir is not None:
         manager = EmbeddingGenerationManager(rag, corpus)
-        manifest = await manager.build_and_activate(force=force)
+        manifest = await manager.build_and_activate(force=force, reuse=reuse)
         return LegalIndexResult(
             action="indexed",
             doc_id=doc_id,
             chunks=len(chunks),
             generation_id=manifest.generation_id,
             manifest_path=manager.manifest_path,
+            reused_vectors=manifest.reused_chunk_count,
+            reuse_sources=tuple(manifest.reuse_sources),
         )
 
     await rag.index_chunks(chunks)
@@ -117,7 +122,7 @@ async def adopt_legal_corpus_index(
     )
     return LegalIndexResult(
         action="indexed",
-        doc_id=corpus.as_parsed_document().doc_id,
+        doc_id=corpus.document_id,
         chunks=len(corpus.as_chunks()),
         generation_id=manifest.generation_id,
         manifest_path=manager.manifest_path,

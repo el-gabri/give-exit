@@ -47,7 +47,7 @@ FastAPI /consumer/cases API
         |
         +--> PostgreSQL/Chroma hybrid RAG
         |      +--> accepted case evidence
-        |      +--> versioned CDC + selected CF provisions
+        |      +--> versioned CDC, LGPD, scoped Civil Code + selected CF
         |      +--> dense retrieval + lexical ranking + reciprocal-rank fusion
         |      +--> optional cross-encoder reranking
         |
@@ -145,9 +145,13 @@ See [README-pt.md](README-pt.md) for the full Portuguese dependency reference.
 
 ## Legal grounding and citations
 
-- The CDC is ingested from a pinned Planalto snapshot with a manifest and
-  content hashes.
+- The CDC, the LGPD and the Civil Code are ingested from pinned Planalto
+  snapshots by one generic statute parser, with manifests pinning raw and
+  extracted-text hashes. Only the Civil Code's general part and law of
+  obligations are indexed; its other books stay in the corpus for audit.
 - Selected constitutional provisions are versioned in the legal corpus.
+- LGPD and Civil Code grounds complement the CDC: at most three per notice,
+  only beside a CDC ground, and none under lexical-only retrieval.
 - Statutory chunks preserve law, article, subdivision, official URL, release,
   status and source hashes.
 - Legal retrieval is hybrid because exact article references and institutional
@@ -155,8 +159,32 @@ See [README-pt.md](README-pt.md) for the full Portuguese dependency reference.
 - Retrieved chunks are candidates, not automatically accepted authorities. A
   deterministic policy controls eligibility and remains marked
   `requires_legal_review`.
+- Eligibility is a property of the document, not of the consumer's answers.
+  Intake collects no issue category; retrieval queries are built from the
+  complaint and the requested remedy alone, with no injected vocabulary
+  (ADR 0018). What an individual extrajudicial notice cannot rest on is
+  excluded by the statute's own structure — the CDC chapters on criminal
+  offences, administrative sanctions, collective litigation and the national
+  consumer-protection system. The LGPD chapters on processing by public
+  bodies, administrative sanctions, the national authority and final
+  provisions are excluded in the same way, and so is the Civil Code's title on
+  specific contract types (Título VI of the law of obligations), which
+  retrieval matched to unrelated complaints.
+- The load-bearing precision control is retrieval agreement: an article
+  becomes a ground only when dense and lexical retrieval both ranked it (or,
+  in degraded mode, when the same chunk corroborates in the top three of
+  both queries built from the narrative — two framings of the same
+  narrative, not independently constructed queries; query 2 is the bare
+  complaint/remedy text, a strict subset of query 1's wording).
 - Notice citations are reconstructed from retrieved evidence and canonical
   legal metadata; they are not trusted model-generated citation strings.
+- An evidence citation names exactly one file and one page. A retrieved chunk
+  whose text spans more than one evidence page is dropped rather than quoted
+  under the first page's filename: a shorter notice is recoverable, one that
+  attributes another document's words to this file is not.
+- Excerpts taken from uploaded files are escaped before they enter the notice
+  Markdown, so a document cannot inject links or emphasis into the draft the
+  consumer reads and exports.
 - Retrieval traces record the query, hashes, model/revision, active generation
   ID, ranking/degraded mode, cache hits, scores, chunk IDs, source metadata and
   final inclusion decisions.
@@ -191,15 +219,27 @@ docker compose up --build
 docker compose up --build
 ```
 
+On startup, the `legal-index` service materializes (or reuses) the legal corpus
+into the named volumes `consumer-data` and `embedding-generations` — the same
+portable state on any machine, with no host `./data` bind mount. The API starts
+only after that job exits successfully. Confirm with `GET /health`
+(`legal_corpus_ready: true`).
+
+Manual rebuild / `--force`:
+
+```bash
+docker compose --profile tools run --rm indexer -- --force
+```
+
 - UI: <http://localhost:8501>
 - API docs: <http://localhost:8000/docs>
 - Legal index readiness: <http://localhost:8000/health> (`legal_corpus_ready`)
 
 Docker installs Portuguese Tesseract OCR by default. Raw uploads are deleted
-after ingestion. Downloaded Hugging Face model weights are cached under
-`./data/huggingface` when using local embeddings. The first JUÁ download still
-requires several gigabytes and can take many minutes;
-`LITIGATION_NOTICE_REQUEST_TIMEOUT_SECONDS` controls how long the local
+after ingestion. Downloaded Hugging Face model weights are cached inside the
+persistent `consumer-data` volume, so rebuilding the API image does not download
+JUÁ again. The first download still requires several gigabytes and can take many
+minutes; `LITIGATION_NOTICE_REQUEST_TIMEOUT_SECONDS` controls how long the local
 Streamlit client waits for that synchronous demo flow.
 
 To verify both Docker settings without downloading JUÁ, start Docker Desktop (or
@@ -217,8 +257,8 @@ the frontend container. It removes the isolated containers when done. Among the
 normal Docker build progress, a successful run prints:
 
 ```text
-HF_HOME=/app/data/huggingface
-PASS HF_HOME=/app/data/huggingface persisted across the API image rebuild.
+HF_HOME=/models/huggingface
+PASS HF_HOME=/models/huggingface persisted across the API image rebuild.
 PASS LITIGATION_NOTICE_REQUEST_TIMEOUT_SECONDS=4321 reached the frontend container.
 PASS Docker runtime configuration smoke test completed.
 ```
@@ -297,8 +337,12 @@ LITIGATION_EMBEDDING_BATCH_SIZE=2
 LITIGATION_EMBEDDING_INDEX_SHARD_SIZE=25
 ```
 
-The query formatter inserts the newline required by JUÁ after `Query:`; legal
-documents remain plain text. Changing the corpus release, model, exact revision,
+The setting holds only the task description; the client renders the template
+JUÁ declares in its own `config_sentence_transformers.json` —
+`Instruct: {task}
+Query: {query}` — so the newline separates the task from
+`Query:`, not `Query:` from the text. Legal documents stay plain, because the
+model registers an empty `document` prompt. Changing the corpus release, model, exact revision,
 formatter or instruction hash produces a distinct generation. Offline indexing
 writes checksummed gzip shards and a manifest under
 `data/embedding_generations/<generation-id>/`, resumes only verified shards,
@@ -343,8 +387,14 @@ python -m app.consumer.preindex_legal --check
 The first JUÁ CPU run can take tens of minutes or hours, depending on the
 hardware and chunk sizes. Each completed shard is durable, so an interrupted
 run can be restarted with the same command. Once complete, the API reuses the
-472 persisted legal chunks instead of recomputing them inside a notice request.
+2,455 persisted legal chunks instead of recomputing them inside a notice request.
 Use `--force` only for a deliberate rebuild.
+
+A new corpus release reuses the vectors of every chunk whose text did not
+change, taken from verified earlier generations of the same model, revision
+and document formatter. Two reused texts are re-embedded first as a canary;
+if they differ, the build stops and suggests `--no-reuse`, which recomputes
+everything while keeping resume.
 
 For a legacy namespace whose exact cached model revision was independently
 verified by the operator, promotion can avoid another multi-hour embedding run:
@@ -358,21 +408,34 @@ python -m app.consumer.preindex_legal `
 The manifest labels this provenance as `adopted_existing_vectors`; attestation
 does not retroactively prove metadata that the legacy run failed to record.
 
+Statute snapshots are refreshed explicitly, never at runtime:
+
+```powershell
+python -m app.consumer.update_statute_snapshot --law lgpd
+```
+
+The refresher records the user agent it used, writes nothing when the
+extracted text is unchanged, and writes new snapshots as `pending_review`;
+compare a sample of articles with the official page before promoting a
+snapshot and building a new corpus release.
+
 At query time, embedding calls have a timeout, concurrency bound, short-lived
-query-hash cache and circuit breaker. Hybrid retrieval may degrade to audited
-lexical-only search (`degraded_mode=lexical_only`); deterministic legal-support
-and citation gates still apply and can abstain.
+query-hash cache and circuit breaker. The concurrency bound is a queue, not a
+rejection: an overlapping request waits up to
+`LITIGATION_EMBEDDING_QUERY_QUEUE_TIMEOUT_SECONDS` for a free slot, because a
+single slow local model makes concurrent users the normal case rather than an
+overload. Hybrid retrieval may still degrade to audited lexical-only search;
+deterministic legal-support and citation gates continue to apply and can
+abstain. A degraded draft is labelled as such: the notice carries
+`retrieval_degraded_modes` and a reader-facing warning, not only a
+`degraded_mode` field inside the per-query retrieval traces.
 
 ## API surface
-
-Step-by-step integration guide (payloads, curl, PowerShell):
-**[docs/api-consumer.md](docs/api-consumer.md)** (Portuguese)
-
-Interactive docs: <http://localhost:8000/docs>
 
 | Method | Route | Purpose |
 |---|---|---|
 | `GET` | `/health` | API liveness and legal-corpus readiness |
+| `POST` | `/consumer/prompt-notices` | One-shot: free text (+ optional file) → Markdown |
 | `POST` | `/consumer/cases` | Create an ephemeral case and possession token |
 | `GET` | `/consumer/cases/{id}` | Read the authorized case |
 | `POST` | `/consumer/cases/{id}/messages` | Add a consumer message |
@@ -384,13 +447,53 @@ Interactive docs: <http://localhost:8000/docs>
 | `GET` | `/consumer/cases/{id}/notice/retrievals` | Inspect retrieval provenance |
 | `DELETE` | `/consumer/cases/{id}` | Delete case state and evidence vectors |
 
+`POST /consumer/prompt-notices` needs no case token: the API creates an
+ephemeral case, returns Markdown, and deletes the case. The multi-step
+`/cases` journey remains the Streamlit contract.
+
 Every case operation requires the opaque possession token returned at case
 creation. Production mode also requires a configured API key.
+
+### Resource bounds
+
+Case state lives in process memory and every write path allocates on the
+caller's behalf, so each of these is a denial-of-service control as much as a
+product limit:
+
+| Bound | Setting | Default |
+|---|---|---|
+| Request body, refused before buffering | `LITIGATION_MAX_UPLOAD_BYTES` | 20 MB |
+| Evidence documents per case | `LITIGATION_MAX_DOCUMENTS_PER_CASE` | 20 |
+| Retained chat turns per case | `LITIGATION_MAX_MESSAGES_PER_CASE` | 200 |
+| Idempotency keys per case | `LITIGATION_MAX_IDEMPOTENCY_KEYS_PER_CASE` | 50 |
+| Live cases before `503` | `LITIGATION_MAX_ACTIVE_CASES` | 500 |
+| Idle case expiry | `LITIGATION_CASE_IDLE_TTL_SECONDS` | 24 h |
+| Case creation / minute | `LITIGATION_CASE_RATE_LIMIT_PER_MINUTE` | 30 |
+| Messages / minute | `LITIGATION_MESSAGE_RATE_LIMIT_PER_MINUTE` | 60 |
+| Uploads / minute | `LITIGATION_UPLOAD_RATE_LIMIT_PER_MINUTE` | 20 |
+| Notice generation / minute | `LITIGATION_NOTICE_RATE_LIMIT_PER_MINUTE` | 10 |
+
+A full store refuses new cases rather than evicting a live one. Idle cases and
+their evidence vectors are reclaimed by a background sweeper.
+
+Rate limiting is keyed on the socket peer. Behind a reverse proxy that address
+is the proxy itself, which would put every caller in one bucket, so set
+`LITIGATION_TRUSTED_PROXY_HOPS` to the real number of proxies; only that many
+`X-Forwarded-For` entries are trusted.
+
+`LITIGATION_PURGE_ORPHANED_EVIDENCE_ON_STARTUP` deletes evidence vectors with
+no live case. It is correct only when the process owns the vector-store
+namespace outright. **Set it to `false` for multiple workers, replicas or any
+deployment sharing one PostgreSQL/Chroma namespace**, otherwise each start
+deletes the other processes' live case evidence.
 
 ## Evaluation and verification
 
 ```bash
 pytest -q
+pytest --cov --cov-report=term-missing  # coverage, scoped to modules with dedicated tests
+lint-imports                            # import architecture (app.core has no upward deps)
+vulture app --min-confidence 90         # dead code
 python -m app.evaluation.consumer_runner
 python -m app.evaluation.security_benchmark
 ```
@@ -409,16 +512,35 @@ python -m app.evaluation.consumer_runner \
   --output consumer-retrieval-results.json
 ```
 
-CI runs Ruff, strict MyPy, Python 3.10/3.12 tests, dependency auditing, Consumer
-retrieval regression gates, the prompt-injection benchmark and container builds.
+The notice-path evaluation scores the grounds the production selector would
+actually cite (the three production queries, k=8, and the same
+`select_legal_grounds` the service uses), rather than ranked candidates:
+
+```bash
+python -m app.evaluation.consumer_runner --evaluate-notice --output notice-results.json
+python -m app.evaluation.consumer_runner --evaluate-notice --notice-pipeline configured \
+  --require-semantic --output configured-notice-results.json
+```
+
+It reports cited grounds, known-bad citations (labelled hard negatives that
+were cited), exact recall over cited units, abstention and semantic success.
+
+CI runs Ruff, strict MyPy, Python 3.10/3.12 tests, scoped coverage, import-linter
+architecture checks, dead-code detection (vulture), dependency auditing, Consumer
+retrieval and notice final-ground regression gates, the prompt-injection
+benchmark and container builds.
+Mutation testing (`mutmut`, scoped to `app/consumer`, `app/rag` and
+`app/security`) is configured in `pyproject.toml` and runs incrementally on the
+diff rather than as a full-repo CI step.
 
 ## Privacy and current limitations
 
 - Raw uploads are deleted after ingestion, but safe extracted text and chunks
   remain sensitive personal data.
-- Cases and notices are currently in process memory. The legal index persists;
-  case evidence vectors are removed on case deletion and orphaned evidence is
-  purged at startup.
+- Cases and notices are currently in process memory, bounded by count, size and
+  an idle TTL, and lost on restart. The legal index persists; case evidence
+  vectors are removed on case deletion, on case expiry, and — when this process
+  owns the namespace — for orphans at startup.
 - The possession token and optional shared API key are appropriate only for a
   single-user demonstration, not multi-tenant production authentication.
 - Rate limiting is in-process and not horizontally coordinated.
@@ -427,6 +549,9 @@ retrieval regression gates, the prompt-injection benchmark and container builds.
   exported notices yet.
 - The constitutional corpus contains selected provisions, not the complete
   Constitution.
+- Only the Civil Code's general part and law of obligations are indexed; that
+  scope, the LGPD eligibility rules and the new golden cases still need
+  specialist review.
 - Legal sources, policy labels and evaluation judgments require independent
   legal review before public production use.
 

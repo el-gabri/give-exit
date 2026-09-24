@@ -9,11 +9,7 @@ from __future__ import annotations
 
 import re
 
-from app.consumer.schemas import (
-    ConsumerCaseFacts,
-    ConsumerIntakeExtraction,
-    ConsumerIssueCategory,
-)
+from app.consumer.schemas import ConsumerCaseFacts, ConsumerIntakeExtraction
 
 _DATE_RE = re.compile(
     r"\b(?:\d{1,2}/\d{1,2}/\d{2,4}|"
@@ -96,89 +92,18 @@ _SUPPLIER_STOP_WORDS = frozenset(
 _MAX_SUPPLIER_NAME_TOKENS = 4
 
 
-_CATEGORY_TERMS: tuple[tuple[ConsumerIssueCategory, tuple[str, ...]], ...] = (
-    (
-        ConsumerIssueCategory.NEGATIVE_CREDIT_RECORD,
-        ("serasa", "spc", "negativ", "cadastro de inadimpl"),
-    ),
-    (
-        ConsumerIssueCategory.ACCOUNT_BLOCK,
-        ("conta bloque", "saldo bloque", "conta encerr", "acesso bloque"),
-    ),
-    (
-        ConsumerIssueCategory.FRAUD,
-        ("fraude", "golpe", "pix que não", "pix que nao", "cartão clonado"),
-    ),
-    (
-        ConsumerIssueCategory.LOAN_OR_INTEREST,
-        ("emprést", "emprest", "juros", "financiamento", "consignado"),
-    ),
-    (
-        ConsumerIssueCategory.OVER_INDEBTEDNESS,
-        ("superendivid", "não consigo pagar", "nao consigo pagar"),
-    ),
-    (
-        ConsumerIssueCategory.UNAUTHORIZED_CHARGE,
-        ("cobrança", "cobranca", "débito", "debito", "não reconheço", "nao reconheco"),
-    ),
-    (
-        ConsumerIssueCategory.SERVICE_FAILURE,
-        (
-            "falha",
-            "serviço",
-            "servico",
-            "atendimento",
-            "indisponível",
-            "indisponivel",
-            "não entreg",
-            "nao entreg",
-            "produto com defeito",
-        ),
-    ),
+# One checklist for every case. The per-category lists depended on an intake
+# label the journey no longer collects, and the generic list already covered
+# the documents a notice actually needs.
+_RECOMMENDED_DOCUMENTS = (
+    "contrato, fatura ou extrato relacionado",
+    "protocolos e respostas da empresa ou instituição",
+    "comprovantes do prejuízo alegado",
 )
 
-_RECOMMENDED_DOCUMENTS: dict[ConsumerIssueCategory, list[str]] = {
-    ConsumerIssueCategory.UNAUTHORIZED_CHARGE: [
-        "extrato ou fatura com a cobrança destacada",
-        "comprovante do pagamento, se houve",
-        "protocolos e respostas da empresa ou instituição",
-    ],
-    ConsumerIssueCategory.FRAUD: [
-        "extrato com as transações contestadas",
-        "boletim de ocorrência, se disponível",
-        "protocolos de bloqueio e contestação",
-    ],
-    ConsumerIssueCategory.ACCOUNT_BLOCK: [
-        "comunicação ou tela que mostre o bloqueio",
-        "extrato do saldo afetado",
-        "protocolos e respostas da empresa ou instituição",
-    ],
-    ConsumerIssueCategory.NEGATIVE_CREDIT_RECORD: [
-        "consulta do cadastro restritivo com data e credor",
-        "comprovantes de pagamento ou inexistência da dívida",
-        "protocolos de contestação",
-    ],
-    ConsumerIssueCategory.LOAN_OR_INTEREST: [
-        "contrato e demonstrativo do custo efetivo total",
-        "extratos ou boletos pagos",
-        "oferta, simulação ou publicidade recebida",
-    ],
-    ConsumerIssueCategory.SERVICE_FAILURE: [
-        "contrato, oferta ou termos do serviço",
-        "telas, mensagens e protocolos que demonstrem a falha",
-        "comprovantes do prejuízo direto",
-    ],
-    ConsumerIssueCategory.OVER_INDEBTEDNESS: [
-        "contratos e faturas das dívidas de consumo",
-        "comprovantes de renda e despesas essenciais",
-        "propostas e protocolos de renegociação",
-    ],
-    ConsumerIssueCategory.OTHER: [
-        "contrato, fatura ou extrato relacionado",
-        "protocolos e respostas da empresa ou instituição",
-        "comprovantes do prejuízo alegado",
-    ],
-}
+
+def recommended_documents() -> list[str]:
+    return list(_RECOMMENDED_DOCUMENTS)
 
 
 def extract_explicit_facts(text: str, current: ConsumerCaseFacts) -> ConsumerIntakeExtraction:
@@ -190,14 +115,12 @@ def extract_explicit_facts(text: str, current: ConsumerCaseFacts) -> ConsumerInt
     """
     normalized = " ".join(text.split())
     lowered = normalized.casefold()
-    category = _classify(lowered) if current.issue_category is None else None
     bank_name = _extract_supplier(normalized) if current.bank_name is None else None
     period = None
     if current.incident_date_or_period is None and (match := _DATE_RE.search(normalized)):
         period = match.group(0)
     return ConsumerIntakeExtraction(
         bank_name=bank_name,
-        issue_category=category,
         complaint_summary=(normalized if current.complaint_summary is None else None),
         incident_date_or_period=period,
         desired_resolution=(
@@ -222,19 +145,11 @@ def merge_explicit_facts(
     return current.model_copy(update=updates)
 
 
-def recommended_documents(category: ConsumerIssueCategory | None) -> list[str]:
-    return list(_RECOMMENDED_DOCUMENTS[category or ConsumerIssueCategory.OTHER])
-
-
 def next_assistant_message(facts: ConsumerCaseFacts, *, has_evidence: bool) -> str:
     """Select one concise next question from deterministic readiness state."""
     questions = {
         "bank_name": "Qual é o nome da empresa, fornecedor ou instituição?",
         "consumer_name": "Qual é o seu nome completo para identificar a parte notificante?",
-        "issue_category": (
-            "Qual tipo de problema ocorreu: cobrança, fraude, bloqueio, "
-            "negativação, crédito ou outro?"
-        ),
         "complaint_summary": (
             "Conte, em ordem cronológica, o que aconteceu e o que a empresa "
             "ou fornecedor fez ou deixou de fazer."
@@ -256,13 +171,6 @@ def next_assistant_message(facts: ConsumerCaseFacts, *, has_evidence: bool) -> s
         "Já há fatos e evidência suficientes para um rascunho. Confira o resumo, "
         "confirme os dados e então gere a notificação extrajudicial."
     )
-
-
-def _classify(lowered: str) -> ConsumerIssueCategory:
-    for category, terms in _CATEGORY_TERMS:
-        if any(term in lowered for term in terms):
-            return category
-    return ConsumerIssueCategory.OTHER
 
 
 def _extract_supplier(text: str) -> str | None:

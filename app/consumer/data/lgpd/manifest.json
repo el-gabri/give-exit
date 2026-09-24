@@ -1,0 +1,20 @@
+{
+  "schema_version": 3,
+  "release_id": "br-lgpd-official-2026-09-12-v1",
+  "law_id": "br-lgpd",
+  "source_url": "https://www.planalto.gov.br/ccivil_03/_ato2015-2018/2018/lei/l13709compilado.htm",
+  "retrieved_on": "2026-09-12",
+  "encoding": "windows-1252",
+  "snapshot_file": "l13709compilado.html",
+  "snapshot_sha256": "f529e5207f6739dcdd277d17de330fe6a49c8573c837a5fa420a99d541d6c85a",
+  "parsed_text_sha256": "8232caaef569007b54fa8f38678d5087d2e1f916af6298e2a3654f0416498b27",
+  "parser_version": "planalto-statute-parser-v1",
+  "acquisition_method": "download_https",
+  "acquisition_note": null,
+  "final_url": "https://www.planalto.gov.br/ccivil_03/_ato2015-2018/2018/lei/l13709compilado.htm",
+  "http_etag": "\"37fea-65029139c1daf\"",
+  "http_last_modified": "Thu, 23 Apr 2026 23:33:33 GMT",
+  "http_user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0 Safari/537.36",
+  "refresh_tool_version": "statute-snapshot-refresh-v1",
+  "review_status": "engineering_validated"
+}

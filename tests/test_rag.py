@@ -6,8 +6,10 @@ from types import SimpleNamespace
 
 import pytest
 
+from app.core.config import EmbeddingProvider, Settings, VectorStoreBackend
 from app.rag.chunking import SectionAwareChunker, is_heading
 from app.rag.embeddings import MockEmbeddingClient
+from app.rag.factory import create_rag_pipeline
 from app.rag.pipeline import RagPipeline, RetrievalBatchError
 from app.rag.vector_store import ChromaVectorStore, InMemoryVectorStore, _cosine
 from app.schemas.document import DocumentPage, ExtractionMethod, ParsedDocument
@@ -110,6 +112,65 @@ def test_chunker_splits_oversized_sections_with_overlap() -> None:
 def test_chunker_rejects_invalid_overlap() -> None:
     with pytest.raises(ValueError):
         SectionAwareChunker(target_chars=100, overlap_chars=100)
+
+
+def test_page_preserving_chunker_keeps_every_block_on_its_own_page() -> None:
+    receipt = ParsedDocument(
+        filename="comprovante.pdf",
+        pages=[
+            DocumentPage(number=1, text="PAGAMENTO APROVADO\n\n\n\nTOTAL  R$ 149,90"),
+            DocumentPage(number=2, text="   \n\n"),
+            DocumentPage(number=3, text="Pagamento via\nPIX.\n\nTARIFA DE MANUTENCAO"),
+        ],
+        language="pt",
+        extraction_method=ExtractionMethod.NATIVE_TEXT,
+    )
+
+    chunks = SectionAwareChunker(
+        target_chars=1200, overlap_chars=100, page_preserving=True
+    ).chunk(receipt)
+
+    assert [(c.page_start, c.page_end, c.section, c.text) for c in chunks] == [
+        (1, 1, None, "PAGAMENTO APROVADO\nTOTAL R$ 149,90"),
+        (3, 3, None, "Pagamento via PIX.\nTARIFA DE MANUTENCAO"),
+    ]
+
+
+def test_page_preserving_mode_has_its_own_index_version() -> None:
+    default = SectionAwareChunker(target_chars=1200, overlap_chars=150)
+    evidence = SectionAwareChunker(target_chars=1200, overlap_chars=150, page_preserving=True)
+
+    assert evidence.index_version != default.index_version
+
+
+async def test_consumer_pipeline_indexes_evidence_made_of_uppercase_blocks(tmp_path) -> None:
+    settings = Settings(
+        vector_store=VectorStoreBackend.MEMORY,
+        embedding_provider=EmbeddingProvider.MOCK,
+        data_dir=tmp_path / "data",
+        _env_file=None,
+    )
+    pipeline = create_rag_pipeline(settings, embedder=MockEmbeddingClient(), reranker=None)
+    receipt = ParsedDocument(
+        filename="consumer_case_evidence.pdf",
+        pages=[
+            DocumentPage(
+                number=1,
+                text=(
+                    "CASO ABCDEF12 EVIDENCIA ABCDEF34 PAGINA 1\n\n"
+                    "PAGAMENTO APROVADO\n\nTOTAL R$ 149,90"
+                ),
+            )
+        ],
+        language="pt",
+        extraction_method=ExtractionMethod.NATIVE_TEXT,
+    )
+
+    chunks = await pipeline.index_document(receipt)
+
+    assert [c.text for c in chunks] == [
+        "CASO ABCDEF12 EVIDENCIA ABCDEF34 PAGINA 1\nPAGAMENTO APROVADO\nTOTAL R$ 149,90"
+    ]
 
 
 async def test_mock_embeddings_are_deterministic_and_semanticish() -> None:

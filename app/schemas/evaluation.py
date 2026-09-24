@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
-import json
 import re
 from collections.abc import Callable
 from typing import Literal
@@ -16,7 +14,11 @@ from pydantic import (
     model_validator,
 )
 
-_LEGAL_ID_PATTERN = re.compile(r"^br-(?:cdc|cf)-art-[a-z0-9]+(?:-[a-z0-9]+)*$")
+from app.core.hashing import canonical_json_sha256
+
+_LEGAL_ID_PATTERN = re.compile(r"^br-(?:cdc|cf|lgpd|cc)-art-[a-z0-9]+(?:-[a-z0-9]+)*$")
+# The id fragments that mark a subdivision of an article rather than the article.
+LEGAL_UNIT_MARKERS = ("-caput", "-paragrafo-", "-inciso-", "-alinea-")
 
 MetricDirection = Literal["higher_is_better", "lower_is_better"]
 
@@ -25,7 +27,7 @@ def _validate_legal_id(value: str, *, field_name: str) -> str:
     normalized = value.strip().lower()
     if not _LEGAL_ID_PATTERN.fullmatch(normalized):
         raise ValueError(
-            f"{field_name} must be a stable lowercase CDC/CF id such as "
+            f"{field_name} must be a stable lowercase legal id such as "
             "'br-cdc-art-42-paragrafo-unico'"
         )
     return normalized
@@ -66,6 +68,10 @@ class CaseResult(BaseModel):
     retrieval_outcome: str | None = None
     metrics: list[MetricResult] = Field(default_factory=list)
     errors: list[str] = Field(default_factory=list)
+    counts: dict[str, int] = Field(
+        default_factory=dict,
+        description="Integer counts for this case, summed into EvaluationSummary.totals",
+    )
 
     def score(self, metric_name: str) -> float | None:
         for metric in self.metrics:
@@ -126,6 +132,7 @@ class EvaluationRunMetadata(BaseModel):
     queries_per_case: int = Field(ge=1)
     cutoffs: tuple[int, ...] = Field(min_length=1)
     retrieval: RetrievalEvaluationConfiguration
+    ground_policy_version: str | None = None
 
 
 class EvaluationSummary(BaseModel):
@@ -133,6 +140,7 @@ class EvaluationSummary(BaseModel):
 
     cases: list[CaseResult] = Field(default_factory=list)
     averages: dict[str, float] = Field(default_factory=dict)
+    totals: dict[str, int] = Field(default_factory=dict)
     metric_case_counts: dict[str, int] = Field(default_factory=dict)
     metric_directions: dict[str, MetricDirection] = Field(default_factory=dict)
     failed_case_count: int = Field(default=0, ge=0)
@@ -153,6 +161,7 @@ class EvaluationSummary(BaseModel):
         return cls(
             cases=cases,
             averages=averages,
+            totals=_sum_counts(cases),
             metric_case_counts=metric_case_counts,
             metric_directions=directions,
             failed_case_count=failed_case_count,
@@ -179,6 +188,14 @@ def _aggregate_metrics(
             totals.setdefault(metric.name, []).append(metric.score)
     averages = {name: round(sum(scores) / len(scores), 3) for name, scores in totals.items()}
     return averages, directions, {name: len(scores) for name, scores in totals.items()}
+
+
+def _sum_counts(cases: list[CaseResult]) -> dict[str, int]:
+    totals: dict[str, int] = {}
+    for case in cases:
+        for name, value in case.counts.items():
+            totals[name] = totals.get(name, 0) + value
+    return dict(sorted(totals.items()))
 
 
 def _group_cases(
@@ -222,9 +239,7 @@ class ConsumerLegalRelevance(BaseModel):
     @classmethod
     def _article_id_is_stable(cls, value: str) -> str:
         normalized = _validate_legal_id(value, field_name="article_id")
-        if any(
-            marker in normalized for marker in ("-caput", "-paragrafo-", "-inciso-", "-alinea-")
-        ):
+        if any(marker in normalized for marker in LEGAL_UNIT_MARKERS):
             raise ValueError("article_id must identify the article, not a subdivision")
         return normalized
 
@@ -250,10 +265,13 @@ class ConsumerLegalRelevance(BaseModel):
 class ConsumerLegalGoldenCase(BaseModel):
     """One realistic Consumer-mode legal-retrieval judgment."""
 
-    model_config = ConfigDict(frozen=True, str_strip_whitespace=True)
+    model_config = ConfigDict(frozen=True, str_strip_whitespace=True, extra="forbid")
 
     case_id: str = Field(pattern=r"^[a-z0-9]+(?:_[a-z0-9]+)*$")
-    category: str = Field(pattern=r"^[a-z0-9]+(?:_[a-z0-9]+)*$")
+    category: str = Field(
+        pattern=r"^[a-z0-9]+(?:_[a-z0-9]+)*$",
+        description="Fine-grained evaluation category used for reporting and slices",
+    )
     slices: tuple[str, ...] = Field(
         min_length=1,
         description="Evaluation slices such as supplier:retail or wording:lay",
@@ -339,13 +357,7 @@ class ConsumerLegalGoldenDataset(BaseModel):
     @property
     def content_sha256(self) -> str:
         """Hash the canonical semantic payload, independent of JSON formatting."""
-        canonical = json.dumps(
-            self.model_dump(mode="json"),
-            ensure_ascii=False,
-            separators=(",", ":"),
-            sort_keys=True,
-        )
-        return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+        return canonical_json_sha256(self.model_dump(mode="json"))
 
 
 class ConsumerLegalRetrievalHit(BaseModel):

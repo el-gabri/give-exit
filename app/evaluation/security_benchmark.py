@@ -22,7 +22,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from app.schemas.document import DocumentPage, ExtractionMethod, ParsedDocument
-from app.schemas.security import SecurityRiskLevel
 from app.security.prompt_injection import _semantic_candidates, scan_prompt_injection_rules
 
 DEFAULT_DATASET = Path("eval_data/security/injection_benchmark.json")
@@ -52,6 +51,21 @@ class GroupResult:
     @property
     def rate(self) -> float:
         return self.detected / self.total if self.total else 0.0
+
+    def record_hit(self, case_id: str, *, detected: bool) -> None:
+        """Count a case that should be detected; list it when it is not."""
+        self.total += 1
+        if detected:
+            self.detected += 1
+        else:
+            self.missed.append(case_id)
+
+    def record_false_alarm(self, case_id: str, *, detected: bool) -> None:
+        """Count a case that should pass; list it when it is detected anyway."""
+        self.total += 1
+        if detected:
+            self.detected += 1
+            self.missed.append(case_id)
 
 
 @dataclass
@@ -149,26 +163,6 @@ def _document(case: BenchmarkCase) -> ParsedDocument:
     )
 
 
-def case_is_flagged(case: BenchmarkCase) -> bool:
-    """Whether the deterministic rules produce any finding for this case."""
-    return bool(scan_prompt_injection_rules(_document(case)))
-
-
-def case_reaches_semantic_review(case: BenchmarkCase) -> bool:
-    """Whether balanced mode would forward this case to the LLM reviewer."""
-    document = _document(case)
-    findings = scan_prompt_injection_rules(document)
-    return bool(_semantic_candidates(document, findings))
-
-
-def highest_severity(case: BenchmarkCase) -> SecurityRiskLevel:
-    findings = scan_prompt_injection_rules(_document(case))
-    if not findings:
-        return SecurityRiskLevel.NONE
-    order = list(SecurityRiskLevel)
-    return max((f.severity for f in findings), key=order.index)
-
-
 def run_benchmark(cases: list[BenchmarkCase]) -> BenchmarkReport:
     attacks = GroupResult()
     benign = GroupResult()
@@ -178,42 +172,25 @@ def run_benchmark(cases: list[BenchmarkCase]) -> BenchmarkReport:
     by_technique: dict[str, GroupResult] = defaultdict(GroupResult)
 
     for case in cases:
-        flagged = case_is_flagged(case)
-        if case.is_attack and not flagged:
-            escalated_misses.total += 1
-            if case_reaches_semantic_review(case):
-                escalated_misses.detected += 1
-            else:
-                escalated_misses.missed.append(case.case_id)
+        document = _document(case)
+        findings = scan_prompt_injection_rules(document)
+        flagged = bool(findings)
         if not case.is_attack:
-            benign_escalated.total += 1
-            if case_reaches_semantic_review(case):
-                benign_escalated.detected += 1
-                benign_escalated.missed.append(case.case_id)
-        # For attacks "detected" is a hit; for benign passages it is a miss,
-        # so benign.detected counts false positives.
-        group = attacks if case.is_attack else benign
-        group.total += 1
-        if flagged == case.is_attack:
-            if case.is_attack:
-                group.detected += 1
-        else:
-            if case.is_attack:
-                group.missed.append(case.case_id)
-            else:
-                group.detected += 1
-                group.missed.append(case.case_id)
-
-        if not case.is_attack:
+            # For benign passages "detected" counts false positives, and an
+            # escalation is review cost spent on ordinary text.
+            benign.record_false_alarm(case.case_id, detected=flagged)
+            benign_escalated.record_false_alarm(
+                case.case_id, detected=bool(_semantic_candidates(document, findings))
+            )
             continue
+        attacks.record_hit(case.case_id, detected=flagged)
+        if not flagged:
+            escalated_misses.record_hit(
+                case.case_id, detected=bool(_semantic_candidates(document, findings))
+            )
         for bucket, key in ((by_category, case.category), (by_technique, case.technique)):
-            if key is None:
-                continue
-            bucket[key].total += 1
-            if flagged:
-                bucket[key].detected += 1
-            else:
-                bucket[key].missed.append(case.case_id)
+            if key is not None:
+                bucket[key].record_hit(case.case_id, detected=flagged)
 
     return BenchmarkReport(
         attacks=attacks,

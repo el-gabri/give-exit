@@ -7,15 +7,28 @@ import hashlib
 import importlib.metadata
 import json
 import math
-import os
 import platform
-import struct
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal
 
+from app.consumer.embedding_artifacts import (
+    atomic_write,
+    chunk_ids_sha256,
+    chunks_sha256,
+    float32_vector,
+    vectors_sha256,
+)
 from app.consumer.legal_corpus import LEGAL_CHUNKING_IDENTITY, LegalCorpus
+from app.consumer.vector_reuse import (
+    CANARY_MIN_COSINE,
+    CANARY_SIZE,
+    ReusableVectorIndex,
+    ReuseCanaryError,
+    cosine,
+)
+from app.core.hashing import canonical_json_bytes, canonical_json_sha256, sha256_hex
 from app.core.logging import get_logger
 from app.rag.embeddings import validate_embedding_vectors
 from app.rag.pipeline import RagPipeline
@@ -24,6 +37,7 @@ from app.schemas.embedding import (
     EmbeddingGenerationManifest,
     EmbeddingGenerationStatus,
     EmbeddingShardManifest,
+    ReuseCanary,
 )
 from app.schemas.rag import Chunk
 
@@ -86,18 +100,57 @@ class EmbeddingGenerationManager:
             return False
         return True
 
-    async def build_and_activate(self, *, force: bool = False) -> EmbeddingGenerationManifest:
+    async def build_and_activate(
+        self,
+        *,
+        force: bool = False,
+        reuse: bool = True,
+    ) -> EmbeddingGenerationManifest:
         manifest = self._new_manifest(provenance="embedded")
         if not force:
             existing = self._load_manifest(required=False)
             if existing is not None:
                 self._validate_manifest_identity(existing)
                 manifest = existing
+        manifest.schema_version = "embedding-generation-manifest-v2"
+        if manifest.reused_chunk_count == 0:
+            manifest.reuse_canary = None
         manifest.status = EmbeddingGenerationStatus.BUILDING
         manifest.error = None
         self._save_manifest(manifest)
 
+        pending = self._pending_shards(manifest)
+        reuse_index = ReusableVectorIndex.empty()
+        if reuse and not force and pending:
+            reuse_index = ReusableVectorIndex.from_artifacts(
+                self._generation_dir.parent,
+                self._contract,
+                exclude_generation_id=self._generation_id,
+            )
+        try:
+            await self._check_reuse_canary(manifest, reuse_index, pending)
+            for shard_index, chunks in pending:
+                await self._build_shard(manifest, shard_index, chunks, reuse_index)
+        except Exception as exc:
+            manifest.status = EmbeddingGenerationStatus.FAILED
+            manifest.error = f"{type(exc).__name__}: {exc}"
+            self._save_manifest(manifest)
+            raise
+
+        _, vectors = self._load_complete_generation(manifest)
+        self._mark_validated(manifest)
+        return await self._activate(
+            manifest, vectors, mismatch="persisted vectors do not match the validated generation"
+        )
+
+    def _pending_shards(
+        self,
+        manifest: EmbeddingGenerationManifest,
+    ) -> list[tuple[int, list[Chunk]]]:
+        """Shards still to build; this generation's own verified shards are resumed."""
+
         completed = {shard.shard_index: shard for shard in manifest.shards}
+        pending: list[tuple[int, list[Chunk]]] = []
         for shard_index, chunks in enumerate(_shards(self._chunks, self._shard_size)):
             shard = completed.get(shard_index)
             if shard is not None and self._verified_shard_entries(shard, chunks) is not None:
@@ -108,72 +161,97 @@ class EmbeddingGenerationManager:
                     chunks=len(chunks),
                 )
                 continue
-            try:
-                vectors = await self._rag.embed_document_batch(
-                    [chunk.text for chunk in chunks]
-                )
-                dimension = validate_embedding_vectors(
-                    vectors,
-                    expected_count=len(chunks),
-                    expected_dimension=manifest.contract.output_dimension,
-                )
-                if manifest.contract.output_dimension is None:
-                    manifest.contract = manifest.contract.model_copy(
-                        update={"output_dimension": dimension}
-                    )
-                shard_manifest = self._write_shard(shard_index, chunks, vectors)
-                manifest.shards = sorted(
-                    [item for item in manifest.shards if item.shard_index != shard_index]
-                    + [shard_manifest],
-                    key=lambda item: item.shard_index,
-                )
-                manifest.completed_chunk_count = sum(
-                    item.chunk_count for item in manifest.shards
-                )
-                manifest.updated_at = _now()
-                manifest.error = None
-                self._save_manifest(manifest)
-                logger.info(
-                    "embedding_shard_completed",
-                    generation_id=self._generation_id,
-                    shard_index=shard_index,
-                    completed_chunks=manifest.completed_chunk_count,
-                    expected_chunks=manifest.expected_chunk_count,
-                    output_dimension=dimension,
-                )
-            except Exception as exc:
-                manifest.status = EmbeddingGenerationStatus.FAILED
-                manifest.error = f"{type(exc).__name__}: {exc}"
-                manifest.updated_at = _now()
-                self._save_manifest(manifest)
-                raise
+            pending.append((shard_index, chunks))
+        return pending
 
-        chunks, vectors = self._load_complete_generation(manifest)
-        manifest.status = EmbeddingGenerationStatus.VALIDATED
-        manifest.validated_at = _now()
-        manifest.updated_at = _now()
+    async def _check_reuse_canary(
+        self,
+        manifest: EmbeddingGenerationManifest,
+        reuse_index: ReusableVectorIndex,
+        pending: list[tuple[int, list[Chunk]]],
+    ) -> None:
+        """Re-embed a few reused texts and refuse vectors from another space."""
+
+        reused_texts = sorted(
+            {
+                (sha256_hex(chunk.text), chunk.text)
+                for _, chunks in pending
+                for chunk in chunks
+                if reuse_index.lookup(chunk.text) is not None
+            }
+        )
+        if not reused_texts:
+            return
+        probe = reused_texts[:CANARY_SIZE]
+        fresh = await self._rag.embed_document_batch([text for _, text in probe])
+        cosines = [
+            cosine(float32_vector(vector), reuse_index.require(text).vector)
+            for (_, text), vector in zip(probe, fresh, strict=True)
+        ]
+        canary = ReuseCanary(
+            text_sha256s=tuple(digest for digest, _ in probe),
+            min_cosine=min(cosines),
+            threshold=CANARY_MIN_COSINE,
+            passed=min(cosines) >= CANARY_MIN_COSINE,
+        )
+        manifest.reuse_canary = canary
         self._save_manifest(manifest)
+        if not canary.passed:
+            raise ReuseCanaryError(
+                "reused vectors differ from the current model "
+                f"(minimum cosine {min(cosines):.6f} < {CANARY_MIN_COSINE}); "
+                "rerun with --no-reuse"
+            )
 
-        await self._rag.index_precomputed_chunks(chunks, vectors)
-        persisted = await self._rag.export_document(self._document_id)
-        persisted_vectors = validated_vectors_for_chunks(
-            self._chunks,
-            persisted,
+    async def _build_shard(
+        self,
+        manifest: EmbeddingGenerationManifest,
+        shard_index: int,
+        chunks: list[Chunk],
+        reuse_index: ReusableVectorIndex,
+    ) -> None:
+        """Embed a shard's new texts, take the others from earlier generations, record it."""
+
+        hits = [reuse_index.lookup(chunk.text) for chunk in chunks]
+        missing = [chunk.text for chunk, hit in zip(chunks, hits, strict=True) if hit is None]
+        fresh = iter(await self._rag.embed_document_batch(missing) if missing else [])
+        vectors = [list(hit.vector) if hit is not None else next(fresh) for hit in hits]
+        dimension = validate_embedding_vectors(
+            vectors,
+            expected_count=len(chunks),
             expected_dimension=manifest.contract.output_dimension,
         )
-        if not _persisted_vectors_match(vectors, persisted_vectors):
-            raise RuntimeError("persisted vectors do not match the validated generation")
-        self._rag.register_indexed_document(
-            self._document_id,
-            chunking_version=LEGAL_CHUNKING_IDENTITY,
-            embedding_generation_id=self._generation_id,
+        if manifest.contract.output_dimension is None:
+            manifest.contract = manifest.contract.model_copy(
+                update={"output_dimension": dimension}
+            )
+        shard_manifest = self._write_shard(
+            shard_index,
+            chunks,
+            vectors,
+            sources=[hit.source() if hit is not None else None for hit in hits],
         )
-        manifest.status = EmbeddingGenerationStatus.ACTIVE
-        manifest.activated_at = _now()
-        manifest.updated_at = _now()
+        manifest.shards = sorted(
+            [item for item in manifest.shards if item.shard_index != shard_index]
+            + [shard_manifest],
+            key=lambda item: item.shard_index,
+        )
+        manifest.completed_chunk_count = sum(item.chunk_count for item in manifest.shards)
+        manifest.reused_chunk_count = sum(item.reused_chunk_count for item in manifest.shards)
+        manifest.reuse_sources = sorted(
+            {*manifest.reuse_sources, *(hit.generation_id for hit in hits if hit is not None)}
+        )
         manifest.error = None
         self._save_manifest(manifest)
-        return manifest
+        logger.info(
+            "embedding_shard_completed",
+            generation_id=self._generation_id,
+            shard_index=shard_index,
+            completed_chunks=manifest.completed_chunk_count,
+            expected_chunks=manifest.expected_chunk_count,
+            reused_chunks=shard_manifest.reused_chunk_count,
+            output_dimension=dimension,
+        )
 
     async def adopt_and_activate(
         self,
@@ -212,20 +290,34 @@ class EmbeddingGenerationManager:
                 self._write_shard(shard_index, chunks, shard_vectors)
             )
         manifest.completed_chunk_count = len(self._chunks)
+        self._mark_validated(manifest)
+        return await self._activate(
+            manifest, vectors, mismatch="persisted vectors do not match the adopted generation"
+        )
+
+    def _mark_validated(self, manifest: EmbeddingGenerationManifest) -> None:
         manifest.status = EmbeddingGenerationStatus.VALIDATED
         manifest.validated_at = _now()
-        manifest.updated_at = _now()
         self._save_manifest(manifest)
+
+    async def _activate(
+        self,
+        manifest: EmbeddingGenerationManifest,
+        vectors: list[list[float]],
+        *,
+        mismatch: str,
+    ) -> EmbeddingGenerationManifest:
+        """Import validated vectors, check the store's copy, then mark the generation active."""
 
         await self._rag.index_precomputed_chunks(self._chunks, vectors)
         persisted = await self._rag.export_document(self._document_id)
         persisted_vectors = validated_vectors_for_chunks(
             self._chunks,
             persisted,
-            expected_dimension=dimension,
+            expected_dimension=manifest.contract.output_dimension,
         )
         if not _persisted_vectors_match(vectors, persisted_vectors):
-            raise RuntimeError("persisted vectors do not match the adopted generation")
+            raise RuntimeError(mismatch)
         self._rag.register_indexed_document(
             self._document_id,
             chunking_version=LEGAL_CHUNKING_IDENTITY,
@@ -233,13 +325,13 @@ class EmbeddingGenerationManager:
         )
         manifest.status = EmbeddingGenerationStatus.ACTIVE
         manifest.activated_at = _now()
-        manifest.updated_at = _now()
+        manifest.error = None
         self._save_manifest(manifest)
         return manifest
 
     @property
     def _document_id(self) -> str:
-        return self._corpus.as_parsed_document().doc_id
+        return self._corpus.document_id
 
     def _new_manifest(
         self,
@@ -259,8 +351,8 @@ class EmbeddingGenerationManager:
             document_id=self._document_id,
             chunking_version=LEGAL_CHUNKING_IDENTITY,
             expected_chunk_count=len(self._chunks),
-            expected_chunk_ids_sha256=_chunk_ids_sha256(self._chunks),
-            expected_chunks_sha256=_chunks_sha256(self._chunks),
+            expected_chunk_ids_sha256=chunk_ids_sha256(self._chunks),
+            expected_chunks_sha256=chunks_sha256(self._chunks),
             contract=self._contract,
             shard_size=self._shard_size,
             expected_shard_count=math.ceil(len(self._chunks) / self._shard_size),
@@ -295,7 +387,10 @@ class EmbeddingGenerationManager:
         expected_contract = expected.contract.model_copy(
             update={"output_dimension": manifest.contract.output_dimension}
         )
-        if manifest.contract != expected_contract:
+        # Compared on the document-side identity only, for the same reason the
+        # generation id is: a manifest built under a different query
+        # instruction still describes exactly these vectors.
+        if manifest.contract.document_identity() != expected_contract.document_identity():
             mismatched.append("contract")
         if mismatched:
             raise ValueError(
@@ -312,12 +407,13 @@ class EmbeddingGenerationManager:
             raise ValueError("embedding generation has an incomplete chunk count")
         if sum(shard.chunk_count for shard in manifest.shards) != len(self._chunks):
             raise ValueError("embedding shard counts do not cover the canonical corpus")
+        shards_by_index: dict[int, EmbeddingShardManifest] = {}
+        for shard in manifest.shards:
+            # Preserve the first match if a malformed manifest repeats an index.
+            shards_by_index.setdefault(shard.shard_index, shard)
         entries: list[tuple[Chunk, list[float]]] = []
         for shard_index, chunks in enumerate(_shards(self._chunks, self._shard_size)):
-            selected = next(
-                (item for item in manifest.shards if item.shard_index == shard_index),
-                None,
-            )
+            selected = shards_by_index.get(shard_index)
             if selected is None:
                 raise ValueError(f"embedding generation is missing shard {shard_index}")
             loaded = self._verified_shard_entries(selected, chunks)
@@ -336,32 +432,35 @@ class EmbeddingGenerationManager:
         shard_index: int,
         chunks: list[Chunk],
         vectors: list[list[float]],
+        *,
+        sources: list[dict[str, str] | None] | None = None,
     ) -> EmbeddingShardManifest:
-        float32_vectors = [_float32_vector(vector) for vector in vectors]
+        float32_vectors = [float32_vector(vector) for vector in vectors]
         dimension = validate_embedding_vectors(
             float32_vectors,
             expected_count=len(chunks),
             expected_dimension=self._contract.output_dimension,
         )
-        payload = b"\n".join(
-            _canonical_json_bytes(
-                {"chunk": chunk.model_dump(mode="json"), "vector": vector}
-            )
-            for chunk, vector in zip(chunks, float32_vectors, strict=True)
-        )
-        compressed = gzip.compress(payload, compresslevel=6, mtime=0)
+        origins: list[dict[str, str] | None] = sources or [None] * len(chunks)
+        records: list[bytes] = []
+        for chunk, vector, origin in zip(chunks, float32_vectors, origins, strict=True):
+            record: dict[str, Any] = {"chunk": chunk.model_dump(mode="json"), "vector": vector}
+            if origin is not None:
+                record["source"] = origin
+            records.append(canonical_json_bytes(record))
+        compressed = gzip.compress(b"\n".join(records), compresslevel=6, mtime=0)
         filename = f"embeddings-{shard_index:04d}.jsonl.gz"
-        path = self._generation_dir / filename
-        _atomic_write(path, compressed)
+        atomic_write(self._generation_dir / filename, compressed)
         return EmbeddingShardManifest(
             shard_index=shard_index,
             artifact_file=filename,
             artifact_sha256=hashlib.sha256(compressed).hexdigest(),
             chunk_count=len(chunks),
-            chunk_ids_sha256=_chunk_ids_sha256(chunks),
-            chunks_sha256=_chunks_sha256(chunks),
-            vectors_sha256=_vectors_sha256(float32_vectors),
+            chunk_ids_sha256=chunk_ids_sha256(chunks),
+            chunks_sha256=chunks_sha256(chunks),
+            vectors_sha256=vectors_sha256(float32_vectors),
             output_dimension=dimension,
+            reused_chunk_count=sum(origin is not None for origin in origins),
         )
 
     def _verified_shard_entries(
@@ -392,11 +491,11 @@ class EmbeddingGenerationManager:
                 entries,
                 expected_dimension=shard.output_dimension,
             )
-            if _vectors_sha256(vectors) != shard.vectors_sha256:
+            if vectors_sha256(vectors) != shard.vectors_sha256:
                 return None
-            if _chunk_ids_sha256(expected_chunks) != shard.chunk_ids_sha256:
+            if chunk_ids_sha256(expected_chunks) != shard.chunk_ids_sha256:
                 return None
-            if _chunks_sha256(expected_chunks) != shard.chunks_sha256:
+            if chunks_sha256(expected_chunks) != shard.chunks_sha256:
                 return None
             return entries
         except (KeyError, OSError, TypeError, ValueError, gzip.BadGzipFile, json.JSONDecodeError):
@@ -414,7 +513,7 @@ class EmbeddingGenerationManager:
 
     def _save_manifest(self, manifest: EmbeddingGenerationManifest) -> None:
         manifest.updated_at = _now()
-        _atomic_write(
+        atomic_write(
             self._manifest_path,
             manifest.model_dump_json(indent=2).encode("utf-8"),
         )
@@ -466,7 +565,7 @@ def validated_vectors_for_chunks(
         raise ValueError(f"embedding chunk coverage mismatch: missing={missing}, extra={extra}")
     for chunk_id, expected in expected_by_id.items():
         actual, _ = actual_by_id[chunk_id]
-        if _canonical_json_bytes(actual.model_dump(mode="json")) != _canonical_json_bytes(
+        if canonical_json_bytes(actual.model_dump(mode="json")) != canonical_json_bytes(
             expected.model_dump(mode="json")
         ):
             raise ValueError(f"stored chunk does not match canonical corpus: {chunk_id}")
@@ -486,38 +585,25 @@ def _generation_id(
     contract: EmbeddingContract,
     shard_size: int,
 ) -> str:
+    # Only what determines the stored vectors. The query formatter and
+    # instruction are recorded in the manifest but excluded here: documents are
+    # never framed with a query instruction, so rewording one leaves every
+    # vector bit-identical and must not force a re-embed of the whole corpus.
     payload = {
         "index_name": index_name,
         "corpus_release_id": corpus.release_id,
         "corpus_sha256": corpus.corpus_sha256,
-        "document_id": corpus.as_parsed_document().doc_id,
+        "document_id": corpus.document_id,
         "chunking_version": LEGAL_CHUNKING_IDENTITY,
-        "chunks_sha256": _chunks_sha256(chunks),
-        "contract": contract.model_dump(mode="json"),
+        "chunks_sha256": chunks_sha256(chunks),
+        "contract": contract.document_identity(),
         "shard_size": shard_size,
     }
-    return hashlib.sha256(_canonical_json_bytes(payload)).hexdigest()[:16]
+    return canonical_json_sha256(payload)[:16]
 
 
 def _shards(chunks: list[Chunk], size: int) -> list[list[Chunk]]:
     return [chunks[start : start + size] for start in range(0, len(chunks), size)]
-
-
-def _chunk_ids_sha256(chunks: list[Chunk]) -> str:
-    return hashlib.sha256("\n".join(chunk.chunk_id for chunk in chunks).encode("utf-8")).hexdigest()
-
-
-def _chunks_sha256(chunks: list[Chunk]) -> str:
-    digest = hashlib.sha256()
-    for chunk in chunks:
-        digest.update(_canonical_json_bytes(chunk.model_dump(mode="json")))
-        digest.update(b"\n")
-    return digest.hexdigest()
-
-
-def _vectors_sha256(vectors: list[list[float]]) -> str:
-    canonical = [_float32_vector(vector) for vector in vectors]
-    return hashlib.sha256(_canonical_json_bytes(canonical)).hexdigest()
 
 
 def _persisted_vectors_match(
@@ -534,13 +620,13 @@ def _persisted_vectors_match(
 
     if len(expected) != len(persisted):
         return False
-    if _vectors_sha256(expected) == _vectors_sha256(persisted):
+    if vectors_sha256(expected) == vectors_sha256(persisted):
         return True
     for expected_vector, persisted_vector in zip(expected, persisted, strict=True):
         if len(expected_vector) != len(persisted_vector):
             return False
-        expected_float32 = _float32_vector(expected_vector)
-        persisted_float32 = _float32_vector(persisted_vector)
+        expected_float32 = float32_vector(expected_vector)
+        persisted_float32 = float32_vector(persisted_vector)
         if not all(
             math.isclose(
                 expected_value,
@@ -556,33 +642,6 @@ def _persisted_vectors_match(
         ):
             return False
     return True
-
-
-def _float32_vector(vector: list[float]) -> list[float]:
-    """Canonicalize the manifest's declared float32 storage contract."""
-
-    normalized: list[float] = []
-    for value in vector:
-        converted = struct.unpack("!f", struct.pack("!f", float(value)))[0]
-        normalized.append(0.0 if converted == 0.0 else converted)
-    return normalized
-
-
-def _canonical_json_bytes(value: Any) -> bytes:
-    return json.dumps(
-        value,
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
-        allow_nan=False,
-    ).encode("utf-8")
-
-
-def _atomic_write(path: Path, data: bytes) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
-    temporary.write_bytes(data)
-    temporary.replace(path)
 
 
 def _package_versions() -> dict[str, str]:

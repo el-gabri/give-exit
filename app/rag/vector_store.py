@@ -6,17 +6,17 @@ adapter would need to provide.
 """
 
 import asyncio
-import hashlib
 import json
 import math
 import re
 import threading
 import unicodedata
 from collections import Counter
-from collections.abc import Mapping
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
+from app.core.hashing import sha256_hex
 from app.schemas.rag import Chunk, RetrievedChunk
 
 
@@ -65,6 +65,7 @@ class InMemoryVectorStore:
     def __init__(self, *, index_name: str = "memory") -> None:
         self._rows: dict[str, tuple[Chunk, list[float]]] = {}
         self._index_name = index_name
+        self._lexical_tokens = _LexicalTokenCache()
 
     @property
     def index_name(self) -> str:
@@ -73,14 +74,12 @@ class InMemoryVectorStore:
     async def upsert(self, chunks: list[Chunk], vectors: list[list[float]]) -> None:
         for chunk, vector in zip(chunks, vectors, strict=True):
             self._rows[chunk.chunk_id] = (chunk, vector)
+        self._lexical_tokens.forget({chunk.doc_id for chunk in chunks})
 
     async def replace_document(self, chunks: list[Chunk], vectors: list[list[float]]) -> None:
         if not chunks:
             return
-        doc_ids = {chunk.doc_id for chunk in chunks}
-        if len(doc_ids) != 1:
-            raise ValueError("replace_document requires exactly one doc_id")
-        [doc_id] = doc_ids
+        doc_id = _single_doc_id(chunks)
         replacement = {
             chunk.chunk_id: (chunk, vector) for chunk, vector in zip(chunks, vectors, strict=True)
         }
@@ -88,6 +87,7 @@ class InMemoryVectorStore:
             chunk_id: row for chunk_id, row in self._rows.items() if row[0].doc_id != doc_id
         }
         self._rows = {**retained, **replacement}
+        self._lexical_tokens.forget({doc_id})
 
     async def query(self, vector: list[float], doc_id: str, k: int) -> list[RetrievedChunk]:
         candidates = [
@@ -100,7 +100,10 @@ class InMemoryVectorStore:
 
     async def lexical_query(self, query: str, doc_id: str, k: int) -> list[RetrievedChunk]:
         chunks = [chunk for chunk, _ in self._rows.values() if chunk.doc_id == doc_id]
-        return _bm25_rank(query, chunks, k)
+        tokenizer = self._lexical_tokens.tokenizer(doc_id)
+        ranked = _bm25_rank(query, chunks, k, tokenize=tokenizer)
+        self._lexical_tokens.remember(doc_id, tokenizer)
+        return ranked
 
     async def list_document_ids(self) -> set[str]:
         return {chunk.doc_id for chunk, _ in self._rows.values()}
@@ -117,6 +120,7 @@ class InMemoryVectorStore:
 
     async def delete_document(self, doc_id: str) -> None:
         self._rows = {cid: row for cid, row in self._rows.items() if row[0].doc_id != doc_id}
+        self._lexical_tokens.forget({doc_id})
 
 
 class ChromaVectorStore:
@@ -143,46 +147,41 @@ class ChromaVectorStore:
             # embedding function stored in collection configuration.
             embedding_function=None,
         )
+        self._lexical_tokens = _LexicalTokenCache()
 
     @property
     def index_name(self) -> str:
         return self._index_name
 
     async def upsert(self, chunks: list[Chunk], vectors: list[list[float]]) -> None:
-        def _upsert() -> None:
-            self._collection.upsert(
-                ids=[c.chunk_id for c in chunks],
-                embeddings=vectors,
-                documents=[c.text for c in chunks],
-                metadatas=[_chunk_metadata(c) for c in chunks],
-            )
-
-        await asyncio.to_thread(_upsert)
+        await asyncio.to_thread(self._upsert_sync, chunks, vectors)
+        self._lexical_tokens.forget({chunk.doc_id for chunk in chunks})
 
     async def replace_document(self, chunks: list[Chunk], vectors: list[list[float]]) -> None:
         """Upsert first, then remove stale ids so provider failure preserves old data."""
 
         if not chunks:
             return
-        doc_ids = {chunk.doc_id for chunk in chunks}
-        if len(doc_ids) != 1:
-            raise ValueError("replace_document requires exactly one doc_id")
-        [doc_id] = doc_ids
+        doc_id = _single_doc_id(chunks)
 
         def _replace() -> None:
             existing = self._collection.get(where={"doc_id": doc_id}, include=[])
             existing_ids = set(existing["ids"])
-            self._collection.upsert(
-                ids=[chunk.chunk_id for chunk in chunks],
-                embeddings=vectors,
-                documents=[chunk.text for chunk in chunks],
-                metadatas=[_chunk_metadata(chunk) for chunk in chunks],
-            )
+            self._upsert_sync(chunks, vectors)
             stale_ids = sorted(existing_ids - {chunk.chunk_id for chunk in chunks})
             if stale_ids:
                 self._collection.delete(ids=stale_ids)
 
         await asyncio.to_thread(_replace)
+        self._lexical_tokens.forget({doc_id})
+
+    def _upsert_sync(self, chunks: list[Chunk], vectors: list[list[float]]) -> None:
+        self._collection.upsert(
+            ids=[chunk.chunk_id for chunk in chunks],
+            embeddings=vectors,
+            documents=[chunk.text for chunk in chunks],
+            metadatas=[_chunk_metadata(chunk) for chunk in chunks],
+        )
 
     async def query(self, vector: list[float], doc_id: str, k: int) -> list[RetrievedChunk]:
         def _query() -> list[RetrievedChunk]:
@@ -213,6 +212,8 @@ class ChromaVectorStore:
         return await asyncio.to_thread(_query)
 
     async def lexical_query(self, query: str, doc_id: str, k: int) -> list[RetrievedChunk]:
+        tokenizer = self._lexical_tokens.tokenizer(doc_id)
+
         def _query() -> list[RetrievedChunk]:
             result = self._collection.get(
                 where={"doc_id": doc_id},
@@ -227,9 +228,11 @@ class ChromaVectorStore:
                     strict=True,
                 )
             ]
-            return _bm25_rank(query, chunks, k)
+            return _bm25_rank(query, chunks, k, tokenize=tokenizer)
 
-        return await asyncio.to_thread(_query)
+        ranked = await asyncio.to_thread(_query)
+        self._lexical_tokens.remember(doc_id, tokenizer)
+        return ranked
 
     async def list_document_ids(self) -> set[str]:
         def _list() -> set[str]:
@@ -244,6 +247,7 @@ class ChromaVectorStore:
 
     async def delete_document(self, doc_id: str) -> None:
         await asyncio.to_thread(self._collection.delete, where={"doc_id": doc_id})
+        self._lexical_tokens.forget({doc_id})
 
     async def export_entries(self) -> list[tuple[Chunk, list[float]]]:
         """Return stored chunks and vectors for an explicit backend migration.
@@ -252,52 +256,36 @@ class ChromaVectorStore:
         request handling never needs to read raw embeddings from persistence.
         """
 
-        def _export() -> list[tuple[Chunk, list[float]]]:
-            result = self._collection.get(
-                include=["documents", "metadatas", "embeddings"],
-            )
-            documents = result["documents"]
-            metadatas = result["metadatas"]
-            embeddings = result["embeddings"]
-            if documents is None or metadatas is None or embeddings is None:
-                raise RuntimeError("Chroma omitted entries required for migration")
-            return [
-                (
-                    _restore_chunk(chunk_id, text, metadata),
-                    [float(value) for value in embedding],
-                )
-                for chunk_id, text, metadata, embedding in zip(
-                    result["ids"], documents, metadatas, embeddings, strict=True
-                )
-            ]
-
-        return await asyncio.to_thread(_export)
+        return await asyncio.to_thread(self._stored_entries, None, "migration")
 
     async def export_document(self, doc_id: str) -> list[tuple[Chunk, list[float]]]:
         """Export one isolated document with its stored vectors."""
 
-        def _export() -> list[tuple[Chunk, list[float]]]:
-            result = self._collection.get(
-                where={"doc_id": doc_id},
-                include=["documents", "metadatas", "embeddings"],
-            )
-            documents = result["documents"]
-            metadatas = result["metadatas"]
-            embeddings = result["embeddings"]
-            if documents is None or metadatas is None or embeddings is None:
-                raise RuntimeError("Chroma omitted entries required for document export")
-            entries = [
-                (
-                    _restore_chunk(chunk_id, text, metadata),
-                    [float(value) for value in embedding],
-                )
-                for chunk_id, text, metadata, embedding in zip(
-                    result["ids"], documents, metadatas, embeddings, strict=True
-                )
-            ]
-            return sorted(entries, key=lambda item: item[0].chunk_id)
+        entries = await asyncio.to_thread(self._stored_entries, doc_id, "document export")
+        return sorted(entries, key=lambda item: item[0].chunk_id)
 
-        return await asyncio.to_thread(_export)
+    def _stored_entries(
+        self, doc_id: str | None, purpose: str
+    ) -> list[tuple[Chunk, list[float]]]:
+        """Stored chunks and vectors of one document, or of the whole collection."""
+        result = self._collection.get(
+            where={"doc_id": doc_id} if doc_id is not None else None,
+            include=["documents", "metadatas", "embeddings"],
+        )
+        documents = result["documents"]
+        metadatas = result["metadatas"]
+        embeddings = result["embeddings"]
+        if documents is None or metadatas is None or embeddings is None:
+            raise RuntimeError(f"Chroma omitted entries required for {purpose}")
+        return [
+            (
+                _restore_chunk(chunk_id, text, metadata),
+                [float(value) for value in embedding],
+            )
+            for chunk_id, text, metadata, embedding in zip(
+                result["ids"], documents, metadatas, embeddings, strict=True
+            )
+        ]
 
 
 class PostgresVectorStore:
@@ -307,8 +295,9 @@ class PostgresVectorStore:
     by the versioned index namespace. It deliberately uses an unconstrained
     ``vector`` column: a namespace is immutable for one embedding space, while
     different namespaces can safely have different dimensions in one table.
-    The Consumer corpus is small (460 chunks), so exact search is both fast
-    and avoids an index that could silently mix incompatible dimensions.
+    The Consumer corpus is small (a few thousand chunks), so exact search is
+    both fast and avoids an index that could silently mix incompatible
+    dimensions.
     """
 
     TABLE = "give_exit_vector_chunks"
@@ -335,10 +324,7 @@ class PostgresVectorStore:
         rows = _postgres_rows(chunks, vectors, namespace=self._index_name)
         if not rows:
             return
-        doc_ids = {chunk.doc_id for chunk in chunks}
-        if len(doc_ids) != 1:
-            raise ValueError("replace_document requires exactly one doc_id")
-        await asyncio.to_thread(self._replace_document_sync, next(iter(doc_ids)), rows)
+        await asyncio.to_thread(self._replace_document_sync, _single_doc_id(chunks), rows)
 
     async def query(self, vector: list[float], doc_id: str, k: int) -> list[RetrievedChunk]:
         if k < 1:
@@ -451,12 +437,17 @@ class PostgresVectorStore:
                 """,
                 (vector, self._index_name, doc_id, vector, k),
             )
-            return [
-                RetrievedChunk(
-                    chunk=_restore_postgres_chunk(chunk_id, content, payload), score=float(score)
-                )
-                for chunk_id, content, payload, score in cursor.fetchall()
-            ]
+            return self._retrieved(cursor.fetchall())
+
+    @staticmethod
+    def _retrieved(rows: list[tuple[Any, ...]]) -> list[RetrievedChunk]:
+        return [
+            RetrievedChunk(
+                chunk=_restore_postgres_chunk(chunk_id, content, payload),
+                score=float(score),
+            )
+            for chunk_id, content, payload, score in rows
+        ]
 
     def _lexical_query_sync(self, query: str, doc_id: str, k: int) -> list[RetrievedChunk]:
         self._ensure_schema_sync()
@@ -480,13 +471,7 @@ class PostgresVectorStore:
                 """,
                 (query, self._index_name, doc_id, k),
             )
-            return [
-                RetrievedChunk(
-                    chunk=_restore_postgres_chunk(chunk_id, content, payload),
-                    score=float(score),
-                )
-                for chunk_id, content, payload, score in cursor.fetchall()
-            ]
+            return self._retrieved(cursor.fetchall())
 
     def _export_document_sync(self, doc_id: str) -> list[tuple[Chunk, list[float]]]:
         self._ensure_schema_sync()
@@ -539,6 +524,14 @@ ON CONFLICT (namespace, chunk_id) DO UPDATE SET
     chunk_payload = EXCLUDED.chunk_payload,
     embedding = EXCLUDED.embedding
 """
+
+
+def _single_doc_id(chunks: list[Chunk]) -> str:
+    doc_ids = {chunk.doc_id for chunk in chunks}
+    if len(doc_ids) != 1:
+        raise ValueError("replace_document requires exactly one doc_id")
+    [doc_id] = doc_ids
+    return doc_id
 
 
 def _postgres_rows(
@@ -612,7 +605,7 @@ def versioned_collection_name(
 ) -> str:
     """Build a stable Chroma-safe namespace for one incompatible vector space."""
     raw = f"{corpus_version}:{embedding_model}"
-    digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()[:12]
+    digest = sha256_hex(raw)[:12]
     slug = re.sub(r"[^a-z0-9]+", "-", raw.casefold()).strip("-")[:40]
     return f"{prefix}-{slug or 'index'}-{digest}"
 
@@ -649,17 +642,104 @@ def _restore_chunk(chunk_id: str, text: str, metadata: Mapping[str, object]) -> 
     )
 
 
-def _bm25_rank(query: str, chunks: list[Chunk], k: int) -> list[RetrievedChunk]:
+def _normalize_lexical_text(text: str) -> str:
+    decomposed = unicodedata.normalize("NFKD", text.casefold())
+    return "".join(char for char in decomposed if not unicodedata.combining(char))
+
+
+# Mirrors PostgreSQL's Snowball Portuguese stopword dictionary. Keeping these
+# terms out of the dependency-free BM25 adapter prevents a function-word-only
+# overlap from being interpreted as an independent lexical retrieval signal.
+_PORTUGUESE_STOPWORDS = frozenset(
+    re.findall(
+        r"[a-z0-9]+",
+        _normalize_lexical_text(
+            """
+            de a o que e do da em um para com não uma os no se na por mais as dos
+            como mas ao ele das à seu sua ou quando muito nos já eu também só pelo
+            pela até isso ela entre depois sem mesmo aos seus quem nas me esse eles
+            você essa num nem suas meu às minha numa pelos elas qual nós lhe deles
+            essas esses pelas este dele tu te vocês vos lhes meus minhas teu tua teus
+            tuas nosso nossa nossos nossas dela delas esta estes estas aquele aquela
+            aqueles aquelas isto aquilo estou está estamos estão estive esteve
+            estivemos estiveram estava estávamos estavam estivera estivéramos esteja
+            estejamos estejam estivesse estivéssemos estivessem estiver estivermos
+            estiverem hei há havemos hão houve houvemos houveram houvera houvéramos
+            haja hajamos hajam houvesse houvéssemos houvessem houver houvermos
+            houverem houverei haverá houveremos houverão houveria houveríamos
+            houveriam sou somos são era éramos eram fui foi fomos foram fora fôramos
+            seja sejamos sejam fosse fôssemos fossem for formos forem serei será
+            seremos serão seria seríamos seriam tenho tem temos tém tinha tínhamos
+            tinham tive teve tivemos tiveram tivera tivéramos tenha tenhamos tenham
+            tivesse tivéssemos tivessem tiver tivermos tiverem terei terá teremos
+            terão teria teríamos teriam
+            """
+        ),
+    )
+)
+
+
+class _SearchTokenizer:
+    """Tokenizes the chunks of one lexical search, reusing cached tokens."""
+
+    def __init__(self, cached: Mapping[str, tuple[str, ...]], writes: int) -> None:
+        self._cached = cached
+        self.writes = writes
+        self.used: dict[str, tuple[str, ...]] = {}
+
+    def __call__(self, chunk: Chunk) -> tuple[str, ...]:
+        tokens = self._cached.get(chunk.text)
+        if tokens is None:
+            tokens = tuple(portuguese_lexical_tokens(chunk.text))
+        self.used[chunk.text] = tokens
+        return tokens
+
+
+class _LexicalTokenCache:
+    """Chunk tokens one store keeps between lexical searches, per document.
+
+    Tokenizing every chunk dominated each lexical query. Tokens are keyed by
+    chunk text, so they cannot go stale. Every write through the store drops
+    the documents it wrote, so text a case deletion removed from the index
+    does not outlive it here, and a search that raced any write does not
+    store its tokens.
+    """
+
+    def __init__(self) -> None:
+        self._documents: dict[str, dict[str, tuple[str, ...]]] = {}
+        self._writes = 0
+
+    def tokenizer(self, doc_id: str) -> _SearchTokenizer:
+        return _SearchTokenizer(self._documents.get(doc_id, {}), self._writes)
+
+    def remember(self, doc_id: str, tokenizer: _SearchTokenizer) -> None:
+        if tokenizer.used and tokenizer.writes == self._writes:
+            self._documents[doc_id] = tokenizer.used
+
+    def forget(self, doc_ids: Iterable[str]) -> None:
+        self._writes += 1
+        for doc_id in doc_ids:
+            self._documents.pop(doc_id, None)
+
+
+def _bm25_rank(
+    query: str,
+    chunks: list[Chunk],
+    k: int,
+    *,
+    tokenize: Callable[[Chunk], Sequence[str]],
+) -> list[RetrievedChunk]:
     """Small deterministic BM25 implementation with no runtime dependency."""
     if k < 1 or not chunks:
         return []
-    query_terms = Counter(_lexical_tokens(query))
+    query_terms = Counter(portuguese_lexical_tokens(query))
     if not query_terms:
         return []
 
-    documents = [_lexical_tokens(chunk.text) for chunk in chunks]
+    documents = [tokenize(chunk) for chunk in chunks]
+    vocabularies = [set(document) for document in documents]
     document_frequency = {
-        term: sum(term in set(document) for document in documents) for term in query_terms
+        term: sum(term in vocabulary for vocabulary in vocabularies) for term in query_terms
     }
     average_length = sum(len(document) for document in documents) / len(documents)
     k1 = 1.5
@@ -692,7 +772,8 @@ def _bm25_rank(query: str, chunks: list[Chunk], k: int) -> list[RetrievedChunk]:
     return ranked[:k]
 
 
-def _lexical_tokens(text: str) -> list[str]:
-    decomposed = unicodedata.normalize("NFKD", text.casefold())
-    without_accents = "".join(char for char in decomposed if not unicodedata.combining(char))
-    return re.findall(r"[a-z0-9]+", without_accents)
+def portuguese_lexical_tokens(text: str) -> list[str]:
+    """Normalize text with the same stopword policy as local BM25 retrieval."""
+
+    tokens = re.findall(r"[a-z0-9]+", _normalize_lexical_text(text))
+    return [token for token in tokens if token not in _PORTUGUESE_STOPWORDS]

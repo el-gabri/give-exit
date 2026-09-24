@@ -2,15 +2,11 @@
 
 import hashlib
 
+from app.consumer.ground_selection import MAX_GROUND_CANDIDATES, MIN_GROUND_SCORE_RATIO
 from app.consumer.legal_corpus import get_default_legal_corpus
 from app.consumer.legal_policy import provision_is_eligible
-from app.consumer.retrieval import infer_retrieval_category
-from app.consumer.schemas import ConsumerCaseFacts, ConsumerIssueCategory
-from app.consumer.service import (
-    MAX_GROUND_CANDIDATES,
-    MIN_GROUND_SCORE_RATIO,
-    ConsumerCaseService,
-)
+from app.consumer.schemas import ConsumerCaseFacts
+from app.consumer.service import ConsumerCaseService
 from app.ingestion.service import DocumentIngestionService
 from app.llm.mock_client import MockLLMClient
 from app.rag.embeddings import MockEmbeddingClient
@@ -32,12 +28,10 @@ def _service() -> ConsumerCaseService:
 
 def _facts(
     *,
-    category: ConsumerIssueCategory = ConsumerIssueCategory.UNAUTHORIZED_CHARGE,
     complaint: str = "A empresa cobrou duas vezes a mesma compra.",
 ) -> ConsumerCaseFacts:
     return ConsumerCaseFacts.model_validate(
         {
-            "issue_category": category,
             "complaint_summary": complaint,
             "desired_resolution": "Quero a devolução do valor pago em duplicidade.",
         }
@@ -48,16 +42,11 @@ def _corpus_chunks(count: int, facts: ConsumerCaseFacts | None = None) -> list:
     """Chunks that resolve to real provisions, so grounds can be built."""
     corpus = get_default_legal_corpus()
     service = _service()
-    selected_facts = facts or _facts()
-    category = infer_retrieval_category(
-        selected_facts.issue_category.value if selected_facts.issue_category else "other",
-        selected_facts.complaint_summary or "",
-    )
     resolved = [
         chunk
         for chunk in corpus.as_chunks()
         if any(
-            provision_is_eligible(category, provision.provision_id)
+            provision_is_eligible(provision)
             for provision in service._legal_corpus.provisions_for_chunk(
                 RetrievedChunk(chunk=chunk, score=1.0)
             )
@@ -141,7 +130,6 @@ def test_low_scoring_top_article_does_not_bypass_the_absolute_support_gate() -> 
 def test_candidates_beyond_the_window_are_ignored() -> None:
     service = _service()
     facts = _facts(
-        category=ConsumerIssueCategory.OTHER,
         complaint="O contrato de adesão está ilegível e contém cláusula abusiva oculta.",
     )
     chunks = _corpus_chunks(MAX_GROUND_CANDIDATES + 2, facts)
@@ -165,13 +153,104 @@ def test_no_results_yield_no_grounds() -> None:
     assert _service()._legal_grounds([], _facts(), []) == []
 
 
-def test_retrieved_but_category_ineligible_article_is_not_cited() -> None:
-    service = _service()
-    ineligible = next(
+def _chunk_for(provision_id: str):
+    return next(
         chunk
         for chunk in get_default_legal_corpus().as_chunks()
-        if chunk.metadata.get("provision_id") == "br-cdc-art-49"
+        if chunk.metadata.get("provision_id") == provision_id
     )
-    results = [[RetrievedChunk(chunk=ineligible, score=0.03)]]
 
-    assert service._legal_grounds(results, _facts(), _traces(results)) == []
+
+def _chunk_for_unit(unit_id: str):
+    return next(
+        chunk
+        for chunk in get_default_legal_corpus().as_chunks()
+        if chunk.metadata.get("unit_id") == unit_id
+    )
+
+
+def test_correlated_queries_choose_corroborated_unit_within_provision() -> None:
+    service = _service()
+    paragraph_2 = _chunk_for_unit("br-cdc-art-43-paragrafo-2")
+    paragraph_4 = _chunk_for_unit("br-cdc-art-43-paragrafo-4")
+    result_sets = [
+        [
+            RetrievedChunk(chunk=paragraph_4, score=0.032),
+            RetrievedChunk(chunk=paragraph_2, score=0.028),
+        ],
+        [RetrievedChunk(chunk=paragraph_2, score=0.027)],
+        [RetrievedChunk(chunk=paragraph_2, score=0.026)],
+    ]
+
+    grounds = service._legal_grounds(result_sets, _facts(), _traces(result_sets))
+
+    assert [ground.authority.unit_id for ground in grounds] == [
+        "br-cdc-art-43-paragrafo-2"
+    ]
+
+
+def test_provision_window_is_applied_after_correlated_sibling_selection() -> None:
+    service = _service()
+    corpus = get_default_legal_corpus()
+    paragraph_2 = _chunk_for_unit("br-cdc-art-43-paragrafo-2")
+    paragraph_4 = _chunk_for_unit("br-cdc-art-43-paragrafo-4")
+    intervening = []
+    seen_provisions = {"br-cdc-art-43"}
+    for chunk in corpus.as_chunks():
+        provision_id = str(chunk.metadata.get("provision_id"))
+        if provision_id in seen_provisions:
+            continue
+        provision = corpus.provision_for_chunk(chunk)
+        if not provision_is_eligible(provision):
+            continue
+        seen_provisions.add(provision_id)
+        intervening.append(chunk)
+        if len(intervening) == MAX_GROUND_CANDIDATES - 1:
+            break
+    assert len(intervening) == MAX_GROUND_CANDIDATES - 1
+
+    first_query = [RetrievedChunk(chunk=paragraph_4, score=0.032)]
+    first_query.extend(
+        RetrievedChunk(chunk=chunk, score=0.031 - index * 0.001)
+        for index, chunk in enumerate(intervening)
+    )
+    first_query.append(RetrievedChunk(chunk=paragraph_2, score=0.023))
+    result_sets = [
+        first_query,
+        [RetrievedChunk(chunk=paragraph_2, score=0.022)],
+        [RetrievedChunk(chunk=paragraph_2, score=0.021)],
+    ]
+
+    grounds = service._legal_grounds(result_sets, _facts(), _traces(result_sets))
+
+    article_43 = next(
+        ground for ground in grounds if ground.authority.provision_id == "br-cdc-art-43"
+    )
+    assert article_43.authority.unit_id == "br-cdc-art-43-paragrafo-2"
+    assert article_43.authority.retrieval_rank == MAX_GROUND_CANDIDATES + 1
+
+
+def test_article_outside_the_notice_scope_is_not_cited() -> None:
+    """Eligibility is about what an individual notice can rest on.
+
+    Criminal offences, administrative sanctions and collective-action
+    procedure stay out however well they rank.
+    """
+    service = _service()
+    for provision_id in ("br-cdc-art-71", "br-cdc-art-95", "br-cdc-art-56"):
+        results = [[RetrievedChunk(chunk=_chunk_for(provision_id), score=0.03)]]
+        assert service._legal_grounds(results, _facts(), _traces(results)) == [], provision_id
+
+
+def test_eligible_supported_results_produce_a_notice() -> None:
+    """Eligible, retrieval-supported results are enough to produce grounds.
+
+    No intake label gates this: there is no allowlist keyed by category to
+    trip on.
+    """
+    service = _service()
+    chunks = _corpus_chunks(3)
+    results = [[RetrievedChunk(chunk=chunk, score=0.03) for chunk in chunks]]
+    facts = _facts()
+
+    assert service._legal_grounds(results, facts, _traces(results))

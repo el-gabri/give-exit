@@ -39,7 +39,7 @@ FastAPI /consumer/cases
         +--> upload limitado --> extração/OCR --> segurança de documento
         +--> PostgreSQL/Chroma + dense + busca textual + RRF
         |      +--> evidências aceitas
-        |      +--> CDC versionado + dispositivos selecionados da CF
+        |      +--> CDC, LGPD e Código Civil (escopo limitado) + dispositivos da CF
         +--> política jurídica e cenário financeiro determinísticos
         +--> notificação auditável --> Markdown / PDF / DOCX
 ```
@@ -242,8 +242,15 @@ Checklist Docker para funcionamento completo:
 
 ## Fontes e citações
 
-- O CDC vem de snapshot fixado do Planalto, acompanhado de manifesto e hashes.
+- CDC, LGPD e Código Civil vêm de snapshots fixados do Planalto, lidos por um
+  único parser de leis, com manifestos que fixam os hashes do arquivo e do texto
+  extraído. Do Código Civil só a Parte Geral e o Livro I da Parte Especial entram
+  no índice; os demais livros ficam no corpus para auditoria.
 - Dispositivos constitucionais selecionados são versionados no corpus.
+- Fundamentos da LGPD e do Código Civil complementam o CDC: no máximo três por
+  notificação, só ao lado de um fundamento do CDC e nenhum em recuperação apenas
+  lexical. O Título VI do Livro I da Parte Especial do Código Civil (espécies
+  de contrato) é indexado, mas não é citado.
 - Os chunks preservam lei, artigo, subdivisão, URL oficial, release, vigência e
   hashes de origem.
 - A recuperação jurídica combina semântica e correspondência lexical exata.
@@ -287,6 +294,18 @@ docker compose up --build
 
 ```bash
 docker compose up --build
+```
+
+Na subida, o serviço `legal-index` pré-indexa (ou reutiliza) o corpus legal nos
+volumes nomeados `consumer-data` e `embedding-generations` — o mesmo estado em
+qualquer máquina, sem depender de `./data` no host. A API só sobe depois que
+esse passo termina com sucesso. Confirme com `GET /health`
+(`legal_corpus_ready: true`).
+
+Rebuild manual / `--force`:
+
+```bash
+docker compose --profile tools run --rm indexer -- --force
 ```
 
 - Interface: <http://localhost:8501>
@@ -384,8 +403,14 @@ python -m app.consumer.preindex_legal --check
 O primeiro comando pode levar dezenas de minutos ou horas com o JUÁ em CPU,
 dependendo do hardware e do tamanho dos chunks. Cada shard concluído é durável;
 reiniciar o mesmo comando continua do último shard verificado. Depois de
-concluído, a API reutiliza os 460 chunks persistidos. Use `--force` somente para
+concluído, a API reutiliza os 2.455 chunks persistidos. Use `--force` somente para
 uma reconstrução deliberada.
+
+Um novo release do corpus reaproveita os vetores de todo chunk cujo texto não
+mudou, vindos de gerações anteriores verificadas do mesmo modelo, revisão e
+formatador de documento. Antes, dois textos reaproveitados são re-embedados
+como canário; se divergirem, a construção para e sugere `--no-reuse`, que
+recalcula tudo mantendo a retomada.
 
 Um namespace legado pode ser promovido sem outra execução longa se o operador
 tiver verificado de forma independente a revisão exata presente no cache:
@@ -399,6 +424,17 @@ python -m app.consumer.preindex_legal `
 O manifesto registra `adopted_existing_vectors`; essa atestação não vira prova
 retroativa de metadados que a execução antiga não registrou.
 
+Os snapshots das leis são atualizados explicitamente, nunca em tempo de execução:
+
+```powershell
+python -m app.consumer.update_statute_snapshot --law lgpd
+```
+
+O refresher registra o user agent usado, não grava nada quando o texto extraído
+não mudou e grava snapshots novos como `pending_review`; confira artigos por
+amostragem na página oficial antes de promover o snapshot e de gerar um novo
+release do corpus.
+
 Nas consultas, timeout, limite de concorrência, cache por hash e circuit breaker
 protegem o modelo local. Se ele falhar, o modo híbrido pode degradar para busca
 lexical auditada (`degraded_mode=lexical_only`), sem relaxar os gates jurídicos
@@ -406,14 +442,10 @@ ou de citação.
 
 ## API
 
-Tutorial completo de integração (fluxo passo a passo, payloads, curl e
-PowerShell): **[docs/api-consumer.md](docs/api-consumer.md)**
-
-Documentação interativa: <http://localhost:8000/docs>
-
 | Método | Rota | Finalidade |
 |---|---|---|
 | `GET` | `/health` | Vida da API e prontidão do corpus legal |
+| `POST` | `/consumer/prompt-notices` | One-shot: texto (+ anexo opcional) → Markdown |
 | `POST` | `/consumer/cases` | Criar caso efêmero e token |
 | `GET` | `/consumer/cases/{id}` | Consultar caso autorizado |
 | `POST` | `/consumer/cases/{id}/messages` | Adicionar mensagem |
@@ -424,6 +456,10 @@ Documentação interativa: <http://localhost:8000/docs>
 | `GET` | `/consumer/cases/{id}/notice.{md,pdf,docx}` | Exportar notificação |
 | `GET` | `/consumer/cases/{id}/notice/retrievals` | Auditar recuperação |
 | `DELETE` | `/consumer/cases/{id}` | Apagar caso e vetores de evidência |
+
+`POST /consumer/prompt-notices` não exige token de caso: a API cria um atendimento
+efêmero, gera o Markdown e apaga o estado. O fluxo multi-campo (`/cases` …)
+continua oficial para a UI Streamlit.
 
 Todas as operações do caso exigem o token opaco devolvido na criação. O modo
 produção também exige uma API key configurada.
@@ -449,6 +485,20 @@ python -m app.evaluation.consumer_runner `
   --output consumer-retrieval-results.json
 ```
 
+A avaliação pelo caminho da notificação mede os fundamentos que o seletor de
+produção realmente citaria (as três consultas de produção, k=8, e o mesmo
+`select_legal_grounds` usado pelo serviço), e não candidatos ranqueados:
+
+```powershell
+python -m app.evaluation.consumer_runner --evaluate-notice --output notice-results.json
+python -m app.evaluation.consumer_runner --evaluate-notice --notice-pipeline configured `
+  --require-semantic --output configured-notice-results.json
+```
+
+O relatório traz fundamentos citados, citações ruins conhecidas (hard negatives
+rotulados que foram citados), recall exato das unidades citadas, abstenção e
+sucesso da recuperação semântica.
+
 ## Privacidade e limitações
 
 - Uploads brutos são apagados, mas texto extraído e chunks continuam sendo
@@ -463,6 +513,9 @@ python -m app.evaluation.consumer_runner `
   de PII nos documentos exportados.
 - O corpus constitucional contém dispositivos selecionados, não a Constituição
   completa.
+- Do Código Civil só a Parte Geral e o Livro I da Parte Especial são indexados;
+  esse escopo, as regras de elegibilidade da LGPD e os novos casos do golden
+  ainda exigem revisão jurídica especializada.
 - Corpus, políticas e labels de avaliação exigem revisão jurídica independente
   antes de uso público em produção.
 

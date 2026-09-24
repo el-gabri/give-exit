@@ -9,7 +9,6 @@ from pydantic import ValidationError
 from app.consumer.legal_corpus import get_default_legal_corpus
 from app.consumer.schemas import (
     ConsumerCaseFacts,
-    ConsumerIssueCategory,
     EvidenceCitation,
     LegalAuthorityCitation,
 )
@@ -20,7 +19,6 @@ def test_consumer_facts_report_only_drafting_critical_gaps() -> None:
     assert empty.missing_fields() == [
         "bank_name",
         "consumer_name",
-        "issue_category",
         "complaint_summary",
         "incident_date_or_period",
         "desired_resolution",
@@ -29,7 +27,6 @@ def test_consumer_facts_report_only_drafting_critical_gaps() -> None:
     complete = ConsumerCaseFacts(
         consumer_name="Pessoa Consumidora",
         bank_name="Banco Exemplo",
-        issue_category=ConsumerIssueCategory.UNAUTHORIZED_CHARGE,
         complaint_summary="Uma compra não reconhecida apareceu na fatura.",
         incident_date_or_period="julho de 2026",
         desired_resolution="Estorno e bloqueio da cobrança.",

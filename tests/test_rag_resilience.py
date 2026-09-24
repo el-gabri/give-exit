@@ -14,12 +14,14 @@ def _guard(
     embedder: MockEmbeddingClient,
     *,
     timeout_seconds: float = 1.0,
+    queue_timeout_seconds: float = 0.01,
     circuit_breaker_failures: int = 2,
 ) -> QueryEmbeddingGuard:
     return QueryEmbeddingGuard(
         embedder,
         timeout_seconds=timeout_seconds,
         max_concurrency=1,
+        queue_timeout_seconds=queue_timeout_seconds,
         circuit_breaker_failures=circuit_breaker_failures,
         circuit_breaker_reset_seconds=60,
         cache_ttl_seconds=300,
@@ -88,3 +90,54 @@ async def test_timeout_keeps_capacity_reserved_until_local_work_finishes() -> No
 
     release.set()
     await asyncio.sleep(0.01)
+
+
+async def test_overlapping_queries_wait_for_a_slot_instead_of_degrading() -> None:
+    """A busy slot must queue the next caller, not push it to lexical-only.
+
+    With one embedding slot and a model that takes real time, overlapping
+    requests are the normal case. Rejecting the second caller outright silently
+    produced a notice built without any semantic retrieval.
+    """
+
+    class SlowEmbedder(MockEmbeddingClient):
+        def __init__(self) -> None:
+            super().__init__()
+            self.calls = 0
+
+        async def embed(self, texts: list[str]) -> list[list[float]]:
+            self.calls += 1
+            await asyncio.sleep(0.05)
+            return await super().embed(texts)
+
+    embedder = SlowEmbedder()
+    guard = _guard(embedder, timeout_seconds=5.0, queue_timeout_seconds=5.0)
+
+    results = await asyncio.gather(
+        guard.embed(["primeira consulta"]),
+        guard.embed(["segunda consulta"]),
+        guard.embed(["terceira consulta"]),
+    )
+
+    assert embedder.calls == 3
+    assert all(len(result.vectors) == 1 for result in results)
+
+
+async def test_queue_timeout_still_bounds_the_wait() -> None:
+    """Queueing must not become an unbounded stall under sustained overload."""
+    release = asyncio.Event()
+
+    class BlockedEmbedder(MockEmbeddingClient):
+        async def embed(self, texts: list[str]) -> list[list[float]]:
+            await release.wait()
+            return await super().embed(texts)
+
+    guard = _guard(BlockedEmbedder(), timeout_seconds=5.0, queue_timeout_seconds=0.05)
+    first = asyncio.create_task(guard.embed(["consulta bloqueada"]))
+    await asyncio.sleep(0.01)
+
+    with pytest.raises(EmbeddingUnavailableError, match="concurrency limit"):
+        await guard.embed(["consulta na fila"])
+
+    release.set()
+    await first

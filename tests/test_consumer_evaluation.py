@@ -20,6 +20,7 @@ from app.evaluation.consumer_runner import (
     normalize_consumer_retrieval_hit,
 )
 from app.schemas.evaluation import (
+    CaseResult,
     ConsumerLegalGoldenCase,
     ConsumerLegalGoldenDataset,
     ConsumerLegalRelevance,
@@ -49,6 +50,40 @@ def test_consumer_regression_gates_check_floors_ceilings_and_missing_metrics() -
         "unknown: not produced by this run, cannot gate on it",
         "consumer_hard_negative_rate@5: 0.100 > allowed 0.050",
     ]
+
+
+def test_summary_totals_sum_per_case_counts() -> None:
+    summary = EvaluationSummary.from_cases(
+        [
+            CaseResult(case_name="a", counts={"consumer_notice_grounds": 3}),
+            CaseResult(
+                case_name="b",
+                counts={
+                    "consumer_notice_grounds": 2,
+                    "consumer_notice_known_bad_citations": 1,
+                },
+            ),
+        ]
+    )
+
+    assert summary.totals == {
+        "consumer_notice_grounds": 5,
+        "consumer_notice_known_bad_citations": 1,
+    }
+
+
+def test_gates_also_read_integer_totals() -> None:
+    summary = EvaluationSummary(totals={"consumer_notice_known_bad_citations": 5})
+
+    assert check_consumer_gates(
+        summary, maximums=(("consumer_notice_known_bad_citations", 4.0),)
+    ) == ["consumer_notice_known_bad_citations: 5.000 > allowed 4.000"]
+    assert (
+        check_consumer_gates(
+            summary, maximums=(("consumer_notice_known_bad_citations", 5.0),)
+        )
+        == []
+    )
 
 
 def _case(*, no_ground: bool = False) -> ConsumerLegalGoldenCase:
@@ -98,19 +133,23 @@ def test_seed_dataset_is_separate_versioned_and_explicitly_unreviewed() -> None:
     dataset = load_consumer_legal_dataset(DATASET_PATH)
 
     assert dataset.dataset_id == "consumer-legal-retrieval-seed"
-    assert dataset.version == "1.0.0"
+    assert dataset.version == "2.0.0"
     assert dataset.authoring == "developer_authored_seed"
     assert dataset.review_status == "requires_legal_review"
     assert dataset.source_url.endswith("/l8078compilado.htm")
-    assert len(dataset.cases) == 15
+    assert len(dataset.cases) == 22
     assert len({case.category for case in dataset.cases}) >= 12
     assert sum(case.no_applicable_ground for case in dataset.cases) == 2
     assert all(case.slices for case in dataset.cases)
+    salary_case = next(case for case in dataset.cases if case.case_id == "salario_atrasado")
+    assert salary_case.category == "no_consumer_relationship"
     assert any(
         judgment.unit_id == "br-cdc-art-42-paragrafo-unico"
         for case in dataset.cases
         for judgment in case.relevant
     )
+    assert sum("law:lgpd" in case.slices for case in dataset.cases) == 3
+    assert sum("law:cc" in case.slices for case in dataset.cases) == 3
 
 
 def test_seed_labels_resolve_to_active_units_in_versioned_cdc() -> None:
@@ -257,23 +296,67 @@ async def test_evaluator_accepts_sync_and_async_retriever_callables() -> None:
 
     assert sync_summary.cases[0].score("consumer_recall@5") == 0.5
     assert async_summary.cases[0].score("consumer_recall@5") == 0.5
-    assert len(sync_summary.cases[0].queries) == 3
-    assert len(sync_summary.cases[0].query_sha256) == 3
+    assert len(sync_summary.cases[0].queries) == 2
+    assert len(sync_summary.cases[0].query_sha256) == 2
     assert sync_summary.cases[0].retrieved_hits[0].retrieval_id == ("br-cdc-art-42-paragrafo-unico")
-    assert len(calls) == 6
+    assert len(calls) == 4
     assert all(k == 10 for _, k in calls)
     assert sum("cobrou um pacote" in query for query, _ in calls) == 4
-    assert sum("artigo 42" in query for query, _ in calls) == 4
     assert sync_summary.run is not None
     assert sync_summary.run.dataset_sha256 == dataset.content_sha256
     assert sync_summary.run.corpus_sha256 == get_default_legal_corpus().corpus_sha256
-    assert sync_summary.run.query_builder_version == "consumer-legal-three-query-v2"
-    assert sync_summary.run.queries_per_case == 3
+    assert sync_summary.run.query_builder_version == "consumer-legal-narrative-v6"
+    assert sync_summary.run.queries_per_case == 2
     assert sync_summary.by_category["unauthorized_charge"].case_count == 1
     assert sync_summary.by_slice["supplier:telecom"].case_count == 1
     assert sync_summary.metric_case_counts["consumer_recall@5"] == 1
     assert sync_summary.run.retrieval.configuration_complete is False
     assert sync_summary.metric_directions["consumer_hard_negative_rate@5"] == "lower_is_better"
+
+
+async def test_descriptive_category_still_drives_the_reporting_breakdown() -> None:
+    case = _case().model_copy(update={"category": "right_of_withdrawal"})
+    dataset = ConsumerLegalGoldenDataset(
+        dataset_id="category-reporting-fixture",
+        version="1.0.0",
+        description="Fixture proving the descriptive category is reporting only.",
+        source_url="https://www.planalto.gov.br/ccivil_03/leis/l8078compilado.htm",
+        authoring="developer_authored_seed",
+        review_status="requires_legal_review",
+        cases=(case,),
+    )
+
+    summary = await ConsumerLegalRetrievalEvaluator(lambda _query, _k: []).run(dataset)
+
+    result = summary.cases[0]
+    assert result.category == "right_of_withdrawal"
+    assert summary.by_category["right_of_withdrawal"].case_count == 1
+    # The category no longer reaches the query: two queries, both narrative-only.
+    assert len(result.queries) == 2
+    assert "cobrou um pacote" in result.queries[1]
+
+
+def test_golden_case_rejects_an_unknown_field() -> None:
+    """Removed fields are gone; a dataset that still carries one must fail loudly."""
+    payload = _case().model_dump(mode="json")
+    payload["unexpected_field"] = "unauthorized_charge"
+
+    with pytest.raises(ValidationError, match="unexpected_field"):
+        ConsumerLegalGoldenCase.model_validate(payload)
+
+
+def test_dataset_version_is_two_zero_zero() -> None:
+    dataset = load_consumer_legal_dataset(DATASET_PATH)
+
+    assert dataset.version == "2.0.0"
+
+
+def test_dataset_covers_an_unrequested_service_charge() -> None:
+    dataset = load_consumer_legal_dataset(DATASET_PATH)
+    case = next(c for c in dataset.cases if c.case_id == "cobranca_de_servico_nao_solicitado")
+
+    assert any(item.article_id == "br-cdc-art-39" for item in case.relevant)
+    assert "br-cc-art-880" in case.hard_negatives
 
 
 async def test_evaluator_isolates_provider_failure_in_case_result() -> None:

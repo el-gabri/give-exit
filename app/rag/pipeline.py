@@ -6,15 +6,16 @@ injected - agents never know which vector database is running.
 """
 
 import asyncio
-import hashlib
 import time
 import uuid
 from collections import defaultdict
-from collections.abc import Mapping
+from collections.abc import Awaitable, Mapping
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import cast
 
 from app.core.config import RetrievalMode
+from app.core.hashing import sha256_hex
 from app.core.logging import get_logger
 from app.rag.chunking import SectionAwareChunker
 from app.rag.embeddings import (
@@ -41,6 +42,9 @@ logger = get_logger(__name__)
 
 AUDIT_PREVIEW_CHARS = 240
 
+# One query's ranked results, its search time in ms and the error it hit.
+_TimedResult = tuple[list[RetrievedChunk], float, Exception | None]
+
 
 class RetrievalBatchError(RuntimeError):
     """A failed retrieval batch whose query-level audit remains available."""
@@ -48,10 +52,23 @@ class RetrievalBatchError(RuntimeError):
     def __init__(self, cause: Exception, traces: list[RetrievalTrace]) -> None:
         self.cause = cause
         self.traces = traces
-        failed = sum(trace.error is not None for trace in traces)
         super().__init__(
-            f"{failed}/{len(traces)} retrieval queries failed; first error: {_error_text(cause)}"
+            f"{_failed_queries(traces)}/{len(traces)} retrieval queries failed; "
+            f"first error: {_error_text(cause)}"
         )
+
+
+@dataclass(frozen=True, slots=True)
+class _QueryBatch:
+    """What every query of one retrieval batch shares in its audit trace."""
+
+    queries: list[str]
+    doc_id: str
+    agent: str
+    requested_k: int
+    candidate_k: int
+    batch_id: str = field(default_factory=lambda: uuid.uuid4().hex)
+    started: float = field(default_factory=time.perf_counter)
 
 
 class RagPipeline:
@@ -77,6 +94,7 @@ class RagPipeline:
         embedding_require_model_revision: bool = False,
         embedding_query_timeout_seconds: float = 30.0,
         embedding_query_max_concurrency: int = 1,
+        embedding_query_queue_timeout_seconds: float = 30.0,
         embedding_circuit_breaker_failures: int = 2,
         embedding_circuit_breaker_reset_seconds: float = 60.0,
         embedding_query_cache_ttl_seconds: float = 300.0,
@@ -109,6 +127,11 @@ class RagPipeline:
         self._embedding_query_instruction = (
             str(query_instruction).strip() if query_instruction else None
         )
+        self._embedding_query_instruction_sha256 = (
+            sha256_hex(self._embedding_query_instruction)
+            if self._embedding_query_instruction is not None
+            else None
+        )
         self._vector_store_name = type(store).__name__
         self._index_name = str(getattr(store, "index_name", type(store).__name__))
         self._reranker_name = (
@@ -123,7 +146,6 @@ class RagPipeline:
             f"corpus={corpus_version}:embedding={self._embedding_model}:"
             f"index={self._index_name}:reranker={self._reranker_name or 'none'}"
         )
-        self._index_version = f"{self._chunker.index_version}:{self._base_index_version}"
         self._document_chunking_versions: dict[str, str] = {}
         self._document_embedding_generation_ids: dict[str, str] = {}
         self._include_trace_previews = include_trace_previews
@@ -136,6 +158,7 @@ class RagPipeline:
             embedder,
             timeout_seconds=embedding_query_timeout_seconds,
             max_concurrency=embedding_query_max_concurrency,
+            queue_timeout_seconds=embedding_query_queue_timeout_seconds,
             circuit_breaker_failures=embedding_circuit_breaker_failures,
             circuit_breaker_reset_seconds=embedding_circuit_breaker_reset_seconds,
             cache_ttl_seconds=embedding_query_cache_ttl_seconds,
@@ -158,11 +181,6 @@ class RagPipeline:
     def embedding_contract_configuration(self) -> dict[str, str | int | bool | None]:
         """Return the document/query vector contract without loading model weights."""
 
-        instruction_hash = (
-            hashlib.sha256(self._embedding_query_instruction.encode("utf-8")).hexdigest()
-            if self._embedding_query_instruction is not None
-            else None
-        )
         return {
             "model_repository": self._embedding_model,
             "model_revision": self._embedding_model_revision,
@@ -174,7 +192,7 @@ class RagPipeline:
             "query_formatter_version": str(
                 getattr(self._embedder, "query_format_version", "unknown")
             ),
-            "query_instruction_sha256": instruction_hash,
+            "query_instruction_sha256": self._embedding_query_instruction_sha256,
             "require_model_revision": self._embedding_require_model_revision,
         }
 
@@ -189,15 +207,7 @@ class RagPipeline:
         if requested_k < 1:
             raise ValueError("requested_k must be positive")
         effective_mode = self._retrieval_mode if mode is None else RetrievalMode(mode)
-        chunking_version = self._document_chunking_versions.get(
-            doc_id or "", self._chunker.index_version
-        )
         candidate_k = self._candidate_k(requested_k, effective_mode)
-        instruction_hash = (
-            hashlib.sha256(self._embedding_query_instruction.encode("utf-8")).hexdigest()
-            if self._embedding_query_instruction is not None
-            else None
-        )
         return {
             "retrieval_mode": effective_mode.value,
             "requested_k": requested_k,
@@ -209,9 +219,9 @@ class RagPipeline:
                 doc_id or ""
             ),
             "embedding_query_instruction": self._embedding_query_instruction,
-            "embedding_query_instruction_sha256": instruction_hash,
+            "embedding_query_instruction_sha256": self._embedding_query_instruction_sha256,
             "vector_store": self._vector_store_name,
-            "index_version": f"{chunking_version}:{self._base_index_version}",
+            "index_version": self._index_version(doc_id),
             "rrf_constant": (
                 self._rrf_constant if effective_mode is RetrievalMode.HYBRID else None
             ),
@@ -225,13 +235,19 @@ class RagPipeline:
             "reranker_model_revision": self._reranker_model_revision,
             "corpus_version": self._corpus_version,
             "index_name": self._index_name,
-            "chunking_version": chunking_version,
+            "chunking_version": self._chunking_version(doc_id),
         }
 
     def _candidate_k(self, requested_k: int, mode: RetrievalMode) -> int:
         if mode is RetrievalMode.HYBRID or self._reranker is not None:
             return requested_k * self._candidate_multiplier
         return requested_k
+
+    def _chunking_version(self, doc_id: str | None) -> str:
+        return self._document_chunking_versions.get(doc_id or "", self._chunker.index_version)
+
+    def _index_version(self, doc_id: str | None) -> str:
+        return f"{self._chunking_version(doc_id)}:{self._base_index_version}"
 
     async def index_document(
         self,
@@ -265,16 +281,8 @@ class RagPipeline:
         """
         if not chunks:
             return []
-        chunk_ids = [chunk.chunk_id for chunk in chunks]
-        if len(set(chunk_ids)) != len(chunk_ids):
-            raise ValueError("chunk ids must be unique within an indexing batch")
-
-        vectors = await embed_document_texts(self._embedder, [chunk.text for chunk in chunks])
-        validate_embedding_vectors(
-            vectors,
-            expected_count=len(chunks),
-            expected_dimension=self._embedding_expected_dimension,
-        )
+        _require_unique_chunk_ids(chunks)
+        vectors = await self.embed_document_batch([chunk.text for chunk in chunks])
         return await self.index_precomputed_chunks(
             chunks,
             vectors,
@@ -305,9 +313,7 @@ class RagPipeline:
             if vectors:
                 raise ValueError("vectors require at least one chunk")
             return []
-        chunk_ids = [chunk.chunk_id for chunk in chunks]
-        if len(set(chunk_ids)) != len(chunk_ids):
-            raise ValueError("chunk ids must be unique within an indexing batch")
+        _require_unique_chunk_ids(chunks)
         validate_embedding_vectors(
             vectors,
             expected_count=len(chunks),
@@ -329,7 +335,9 @@ class RagPipeline:
                 else self._chunker.index_version
             )
         if replace_documents and isinstance(self._store, DocumentReplacingVectorStore):
-            vector_by_chunk_id = dict(zip(chunk_ids, vectors, strict=True))
+            vector_by_chunk_id = {
+                chunk.chunk_id: vector for chunk, vector in zip(chunks, vectors, strict=True)
+            }
             for doc_id in sorted(document_chunks):
                 selected_chunks = document_chunks[doc_id]
                 await self._store.replace_document(
@@ -346,13 +354,8 @@ class RagPipeline:
             "chunks_indexed",
             documents=len(document_chunks),
             chunks=len(chunks),
-            index_version=(
-                f"{self._document_chunking_versions.get(doc_id, self._chunker.index_version)}:"
-                f"{self._base_index_version}"
-            ),
-            chunking_version=self._document_chunking_versions.get(
-                doc_id, self._chunker.index_version
-            ),
+            index_version=self._index_version(doc_id),
+            chunking_version=self._chunking_version(doc_id),
         )
         return chunks
 
@@ -465,50 +468,35 @@ class RagPipeline:
         ):
             raise TypeError("hybrid retrieval requires a lexical-capable vector store")
         score_type = _score_type(effective_mode, reranked=self._reranker is not None)
-        candidate_k = self._candidate_k(requested_k, effective_mode)
-        batch_id = uuid.uuid4().hex
-        batch_started = time.perf_counter()
+        batch = _QueryBatch(
+            queries=queries,
+            doc_id=doc_id,
+            agent=agent,
+            requested_k=requested_k,
+            candidate_k=self._candidate_k(requested_k, effective_mode),
+        )
         embedding_started = time.perf_counter()
         try:
             embedding_result = await self._query_embedding_guard.embed(queries)
         except Exception as exc:
-            embedding_duration_ms = (time.perf_counter() - embedding_started) * 1000
+            embedding_duration_ms = _elapsed_ms(embedding_started)
             if (
                 isinstance(exc, EmbeddingUnavailableError)
                 and effective_mode is RetrievalMode.HYBRID
                 and self._embedding_lexical_fallback
             ):
                 return await self._lexical_fallback_with_traces(
-                    queries,
-                    doc_id=doc_id,
-                    agent=agent,
-                    requested_k=requested_k,
-                    candidate_k=candidate_k,
-                    batch_id=batch_id,
-                    batch_started=batch_started,
+                    batch,
                     embedding_duration_ms=embedding_duration_ms,
                     reason=_error_text(exc),
                 )
-            batch_duration_ms = (time.perf_counter() - batch_started) * 1000
-            traces = [
-                self._build_retrieval_trace(
-                    agent=agent,
-                    batch_id=batch_id,
-                    doc_id=doc_id,
-                    query=query,
-                    query_index=query_index,
-                    requested_k=requested_k,
-                    results=[],
-                    embedding_duration_ms=embedding_duration_ms,
-                    search_duration_ms=0.0,
-                    batch_duration_ms=batch_duration_ms,
-                    score_type=score_type,
-                    retrieval_mode=effective_mode,
-                    candidate_k=candidate_k,
-                    error=_error_text(exc),
-                )
-                for query_index, query in enumerate(queries)
-            ]
+            traces = self._batch_traces(
+                batch,
+                [([], 0.0, exc) for _ in queries],
+                embedding_duration_ms=embedding_duration_ms,
+                score_type=score_type,
+                retrieval_mode=effective_mode,
+            )
             logger.warning(
                 "retrieval_embedding_failed",
                 doc_id=doc_id,
@@ -517,214 +505,194 @@ class RagPipeline:
                 error_type=type(exc).__name__,
             )
             raise RetrievalBatchError(exc, traces) from exc
-        vectors = embedding_result.vectors
-        embedding_cache_hits = embedding_result.cache_hits
-        embedding_duration_ms = (time.perf_counter() - embedding_started) * 1000
+        embedding_duration_ms = _elapsed_ms(embedding_started)
 
-        async def query_store(
-            query: str,
-            vector: list[float],
-        ) -> tuple[list[RetrievedChunk], float, Exception | None]:
-            started = time.perf_counter()
-            try:
-                if effective_mode is RetrievalMode.HYBRID:
-                    lexical_store = cast(LexicalVectorStore, self._store)
-                    dense_items, lexical_items = await asyncio.gather(
-                        self._store.query(vector, doc_id=doc_id, k=candidate_k),
-                        lexical_store.lexical_query(query, doc_id=doc_id, k=candidate_k),
-                    )
-                    items = reciprocal_rank_fusion(
-                        [dense_items, lexical_items],
-                        k=candidate_k,
-                        constant=self._rrf_constant,
-                        weights=[self._dense_weight, self._lexical_weight],
-                    )
-                else:
-                    items = await self._store.query(vector, doc_id=doc_id, k=candidate_k)
-                if self._reranker is not None:
-                    items = await self._reranker.rerank(query, items, requested_k)
-                else:
-                    items = items[:requested_k]
-            except Exception as exc:
-                return [], (time.perf_counter() - started) * 1000, exc
-            return items, (time.perf_counter() - started) * 1000, None
-
-        timed_results = await asyncio.gather(
-            *(query_store(query, vector) for query, vector in zip(queries, vectors, strict=True))
-        )
-        batch_duration_ms = (time.perf_counter() - batch_started) * 1000
-        results = [items for items, _, _ in timed_results]
-        traces = [
-            self._build_retrieval_trace(
-                agent=agent,
-                batch_id=batch_id,
-                doc_id=doc_id,
-                query=query,
-                query_index=query_index,
-                requested_k=requested_k,
-                results=items,
-                embedding_duration_ms=embedding_duration_ms,
-                search_duration_ms=search_duration_ms,
-                batch_duration_ms=batch_duration_ms,
-                score_type=score_type,
-                retrieval_mode=effective_mode,
-                candidate_k=candidate_k,
-                embedding_cache_hits=embedding_cache_hits,
-                error=_error_text(error) if error is not None else None,
+        async def search(query: str, vector: list[float]) -> list[RetrievedChunk]:
+            if effective_mode is not RetrievalMode.HYBRID:
+                return await self._store.query(vector, doc_id=doc_id, k=batch.candidate_k)
+            lexical_store = cast(LexicalVectorStore, self._store)
+            dense_items, lexical_items = await asyncio.gather(
+                self._store.query(vector, doc_id=doc_id, k=batch.candidate_k),
+                lexical_store.lexical_query(query, doc_id=doc_id, k=batch.candidate_k),
             )
-            for query_index, (
-                query,
-                (items, search_duration_ms, error),
-            ) in enumerate(zip(queries, timed_results, strict=True))
-        ]
-        failures = [error for _, _, error in timed_results if error is not None]
+            return reciprocal_rank_fusion(
+                [dense_items, lexical_items],
+                k=batch.candidate_k,
+                constant=self._rrf_constant,
+                weights=[self._dense_weight, self._lexical_weight],
+            )
+
+        timed_results = await self._run_searches(
+            batch,
+            [
+                search(query, vector)
+                for query, vector in zip(queries, embedding_result.vectors, strict=True)
+            ],
+        )
+        traces = self._batch_traces(
+            batch,
+            timed_results,
+            embedding_duration_ms=embedding_duration_ms,
+            score_type=score_type,
+            retrieval_mode=effective_mode,
+            embedding_cache_hits=embedding_result.cache_hits,
+        )
         logger.info(
             "chunks_retrieved_batch",
             doc_id=doc_id,
             agent=agent,
             queries=len(queries),
-            results=sum(len(items) for items in results),
+            results=sum(trace.returned_count for trace in traces),
             query_hashes=[trace.query_sha256[:12] for trace in traces],
             top_scores=[
                 round(trace.results[0].score, 4) if trace.results else None for trace in traces
             ],
             embedding_duration_ms=round(embedding_duration_ms, 1),
-            embedding_cache_hits=embedding_cache_hits,
+            embedding_cache_hits=embedding_result.cache_hits,
             retrieval_mode=effective_mode.value,
             score_type=score_type,
-            failed_queries=len(failures),
+            failed_queries=_failed_queries(traces),
         )
-        if failures:
-            raise RetrievalBatchError(failures[0], traces)
+        results = _results_or_raise(timed_results, traces)
         return results, traces
 
     async def _lexical_fallback_with_traces(
         self,
-        queries: list[str],
+        batch: _QueryBatch,
         *,
-        doc_id: str,
-        agent: str,
-        requested_k: int,
-        candidate_k: int,
-        batch_id: str,
-        batch_started: float,
         embedding_duration_ms: float,
         reason: str,
     ) -> tuple[list[list[RetrievedChunk]], list[RetrievalTrace]]:
         """Return conservative lexical results when the semantic dependency is unavailable."""
 
         lexical_store = cast(LexicalVectorStore, self._store)
+        timed_results = await self._run_searches(
+            batch,
+            [
+                lexical_store.lexical_query(query, doc_id=batch.doc_id, k=batch.candidate_k)
+                for query in batch.queries
+            ],
+        )
+        traces = self._batch_traces(
+            batch,
+            timed_results,
+            embedding_duration_ms=embedding_duration_ms,
+            score_type="reranker_score" if self._reranker is not None else "bm25_score",
+            retrieval_mode=RetrievalMode.HYBRID,
+            degraded_mode="lexical_only",
+            degraded_reason=reason,
+        )
+        logger.warning(
+            "retrieval_lexical_fallback",
+            doc_id=batch.doc_id,
+            agent=batch.agent,
+            queries=len(batch.queries),
+            query_hashes=[trace.query_sha256[:12] for trace in traces],
+            reason=reason,
+            failed_queries=_failed_queries(traces),
+        )
+        results = _results_or_raise(timed_results, traces)
+        return results, traces
 
-        async def query_lexical(
-            query: str,
-        ) -> tuple[list[RetrievedChunk], float, Exception | None]:
+    async def _run_searches(
+        self,
+        batch: _QueryBatch,
+        searches: list[Awaitable[list[RetrievedChunk]]],
+    ) -> list[_TimedResult]:
+        """Run each query's candidate search concurrently, then rerank or truncate it.
+
+        A failed query keeps its error and an empty result, so the audit of
+        its siblings survives.
+        """
+
+        async def timed(query: str, search: Awaitable[list[RetrievedChunk]]) -> _TimedResult:
             started = time.perf_counter()
             try:
-                items = await lexical_store.lexical_query(
-                    query,
-                    doc_id=doc_id,
-                    k=candidate_k,
-                )
+                items = await search
                 if self._reranker is not None:
-                    items = await self._reranker.rerank(query, items, requested_k)
+                    items = await self._reranker.rerank(query, items, batch.requested_k)
                 else:
-                    items = items[:requested_k]
+                    items = items[: batch.requested_k]
             except Exception as exc:
-                return [], (time.perf_counter() - started) * 1000, exc
-            return items, (time.perf_counter() - started) * 1000, None
+                return [], _elapsed_ms(started), exc
+            return items, _elapsed_ms(started), None
 
-        timed_results = await asyncio.gather(*(query_lexical(query) for query in queries))
-        batch_duration_ms = (time.perf_counter() - batch_started) * 1000
-        score_type = "reranker_score" if self._reranker is not None else "bm25_score"
-        results = [items for items, _, _ in timed_results]
-        traces = [
+        return await asyncio.gather(
+            *(timed(query, search) for query, search in zip(batch.queries, searches, strict=True))
+        )
+
+    def _batch_traces(
+        self,
+        batch: _QueryBatch,
+        timed_results: list[_TimedResult],
+        *,
+        embedding_duration_ms: float,
+        score_type: str,
+        retrieval_mode: RetrievalMode,
+        embedding_cache_hits: int = 0,
+        degraded_mode: str | None = None,
+        degraded_reason: str | None = None,
+    ) -> list[RetrievalTrace]:
+        """One audit trace per query of the batch, in query order."""
+        batch_duration_ms = _elapsed_ms(batch.started)
+        return [
             self._build_retrieval_trace(
-                agent=agent,
-                batch_id=batch_id,
-                doc_id=doc_id,
-                query=query,
-                query_index=query_index,
-                requested_k=requested_k,
-                results=items,
+                batch,
+                query_index,
+                query,
+                results,
                 embedding_duration_ms=embedding_duration_ms,
                 search_duration_ms=search_duration_ms,
                 batch_duration_ms=batch_duration_ms,
                 score_type=score_type,
-                retrieval_mode=RetrievalMode.HYBRID,
-                candidate_k=candidate_k,
-                degraded_mode="lexical_only",
-                degraded_reason=reason,
+                retrieval_mode=retrieval_mode,
+                embedding_cache_hits=embedding_cache_hits,
+                degraded_mode=degraded_mode,
+                degraded_reason=degraded_reason,
                 error=_error_text(error) if error is not None else None,
             )
-            for query_index, (
-                query,
-                (items, search_duration_ms, error),
-            ) in enumerate(zip(queries, timed_results, strict=True))
+            for query_index, (query, (results, search_duration_ms, error)) in enumerate(
+                zip(batch.queries, timed_results, strict=True)
+            )
         ]
-        failures = [error for _, _, error in timed_results if error is not None]
-        logger.warning(
-            "retrieval_lexical_fallback",
-            doc_id=doc_id,
-            agent=agent,
-            queries=len(queries),
-            query_hashes=[trace.query_sha256[:12] for trace in traces],
-            reason=reason,
-            failed_queries=len(failures),
-        )
-        if failures:
-            raise RetrievalBatchError(failures[0], traces)
-        return results, traces
 
     def _build_retrieval_trace(
         self,
-        *,
-        agent: str,
-        batch_id: str,
-        doc_id: str,
-        query: str,
+        batch: _QueryBatch,
         query_index: int,
-        requested_k: int,
+        query: str,
         results: list[RetrievedChunk],
+        *,
         embedding_duration_ms: float,
         search_duration_ms: float,
         batch_duration_ms: float,
         score_type: str,
         retrieval_mode: RetrievalMode,
-        candidate_k: int,
-        embedding_cache_hits: int = 0,
-        degraded_mode: str | None = None,
-        degraded_reason: str | None = None,
-        error: str | None = None,
+        embedding_cache_hits: int,
+        degraded_mode: str | None,
+        degraded_reason: str | None,
+        error: str | None,
     ) -> RetrievalTrace:
         return RetrievalTrace(
-            agent=agent,
-            batch_id=batch_id,
-            doc_id=doc_id,
+            agent=batch.agent,
+            batch_id=batch.batch_id,
+            doc_id=batch.doc_id,
             query_index=query_index,
             query=query,
-            query_sha256=hashlib.sha256(query.encode("utf-8")).hexdigest(),
-            requested_k=requested_k,
-            candidate_k=candidate_k,
+            query_sha256=sha256_hex(query),
+            requested_k=batch.requested_k,
+            candidate_k=batch.candidate_k,
             candidate_multiplier=self._candidate_multiplier,
             returned_count=len(results),
             retrieval_mode=retrieval_mode.value,
             embedding_model=self._embedding_model,
             embedding_model_revision=self._embedding_model_revision,
-            embedding_generation_id=self._document_embedding_generation_ids.get(doc_id),
+            embedding_generation_id=self._document_embedding_generation_ids.get(batch.doc_id),
             embedding_query_instruction=self._embedding_query_instruction,
-            embedding_query_instruction_sha256=(
-                hashlib.sha256(self._embedding_query_instruction.encode("utf-8")).hexdigest()
-                if self._embedding_query_instruction is not None
-                else None
-            ),
+            embedding_query_instruction_sha256=self._embedding_query_instruction_sha256,
             vector_store=self._vector_store_name,
-            index_version=(
-                f"{self._document_chunking_versions.get(doc_id, self._chunker.index_version)}:"
-                f"{self._base_index_version}"
-            ),
-            chunking_version=self._document_chunking_versions.get(
-                doc_id, self._chunker.index_version
-            ),
+            index_version=self._index_version(batch.doc_id),
+            chunking_version=self._chunking_version(batch.doc_id),
             score_type=score_type,
             rrf_constant=(self._rrf_constant if retrieval_mode is RetrievalMode.HYBRID else None),
             dense_weight=(self._dense_weight if retrieval_mode is RetrievalMode.HYBRID else None),
@@ -750,7 +718,7 @@ class RagPipeline:
                     page_start=item.chunk.page_start,
                     page_end=item.chunk.page_end,
                     score=item.score,
-                    content_sha256=hashlib.sha256(item.chunk.text.encode("utf-8")).hexdigest(),
+                    content_sha256=sha256_hex(item.chunk.text),
                     source_metadata=item.chunk.metadata,
                     source_url=_metadata_text(item.chunk.metadata, "official_url", "source_url"),
                     source_release_id=_metadata_text(
@@ -807,6 +775,30 @@ def reciprocal_rank_fusion(
     ]
     fused.sort(key=lambda item: (-item.score, item.chunk.chunk_id))
     return fused[:k]
+
+
+def _require_unique_chunk_ids(chunks: list[Chunk]) -> None:
+    chunk_ids = [chunk.chunk_id for chunk in chunks]
+    if len(set(chunk_ids)) != len(chunk_ids):
+        raise ValueError("chunk ids must be unique within an indexing batch")
+
+
+def _results_or_raise(
+    timed_results: list[_TimedResult], traces: list[RetrievalTrace]
+) -> list[list[RetrievedChunk]]:
+    """The batch's ranked results, or its first error with every query's trace."""
+    for _, _, error in timed_results:
+        if error is not None:
+            raise RetrievalBatchError(error, traces)
+    return [results for results, _, _ in timed_results]
+
+
+def _failed_queries(traces: list[RetrievalTrace]) -> int:
+    return sum(trace.error is not None for trace in traces)
+
+
+def _elapsed_ms(started: float) -> float:
+    return (time.perf_counter() - started) * 1000
 
 
 def _score_type(mode: RetrievalMode, *, reranked: bool) -> str:

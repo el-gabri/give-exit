@@ -1,6 +1,6 @@
 # ADR 0012: Bounded consumer extrajudicial-notice assistant
 
-Status: accepted · Date: 2026-08-04 · Amended: 2026-08-24
+Status: accepted · Date: 2026-08-04 · Amended: 2026-08-24 · Amended by [ADR 0016](0016-multi-statute-consumer-corpus.md) · Amended by [ADR 0018](0018-narrative-only-consumer-intake.md)
 
 ## Context
 
@@ -83,8 +83,10 @@ scope of this demonstration.
   release to be withdrawn when legislation changes.
 - (+) Scenario calculations expose only confirmed amounts and conditional legal
   increments, without pseudo-probabilities or expected-value precision.
-- (-) The initial category set will not cover every consumer dispute, procedural
-  remedy, limitation issue or jurisdiction-specific practice.
+- (-) ~~The initial category set will not cover every consumer dispute, procedural
+  remedy, limitation issue or jurisdiction-specific practice.~~ Superseded by
+  [ADR 0018](0018-narrative-only-consumer-intake.md): intake no longer collects
+  an issue category at all.
 - (-) Curated summaries require legal review and ongoing version maintenance;
   links to official sources do not automate that governance.
 - (-) Export-only, human-reviewed drafts provide less automation, but avoid an

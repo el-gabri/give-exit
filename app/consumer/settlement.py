@@ -1,7 +1,5 @@
 """Transparent settlement scenarios for consumer extrajudicial notices."""
 
-import hashlib
-import json
 from decimal import ROUND_HALF_UP, Decimal
 
 from app.consumer.schemas import (
@@ -9,6 +7,7 @@ from app.consumer.schemas import (
     SettlementInputs,
     SettlementScenario,
 )
+from app.core.hashing import canonical_json_sha256
 
 
 class SettlementCalculator:
@@ -87,14 +86,7 @@ class SettlementCalculator:
                 str(private_reservation) if private_reservation is not None else None
             ),
         }
-        calculation_sha256 = hashlib.sha256(
-            json.dumps(
-                calculation_payload,
-                ensure_ascii=False,
-                separators=(",", ":"),
-                sort_keys=True,
-            ).encode("utf-8")
-        ).hexdigest()
+        calculation_sha256 = canonical_json_sha256(calculation_payload)
 
         return SettlementScenario(
             methodology_version=self.METHODOLOGY_VERSION,
@@ -127,8 +119,8 @@ class SettlementCalculator:
                 "Na etapa extrajudicial, o custo do cenário sem acordo é zero por padrão; "
                 "custas, honorários, demora e riscos de eventual processo não são inferidos.",
                 "O cálculo não estima chance de vitória, indenização judicial ou valor devido.",
-                "A Constituição e o CDC não fornecem, por si sós, probabilidades ou tabelas "
-                "de indenização para o caso concreto.",
+                "As normas citadas (CDC, Constituição, LGPD e Código Civil) não fornecem, "
+                "por si sós, probabilidades ou tabelas de indenização para o caso concreto.",
                 "Revise fatos, provas, prazos e estratégia com profissional habilitado antes "
                 "do envio.",
             ],

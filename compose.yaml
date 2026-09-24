@@ -1,27 +1,58 @@
+# Portable Docker runtime: all durable state lives in named volumes, never in a
+# host-relative ./data path. `docker compose up --build` indexes the legal
+# corpus into those volumes on any machine before the API starts serving.
+#
+# Manual rebuild / force: docker compose --profile tools run --rm indexer -- --force
+
+x-api-image: &api-image
+  build:
+    context: .
+    target: api
+    args:
+      API_EXTRAS: ${LITIGATION_API_EXTRAS:-ocr}
+  env_file:
+    - path: .env
+      required: false
+  environment: &api-environment
+    LITIGATION_DATA_DIR: /app/data
+    # A local Python process reaches the host database through localhost;
+    # the API container needs Docker Desktop's host gateway instead.
+    LITIGATION_POSTGRES_DSN: ${LITIGATION_DOCKER_POSTGRES_DSN:-postgresql://postgres:giveexit@host.docker.internal:5432/postgres}
+    # Model weights live in their own volume, not beside application data.
+    # They are immutable, re-downloadable and pinned by repo@revision, while
+    # consumer-data holds the state that cannot be recovered; mixing them made
+    # a 200 KB data volume impossible to prune, back up or move without
+    # dragging 7.5 GB of weights along.
+    HF_HOME: /models/huggingface
+    # Once the cache is warm and the revision is pinned, production should
+    # forbid runtime calls to the Hub so start-up is deterministic.
+    HF_HUB_OFFLINE: ${LITIGATION_HF_HUB_OFFLINE:-0}
+
+x-index-volumes: &index-volumes
+  - consumer-data:/app/data
+  - embedding-generations:/app/data/embedding_generations
+  - model-cache:/models
+
 services:
-  api:
-    build:
-      context: .
-      target: api
-      args:
-        API_EXTRAS: ${LITIGATION_API_EXTRAS:-ocr}
-    env_file:
-      - path: .env
-        required: false
+  # One-shot job: materialize (or reuse) the versioned legal index in the same
+  # volumes the API reads. Idempotent when the corpus is already ready.
+  legal-index:
+    <<: *api-image
     environment:
-      LITIGATION_DATA_DIR: /app/data
-      # A local Python process reaches the host database through localhost;
-      # the API container needs Docker Desktop's host gateway instead.
-      LITIGATION_POSTGRES_DSN: ${LITIGATION_DOCKER_POSTGRES_DSN:-postgresql://postgres:giveexit@host.docker.internal:5432/postgres}
-      # Keep downloaded local-model weights across image rebuilds. This path
-      # lives in the already writable and persistent consumer-data volume.
-      HF_HOME: /app/data/huggingface
+      <<: *api-environment
+    volumes: *index-volumes
+    restart: "no"
+    command: ["python", "-m", "app.consumer.preindex_legal"]
+
+  api:
+    <<: *api-image
+    environment:
+      <<: *api-environment
     ports:
       - "${LITIGATION_BIND_HOST:-127.0.0.1}:8000:8000"
     volumes:
-      # Bind mount keeps Chroma and embedding_generations on the host so
-      # `python -m app.consumer.preindex_legal` can run before compose up.
-      - ./data:/app/data
+      - consumer-data:/app/data   # ChromaDB, local-model cache and upload workspace
+      - ./data/embedding_generations:/app/data/embedding_generations:ro
   frontend:
     build:
       context: .
@@ -37,3 +68,6 @@ services:
       - "${LITIGATION_BIND_HOST:-127.0.0.1}:8501:8501"
     depends_on:
       - api
+
+volumes:
+  consumer-data:

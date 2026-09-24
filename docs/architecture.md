@@ -18,7 +18,7 @@ flowchart LR
     ING --> SEC[Prompt-injection gate]
     SEC -->|accepted and sanitized| RAG[Consumer RAG pipeline]
     RAG --> EVID[Case evidence chunks]
-    RAG --> LAW[Versioned CDC and selected CF corpus]
+    RAG --> LAW[Versioned CDC, LGPD, scoped Civil Code and selected CF]
     RAG --> HYB[Dense plus lexical ranking plus RRF]
     HYB --> POLICY[Deterministic authority policy]
     POLICY --> NOTICE[Bounded notice composer]
@@ -95,17 +95,26 @@ effect. It writes checksummed immutable shards and a generation manifest,
 validates canonical chunk identity, vector dimension and normalization, imports
 precomputed vectors, verifies persistence and only then marks the generation
 active. Legacy vectors may be adopted only with an explicit operator attestation
-and retain that weaker provenance in the manifest.
+and retain that weaker provenance in the manifest. A new generation reuses the
+vectors of chunks whose text is unchanged from a verified earlier embedded
+generation with the same document identity, after a two-text canary confirms
+the embedding space (ADR 0017).
 
 ## Legal provenance
 
-The CDC snapshot is stored with retrieval date, official URL and SHA-256
-manifest. Corpus parsing preserves stable provision/subdivision IDs and source
-hashes. Selected CF provisions use the same typed legal schema. Runtime requests
-never fetch or silently update law.
+The CDC, LGPD and Civil Code snapshots are stored with retrieval date, official
+URL, raw and extracted-text SHA-256 and a review status, and are read by one
+generic statute parser. Corpus parsing preserves stable provision/subdivision
+IDs, hierarchy and source hashes. Only the Civil Code's general part and law of
+obligations are indexed; its other books are kept for audit. Selected CF
+provisions use the same typed legal schema. Runtime requests never fetch or
+silently update law.
 
 Retrieval does not decide legal applicability. A deterministic policy filters
-inactive, unknown, weak or insufficiently corroborated chunks. The policy and
+inactive, unknown, weak or insufficiently corroborated chunks. LGPD and Civil
+Code grounds only complement the CDC: at most three per notice, only beside a
+CDC ground, none under lexical-only retrieval, and never from the Civil Code's
+title on specific contract types (ADR 0016). The policy and
 corpus both declare review status so the application cannot present engineering
 labels as lawyer-certified law.
 
@@ -177,3 +186,7 @@ production claims.
 - [0011](adr/0011-retrieval-traceability-and-evaluation.md) — retrieval audit
 - [0012](adr/0012-bounded-consumer-extrajudicial-notice.md) — product boundary
 - [0013](adr/0013-versioned-consumer-law-retrieval.md) — legal corpus and RAG
+- [0014](adr/0014-resumable-embedding-generations.md) — resumable embedding generations
+- [0015](adr/0015-bounded-notice-prose-composer.md) — bounded notice prose composer
+- [0016](adr/0016-multi-statute-consumer-corpus.md) — LGPD and scoped Civil Code as complementary sources
+- [0017](adr/0017-cross-generation-vector-reuse.md) — cross-generation vector reuse

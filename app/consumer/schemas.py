@@ -7,31 +7,19 @@ authority merely because it was retrieved by the same RAG pipeline.
 
 from __future__ import annotations
 
-import hashlib
 from datetime import date, datetime, timezone
 from decimal import Decimal
 from enum import Enum
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.core.config import NoticeComposer
+from app.core.hashing import sha256_hex
 from app.llm.base import LLMCallMetadata
 from app.schemas.document import ExtractionMethod
 from app.schemas.security import PromptInjectionAssessment
 from app.schemas.trace import RetrievalTrace
-
-
-class ConsumerIssueCategory(str, Enum):
-    """Consumer complaint categories supported by the guided intake."""
-
-    UNAUTHORIZED_CHARGE = "unauthorized_charge"
-    FRAUD = "fraud"
-    ACCOUNT_BLOCK = "account_block"
-    NEGATIVE_CREDIT_RECORD = "negative_credit_record"
-    LOAN_OR_INTEREST = "loan_or_interest"
-    SERVICE_FAILURE = "service_failure"
-    OVER_INDEBTEDNESS = "over_indebtedness"
-    OTHER = "other"
 
 
 class ConsumerMessageRole(str, Enum):
@@ -61,6 +49,18 @@ class ConsumerCaseStatus(str, Enum):
 class LegalSource(str, Enum):
     FEDERAL_CONSTITUTION = "federal_constitution"
     CONSUMER_DEFENSE_CODE = "consumer_defense_code"
+    DATA_PROTECTION_LAW = "data_protection_law"
+    CIVIL_CODE = "civil_code"
+
+
+LAW_ID_BY_SOURCE: dict[LegalSource, str] = {
+    LegalSource.FEDERAL_CONSTITUTION: "br-cf",
+    LegalSource.CONSUMER_DEFENSE_CODE: "br-cdc",
+    LegalSource.DATA_PROTECTION_LAW: "br-lgpd",
+    LegalSource.CIVIL_CODE: "br-cc",
+}
+_LEGAL_ID_PATTERN = r"^br-(cf|cdc|lgpd|cc)-[a-z0-9-]+$"
+_LAW_ID_PATTERN = r"^br-(cf|cdc|lgpd|cc)$"
 
 
 class ProvisionStatus(str, Enum):
@@ -109,7 +109,6 @@ class ConsumerCaseFacts(BaseModel):
         max_length=200,
         description="Legacy API name for the supplier, company or institution",
     )
-    issue_category: ConsumerIssueCategory | None = None
     complaint_summary: str | None = Field(default=None, max_length=10_000)
     incident_date_or_period: str | None = Field(default=None, max_length=500)
     prior_protocols: list[str] = Field(default_factory=list)
@@ -157,7 +156,6 @@ class ConsumerCaseFacts(BaseModel):
         required = {
             "bank_name": self.bank_name,
             "consumer_name": self.consumer_name,
-            "issue_category": self.issue_category,
             "complaint_summary": self.complaint_summary,
             "incident_date_or_period": self.incident_date_or_period,
             "desired_resolution": self.desired_resolution,
@@ -170,7 +168,6 @@ class ConsumerIntakeExtraction(BaseModel):
 
     consumer_name: str | None = None
     bank_name: str | None = None
-    issue_category: ConsumerIssueCategory | None = None
     complaint_summary: str | None = None
     incident_date_or_period: str | None = None
     prior_protocols: list[str] | None = None
@@ -230,7 +227,7 @@ class LegalTextUnit(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    unit_id: str = Field(pattern=r"^br-(cf|cdc)-[a-z0-9-]+$")
+    unit_id: str = Field(pattern=_LEGAL_ID_PATTERN)
     kind: LegalUnitKind
     label: str = Field(min_length=1)
     text: str = Field(min_length=1)
@@ -242,7 +239,7 @@ class LegalTextUnit(BaseModel):
 
     @model_validator(mode="after")
     def _set_and_validate_hash(self) -> LegalTextUnit:
-        expected = hashlib.sha256(self.text.encode("utf-8")).hexdigest()
+        expected = sha256_hex(self.text)
         if self.content_sha256 is None:
             object.__setattr__(self, "content_sha256", expected)
         elif self.content_sha256 != expected:
@@ -255,7 +252,7 @@ class LegalProvision(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    provision_id: str = Field(pattern=r"^br-(cf|cdc)-[a-z0-9-]+$")
+    provision_id: str = Field(pattern=_LEGAL_ID_PATTERN)
     source: LegalSource
     source_name: str
     article: str
@@ -266,11 +263,16 @@ class LegalProvision(BaseModel):
     corpus_release_id: str
     verified_on: date
     status: ProvisionStatus = ProvisionStatus.ACTIVE
-    law_id: str | None = Field(default=None, pattern=r"^br-(cf|cdc)$")
+    law_id: str | None = Field(default=None, pattern=_LAW_ID_PATTERN)
     article_key: str | None = Field(default=None, pattern=r"^[0-9]+(?:-[a-z])?$")
     title: str | None = None
     chapter: str | None = None
     section: str | None = None
+    part: str | None = None
+    book: str | None = None
+    subtitle: str | None = None
+    subsection: str | None = None
+    index_scope: Literal["indexed", "audit_only"] = "indexed"
     official_text: str | None = None
     official_text_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     source_snapshot_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
@@ -279,22 +281,20 @@ class LegalProvision(BaseModel):
 
     @model_validator(mode="after")
     def _set_and_validate_hash(self) -> LegalProvision:
-        expected = hashlib.sha256(self.summary.encode("utf-8")).hexdigest()
+        expected = sha256_hex(self.summary)
         if self.content_sha256 is None:
             object.__setattr__(self, "content_sha256", expected)
         elif self.content_sha256 != expected:
             raise ValueError("content_sha256 does not match summary")
         if self.law_id is None:
-            object.__setattr__(
-                self,
-                "law_id",
-                ("br-cf" if self.source is LegalSource.FEDERAL_CONSTITUTION else "br-cdc"),
-            )
+            object.__setattr__(self, "law_id", LAW_ID_BY_SOURCE[self.source])
+        if not self.provision_id.startswith(f"{self.law_id}-"):
+            raise ValueError("provision_id must start with the law id")
         if self.official_text is None:
             if self.official_text_sha256 is not None:
                 raise ValueError("official_text_sha256 requires official_text")
         else:
-            official_hash = hashlib.sha256(self.official_text.encode("utf-8")).hexdigest()
+            official_hash = sha256_hex(self.official_text)
             if self.official_text_sha256 is None:
                 object.__setattr__(self, "official_text_sha256", official_hash)
             elif self.official_text_sha256 != official_hash:
@@ -303,6 +303,15 @@ class LegalProvision(BaseModel):
         if len(unit_ids) != len(set(unit_ids)):
             raise ValueError("legal provision contains duplicate unit ids")
         return self
+
+
+def _require_matching_hash(text: str | None, digest: str | None, *, name: str) -> None:
+    """``{name}_sha256`` may only accompany ``name`` and must then match it."""
+    if text is None:
+        if digest is not None:
+            raise ValueError(f"{name}_sha256 requires {name}")
+    elif digest != sha256_hex(text):
+        raise ValueError(f"{name}_sha256 does not match {name}")
 
 
 class LegalAuthorityCitation(BaseModel):
@@ -320,15 +329,19 @@ class LegalAuthorityCitation(BaseModel):
     content_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     content_kind: LegalContentKind
     status: ProvisionStatus = ProvisionStatus.ACTIVE
-    law_id: str | None = Field(default=None, pattern=r"^br-(cf|cdc)$")
+    law_id: str | None = Field(default=None, pattern=_LAW_ID_PATTERN)
     article_key: str | None = Field(default=None, pattern=r"^[0-9]+(?:-[a-z])?$")
     title: str | None = None
     chapter: str | None = None
     section: str | None = None
+    part: str | None = None
+    book: str | None = None
+    subtitle: str | None = None
+    subsection: str | None = None
     official_text: str | None = None
     official_text_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     source_snapshot_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    unit_id: str | None = Field(default=None, pattern=r"^br-(cf|cdc)-[a-z0-9-]+$")
+    unit_id: str | None = Field(default=None, pattern=_LEGAL_ID_PATTERN)
     unit_label: str | None = None
     official_excerpt: str | None = None
     official_excerpt_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
@@ -338,35 +351,20 @@ class LegalAuthorityCitation(BaseModel):
 
     @model_validator(mode="after")
     def _validate_content_hashes(self) -> LegalAuthorityCitation:
-        summary_hash = hashlib.sha256(self.summary.encode("utf-8")).hexdigest()
-        if self.content_sha256 != summary_hash:
+        if self.content_sha256 != sha256_hex(self.summary):
             raise ValueError("content_sha256 does not match cited legal summary")
-
-        if self.official_text is None:
-            if self.official_text_sha256 is not None:
-                raise ValueError("official_text_sha256 requires official_text")
-        else:
-            official_hash = hashlib.sha256(self.official_text.encode("utf-8")).hexdigest()
-            if self.official_text_sha256 != official_hash:
-                raise ValueError("official_text_sha256 does not match official_text")
-
-        if self.official_excerpt is None:
-            if self.official_excerpt_sha256 is not None:
-                raise ValueError("official_excerpt_sha256 requires official_excerpt")
-        else:
-            excerpt_hash = hashlib.sha256(self.official_excerpt.encode("utf-8")).hexdigest()
-            if self.official_excerpt_sha256 != excerpt_hash:
-                raise ValueError("official_excerpt_sha256 does not match official_excerpt")
-
+        _require_matching_hash(
+            self.official_text, self.official_text_sha256, name="official_text"
+        )
+        _require_matching_hash(
+            self.official_excerpt, self.official_excerpt_sha256, name="official_excerpt"
+        )
         if self.unit_id is not None and self.official_excerpt is None:
             raise ValueError("unit_id requires an official_excerpt")
-        if self.content_kind is LegalContentKind.EDITORIAL and (
-            self.official_text is not None or self.official_excerpt is not None
-        ):
+        has_official_content = self.official_text is not None or self.official_excerpt is not None
+        if self.content_kind is LegalContentKind.EDITORIAL and has_official_content:
             raise ValueError("editorial citations cannot contain official text")
-        if self.content_kind is LegalContentKind.OFFICIAL and (
-            self.official_text is None and self.official_excerpt is None
-        ):
+        if self.content_kind is LegalContentKind.OFFICIAL and not has_official_content:
             raise ValueError("official citations require official text")
         return self
 
@@ -376,12 +374,28 @@ class LegalAuthorityCitation(BaseModel):
         provision: LegalProvision,
         *,
         unit: LegalTextUnit | None = None,
+        official_excerpt: str | None = None,
+        official_excerpt_sha256: str | None = None,
         chunk_id: str | None = None,
         retrieval_rank: int | None = None,
         retrieval_score: float | None = None,
     ) -> LegalAuthorityCitation:
         if provision.content_sha256 is None:  # pragma: no cover - validator guarantees it
             raise ValueError("provision has no content hash")
+        if official_excerpt is None and official_excerpt_sha256 is not None:
+            raise ValueError("official excerpt hash requires an explicit excerpt")
+        if unit is not None and official_excerpt is not None and official_excerpt not in unit.text:
+            raise ValueError("explicit official excerpt does not belong to the legal unit")
+        cited_excerpt = (
+            official_excerpt
+            if official_excerpt is not None
+            else unit.text if unit is not None else None
+        )
+        cited_excerpt_sha256 = (
+            official_excerpt_sha256
+            if official_excerpt is not None
+            else unit.content_sha256 if unit is not None else None
+        )
         return cls(
             provision_id=provision.provision_id,
             source_name=provision.source_name,
@@ -402,13 +416,17 @@ class LegalAuthorityCitation(BaseModel):
             title=provision.title,
             chapter=provision.chapter,
             section=provision.section,
+            part=provision.part,
+            book=provision.book,
+            subtitle=provision.subtitle,
+            subsection=provision.subsection,
             official_text=provision.official_text,
             official_text_sha256=provision.official_text_sha256,
             source_snapshot_sha256=provision.source_snapshot_sha256,
             unit_id=unit.unit_id if unit is not None else None,
             unit_label=unit.label if unit is not None else None,
-            official_excerpt=unit.text if unit is not None else None,
-            official_excerpt_sha256=(unit.content_sha256 if unit is not None else None),
+            official_excerpt=cited_excerpt,
+            official_excerpt_sha256=cited_excerpt_sha256,
             chunk_id=chunk_id,
             retrieval_rank=retrieval_rank,
             retrieval_score=retrieval_score,
@@ -539,4 +557,8 @@ class ConsumerNotice(BaseModel):
     composition_metadata: LLMCallMetadata | None = None
     generation_timing: NoticeGenerationTiming
     retrievals: list[RetrievalTrace] = Field(default_factory=list)
+    # Degradation is a property of the notice, not only of its traces. A draft
+    # built without semantic retrieval must say so where a reader will look,
+    # instead of only inside the per-query audit records.
+    retrieval_degraded_modes: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)

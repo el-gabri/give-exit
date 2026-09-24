@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
 
 import pytest
 
 from app.consumer.embedding_generation import EmbeddingGenerationManager
-from app.consumer.legal_corpus import get_default_legal_corpus
+from app.consumer.legal_corpus import LegalCorpus, get_default_legal_corpus
 from app.consumer.legal_index import (
     adopt_legal_corpus_index,
     legal_corpus_is_indexed,
@@ -18,6 +19,7 @@ from app.rag.embeddings import MockEmbeddingClient
 from app.rag.pipeline import RagPipeline
 from app.rag.vector_store import ChromaVectorStore, InMemoryVectorStore
 from app.schemas.embedding import (
+    EmbeddingContract,
     EmbeddingGenerationManifest,
     EmbeddingGenerationStatus,
 )
@@ -41,6 +43,54 @@ def _pipeline(
     )
 
 
+@pytest.fixture
+async def completed_generation(
+    tmp_path: Path,
+) -> tuple[EmbeddingGenerationManager, EmbeddingGenerationManifest]:
+    corpus = LegalCorpus(get_default_legal_corpus().provisions[:2])
+    pipeline = _pipeline(
+        tmp_path,
+        MockEmbeddingClient(),
+        InMemoryVectorStore(index_name="shard-lookup-test"),
+        shard_size=1,
+    )
+    manager = EmbeddingGenerationManager(pipeline, corpus)
+    manifest = await manager.build_and_activate()
+    return manager, manifest
+
+
+def test_generation_load_preserves_canonical_order_with_reversed_manifest(
+    completed_generation: tuple[EmbeddingGenerationManager, EmbeddingGenerationManifest],
+) -> None:
+    manager, manifest = completed_generation
+    chunks, vectors = manager._load_complete_generation(manifest)
+    manifest.shards.reverse()
+
+    loaded_chunks, loaded_vectors = manager._load_complete_generation(manifest)
+
+    assert loaded_chunks is chunks
+    assert loaded_vectors == vectors
+
+
+@pytest.mark.parametrize("first_is_corrupt", [False, True])
+def test_generation_duplicate_shards_preserve_first_match_and_error_order(
+    completed_generation: tuple[EmbeddingGenerationManager, EmbeddingGenerationManifest],
+    first_is_corrupt: bool,
+) -> None:
+    manager, manifest = completed_generation
+    original = manifest.shards[0]
+    corrupt = original.model_copy(update={"artifact_sha256": "0" * 64})
+    manifest.shards[:2] = [corrupt, original] if first_is_corrupt else [original, corrupt]
+
+    expected_error = (
+        "embedding shard 0 failed checksum validation"
+        if first_is_corrupt
+        else "embedding generation is missing shard 1"
+    )
+    with pytest.raises(ValueError, match=f"^{expected_error}$"):
+        manager._load_complete_generation(manifest)
+
+
 async def test_generation_is_checksummed_active_and_strongly_validated(
     tmp_path: Path,
 ) -> None:
@@ -61,7 +111,7 @@ async def test_generation_is_checksummed_active_and_strongly_validated(
     assert result.generation_id == manager.generation_id
     assert manifest.status is EmbeddingGenerationStatus.ACTIVE
     assert manifest.completed_chunk_count == len(corpus.as_chunks())
-    assert manifest.expected_shard_count == 3
+    assert manifest.expected_shard_count == math.ceil(len(corpus.as_chunks()) / 200)
     assert manifest.contract.output_dimension == 128
     assert await legal_corpus_is_indexed(pipeline, corpus) is True
     configuration = pipeline.retrieval_configuration(
@@ -131,7 +181,7 @@ async def test_failed_generation_resumes_only_missing_shards(tmp_path: Path) -> 
     result = await preindex_legal_corpus(resumed, corpus)
 
     assert result.action == "indexed"
-    assert healthy_embedder.calls == 2
+    assert healthy_embedder.calls == math.ceil(len(corpus.as_chunks()) / 200) - 1
     assert await legal_corpus_is_indexed(resumed, corpus) is True
 
 
@@ -193,3 +243,53 @@ async def test_chroma_float32_roundtrip_keeps_generation_ready(tmp_path: Path) -
 
     assert result.action == "indexed"
     assert await legal_corpus_is_indexed(pipeline, corpus) is True
+
+
+def test_query_instruction_does_not_change_the_generation_identity() -> None:
+    """Rewording a query instruction must not invalidate document vectors.
+
+    Documents are never framed with a query instruction, so every persisted
+    vector is bit-identical across the two configurations. Including the
+    query fields in the identity turned a two-line wording change into a
+    full re-embed of the corpus.
+    """
+    base = {
+        "model_repository": "ufca-llms/jua-4B-mixed",
+        "model_revision": "57f491c1718171c0ad71d723c4f6b2030684c4eb",
+        "output_dimension": 2560,
+        "document_formatter_version": "plain-document-v1",
+    }
+    old = EmbeddingContract(
+        **base,
+        query_formatter_version="instruction-prefix-v2",
+        query_instruction_sha256="a" * 64,
+    )
+    new = EmbeddingContract(
+        **base,
+        query_formatter_version="instruct-query-v3",
+        query_instruction_sha256="b" * 64,
+    )
+
+    assert old.document_identity() == new.document_identity()
+    assert old != new
+
+
+def test_document_side_changes_still_change_the_identity() -> None:
+    """The guard must keep firing for anything that does move the vectors."""
+    base = {
+        "model_repository": "ufca-llms/jua-4B-mixed",
+        "model_revision": "57f491c1718171c0ad71d723c4f6b2030684c4eb",
+        "output_dimension": 2560,
+        "document_formatter_version": "plain-document-v1",
+        "query_formatter_version": "instruct-query-v3",
+    }
+    reference = EmbeddingContract(**base)
+
+    for field, value in (
+        ("model_repository", "other/model"),
+        ("model_revision", "0" * 40),
+        ("output_dimension", 1024),
+        ("document_formatter_version", "prefixed-document-v2"),
+    ):
+        altered = EmbeddingContract(**{**base, field: value})
+        assert altered.document_identity() != reference.document_identity(), field

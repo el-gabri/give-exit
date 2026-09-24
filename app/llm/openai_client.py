@@ -4,6 +4,7 @@ import time
 from typing import Any
 
 from openai import AsyncOpenAI
+from pydantic import BaseModel
 
 from app.core.logging import get_logger
 from app.llm.base import (
@@ -18,6 +19,35 @@ from app.llm.pricing import estimate_cost_usd
 logger = get_logger(__name__)
 
 PROVIDER_NAME = "openai"
+
+
+def strict_json_schema(schema: type[BaseModel]) -> dict[str, Any]:
+    """Return a JSON Schema the Responses strict format actually accepts.
+
+    Strict structured outputs require every object to set
+    ``additionalProperties: false`` and to list all of its properties in
+    ``required``. Pydantic emits neither, so sending ``model_json_schema()``
+    verbatim produced an invalid schema and every call failed - which the
+    notice composer then reported only as a silent fallback to deterministic
+    prose. ``tests/test_openai_responses.py`` pins this against the SDK's own
+    strict-schema builder.
+    """
+    strict = _strictified(schema.model_json_schema())
+    if not isinstance(strict, dict):  # pragma: no cover - a model is always an object
+        raise TypeError(f"{schema.__name__} did not produce an object schema")
+    return strict
+
+
+def _strictified(node: Any) -> Any:
+    if isinstance(node, dict):
+        result = {key: _strictified(value) for key, value in node.items()}
+        if result.get("type") == "object":
+            result["additionalProperties"] = False
+            result["required"] = list(result.get("properties") or {})
+        return result
+    if isinstance(node, list):
+        return [_strictified(item) for item in node]
+    return node
 
 
 class OpenAIClient:
@@ -116,7 +146,7 @@ class OpenAIClient:
                 "format": {
                     "type": "json_schema",
                     "name": schema.__name__,
-                    "schema": schema.model_json_schema(),
+                    "schema": strict_json_schema(schema),
                     "strict": True,
                 }
             },

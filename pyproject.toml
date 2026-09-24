@@ -45,10 +45,14 @@ postgres = [
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.23",
+    "pytest-cov>=5.0",
     "ruff>=0.5",
     "mypy>=1.10",
     "pip-audit>=2.10",
     "httpx>=0.28.1",
+    "vulture>=2.11",
+    "import-linter>=2.0",
+    "mutmut>=3.0",
 ]
 
 [tool.setuptools.packages.find]
@@ -56,18 +60,57 @@ dev = [
 include = ["app*"]
 
 [tool.setuptools.package-data]
-"app.consumer" = ["data/cdc/*.html", "data/cdc/*.json"]
+"app.consumer" = ["data/*/*.html", "data/*/*.json"]
 
 [tool.ruff]
 line-length = 100
 target-version = "py310"
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "UP", "B", "SIM"]
+select = ["E", "F", "I", "UP", "B", "SIM", "C90"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+
+[tool.coverage.run]
+branch = true
+# Scoped to modules that already carry dedicated, complete tests. Grows
+# module by module as follow-up work adds coverage elsewhere — a blind
+# repo-wide 100% would block on the ~787 statements already uncovered
+# across the codebase, most of which predate this gate.
+source = [
+    "app.consumer.embedding_artifacts",
+    "app.consumer.ground_selection",
+    "app.consumer.statutes",
+    "app.consumer.vector_reuse",
+    "app.rag.reranking",
+]
+
+[tool.coverage.report]
+fail_under = 100
+show_missing = true
+
+[tool.importlinter]
+root_package = "app"
+
+[[tool.importlinter.contracts]]
+name = "core has no internal dependencies"
+type = "layers"
+layers = ["app.api", "app.core"]
+
+[tool.vulture]
+paths = ["app"]
+min_confidence = 90
+
+[tool.mutmut]
+# Business-logic modules only; migrations/settings/CLI entry points excluded.
+# Full-repo mutation is expensive - CI runs it incrementally on the diff
+# (see the tester gate), a complete pass is scheduled/manual.
+paths_to_mutate = ["app/consumer/", "app/rag/", "app/security/"]
 
 [tool.mypy]
 # Matches the CI interpreter. numpy's bundled stubs (reached through chromadb)
@@ -94,4 +137,11 @@ ignore_missing_imports = true
 [[tool.mypy.overrides]]
 module = ["numpy", "numpy.*"]
 follow_imports = "skip"
+ignore_missing_imports = true
+
+# psycopg ships behind the optional `postgres` extra, which CI does not
+# install (Chroma is the only vector store exercised there) - a stub-parse
+# error here would otherwise abort the entire strict-mode run.
+[[tool.mypy.overrides]]
+module = ["psycopg", "psycopg.*"]
 ignore_missing_imports = true

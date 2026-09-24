@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import hashlib
 import importlib
 import inspect
 import math
@@ -18,12 +17,15 @@ from pathlib import Path
 from typing import cast
 
 from app.consumer.legal_corpus import LegalCorpus
-from app.consumer.retrieval import build_legal_queries_for_case, is_consumer_scope
+from app.consumer.retrieval import build_legal_queries, is_consumer_scope
+from app.consumer.schemas import ConsumerCaseFacts
+from app.core.hashing import sha256_hex
 from app.evaluation.consumer_golden import (
     load_consumer_legal_dataset,
     validate_consumer_legal_labels,
 )
 from app.schemas.evaluation import (
+    LEGAL_UNIT_MARKERS,
     CaseResult,
     ConsumerLegalGoldenCase,
     ConsumerLegalGoldenDataset,
@@ -47,8 +49,7 @@ _INACTIVE_STATUSES = {
     "vetoed",
 }
 _UNKNOWN_STATUSES = {"", "desconhecido", "unknown"}
-_UNIT_MARKERS = ("-caput", "-paragrafo-", "-inciso-", "-alinea-")
-QUERY_BUILDER_VERSION = "consumer-legal-three-query-v2"
+QUERY_BUILDER_VERSION = "consumer-legal-narrative-v6"
 
 
 def _threshold(raw: str) -> tuple[str, float]:
@@ -69,15 +70,22 @@ def check_consumer_gates(
 ) -> list[str]:
     """Return deterministic regression-gate violations for a summary."""
 
+    def lookup(name: str) -> float | None:
+        if name in summary.averages:
+            return summary.averages[name]
+        if name in summary.totals:
+            return float(summary.totals[name])
+        return None
+
     violations: list[str] = []
     for name, floor in minimums:
-        actual = summary.averages.get(name)
+        actual = lookup(name)
         if actual is None:
             violations.append(f"{name}: not produced by this run, cannot gate on it")
         elif actual < floor:
             violations.append(f"{name}: {actual:.3f} < required {floor:.3f}")
     for name, ceiling in maximums:
-        actual = summary.averages.get(name)
+        actual = lookup(name)
         if actual is None:
             violations.append(f"{name}: not produced by this run, cannot gate on it")
         elif actual > ceiling:
@@ -87,7 +95,7 @@ def check_consumer_gates(
 
 def _article_id_from_stable_id(stable_id: str) -> str:
     marker_positions = [
-        position for marker in _UNIT_MARKERS if (position := stable_id.find(marker)) >= 0
+        position for marker in LEGAL_UNIT_MARKERS if (position := stable_id.find(marker)) >= 0
     ]
     return stable_id[: min(marker_positions)] if marker_positions else stable_id
 
@@ -114,52 +122,63 @@ def normalize_consumer_retrieval_hit(value: object) -> ConsumerLegalRetrievalHit
     if isinstance(value, ConsumerLegalRetrievalHit):
         return value
     if isinstance(value, str):
-        stable_id = value.strip().lower()
-        article_id = _article_id_from_stable_id(stable_id)
-        unit_id = stable_id if stable_id != article_id else None
-        return ConsumerLegalRetrievalHit(
-            provision_id=article_id,
-            unit_id=unit_id,
-            status="unknown",
-        )
+        return _hit_from_stable_id(value)
 
     direct = _mapping_from(value)
     chunk_value = direct.get("chunk") if direct else getattr(value, "chunk", None)
     chunk = _mapping_from(chunk_value)
-    metadata_value = (
+    metadata = _mapping_from(
         direct.get("metadata") or chunk.get("metadata") or getattr(chunk_value, "metadata", None)
     )
-    metadata = _mapping_from(metadata_value)
+    sources = (direct, metadata, value, chunk_value)
 
-    def pick(name: str) -> object | None:
-        if name in direct:
-            return direct[name]
-        if name in metadata:
-            return metadata[name]
-        if hasattr(value, name):
-            return cast(object, getattr(value, name))
-        if hasattr(chunk_value, name):
-            return cast(object, getattr(chunk_value, name))
-        return None
-
-    provision_value = pick("provision_id")
-    unit_value = pick("unit_id")
+    provision_value = _pick("provision_id", *sources)
+    unit_value = _pick("unit_id", *sources)
     if provision_value is None:
-        chunk_id = pick("chunk_id")
+        chunk_id = _pick("chunk_id", *sources)
         if chunk_id is not None and _string_value(chunk_id).startswith("br-"):
             unit_value = chunk_id
             provision_value = _article_id_from_stable_id(_string_value(chunk_id))
     if provision_value is None:
         raise ValueError("retrieval hit needs provision_id in the hit or chunk metadata")
 
-    score_value = pick("score")
-    status_value = pick("status")
+    score_value = _pick("score", *sources)
+    status_value = _pick("status", *sources)
     return ConsumerLegalRetrievalHit(
         provision_id=_string_value(provision_value),
         unit_id=_string_value(unit_value) if unit_value is not None else None,
         score=float(_string_value(score_value)) if score_value is not None else 0.0,
         status=_string_value(status_value, "unknown"),
     )
+
+
+def _hit_from_stable_id(value: str) -> ConsumerLegalRetrievalHit:
+    stable_id = value.strip().lower()
+    article_id = _article_id_from_stable_id(stable_id)
+    return ConsumerLegalRetrievalHit(
+        provision_id=article_id,
+        unit_id=stable_id if stable_id != article_id else None,
+        status="unknown",
+    )
+
+
+def _pick(
+    name: str,
+    direct: Mapping[str, object],
+    metadata: Mapping[str, object],
+    value: object,
+    chunk_value: object,
+) -> object | None:
+    """A hit field from the mapping, its chunk metadata, or the hit or chunk object."""
+    if name in direct:
+        return direct[name]
+    if name in metadata:
+        return metadata[name]
+    if hasattr(value, name):
+        return cast(object, getattr(value, name))
+    if hasattr(chunk_value, name):
+        return cast(object, getattr(chunk_value, name))
+    return None
 
 
 def _normalize_hits(value: object) -> list[ConsumerLegalRetrievalHit]:
@@ -365,7 +384,7 @@ class ConsumerLegalRetrievalEvaluator:
             corpus_release_id=corpus.release_id,
             corpus_sha256=corpus.corpus_sha256,
             query_builder_version=QUERY_BUILDER_VERSION,
-            queries_per_case=3,
+            queries_per_case=2,
             cutoffs=self._cutoffs,
             retrieval=retrieval,
         )
@@ -376,18 +395,17 @@ class ConsumerLegalRetrievalEvaluator:
         hits: list[ConsumerLegalRetrievalHit] = []
         retrieval_outcome = "completed"
         try:
+            facts = ConsumerCaseFacts(
+                complaint_summary=case.complaint,
+                desired_resolution=case.desired_resolution,
+            )
             if not is_consumer_scope(
-                category=case.category,
-                complaint=case.complaint,
+                complaint=facts.complaint_summary or "",
             ):
                 retrieval_outcome = "scope_gate_abstained"
             else:
                 result_sets = []
-                queries = build_legal_queries_for_case(
-                    category=case.category,
-                    complaint=case.complaint,
-                    desired_resolution=case.desired_resolution,
-                )
+                queries = build_legal_queries(facts)
                 for query in queries:
                     raw_result = self._retriever(query, self._cutoffs[-1])
                     if inspect.isawaitable(raw_result):
@@ -400,7 +418,7 @@ class ConsumerLegalRetrievalEvaluator:
                 category=case.category,
                 slices=case.slices,
                 queries=tuple(queries),
-                query_sha256=_query_hashes(queries),
+                query_sha256=query_hashes(queries),
                 retrieval_outcome="failed",
                 metrics=_failed_case_metrics(case, self._cutoffs),
                 errors=[f"retrieval failed: {type(exc).__name__}: {exc}"],
@@ -416,7 +434,7 @@ class ConsumerLegalRetrievalEvaluator:
             category=case.category,
             slices=case.slices,
             queries=tuple(queries),
-            query_sha256=_query_hashes(queries),
+            query_sha256=query_hashes(queries),
             retrieved_hits=tuple(
                 RankedEvaluationRetrievalHit(
                     rank=rank,
@@ -483,8 +501,8 @@ def _merge_normalized_hits(
     return sorted(best.values(), key=lambda hit: (-hit.score, hit.retrieval_id))
 
 
-def _query_hashes(queries: Sequence[str]) -> tuple[str, ...]:
-    return tuple(hashlib.sha256(query.encode("utf-8")).hexdigest() for query in queries)
+def query_hashes(queries: Sequence[str]) -> tuple[str, ...]:
+    return tuple(sha256_hex(query) for query in queries)
 
 
 def _failed_case_metrics(
@@ -555,6 +573,31 @@ def _import_retriever(spec: str) -> ConsumerRetriever:
     return cast(ConsumerRetriever, candidate)
 
 
+async def _run_selected_evaluation(
+    args: argparse.Namespace,
+    dataset: ConsumerLegalGoldenDataset,
+) -> tuple[EvaluationSummary, list[tuple[str, float]]]:
+    """Run the evaluation the CLI flags select; return it with its minimum gates."""
+
+    minimums: list[tuple[str, float]] = list(args.minimums)
+    if args.evaluate_notice:
+        from app.evaluation.consumer_notice import run_notice_evaluation
+
+        summary = await run_notice_evaluation(dataset, pipeline_name=args.notice_pipeline)
+        if args.require_semantic:
+            minimums.append(("consumer_notice_semantic_success", 1.0))
+        return summary, minimums
+    if args.retriever:
+        retriever = _import_retriever(args.retriever)
+    elif args.empty_baseline:
+        retriever = _empty_retriever
+    else:
+        from app.evaluation.consumer_retrievers import offline_hybrid_retriever
+
+        retriever = offline_hybrid_retriever
+    return await ConsumerLegalRetrievalEvaluator(retriever).run(dataset), minimums
+
+
 async def _cli() -> None:
     from app.core.logging import configure_logging
 
@@ -588,7 +631,7 @@ async def _cli() -> None:
         default=[],
         type=_threshold,
         metavar="METRIC=VALUE",
-        help="fail if a metric average falls below VALUE (repeatable)",
+        help="fail if a metric average (or integer total) falls below VALUE (repeatable)",
     )
     parser.add_argument(
         "--max",
@@ -597,22 +640,34 @@ async def _cli() -> None:
         default=[],
         type=_threshold,
         metavar="METRIC=VALUE",
-        help="fail if a metric average rises above VALUE (repeatable)",
+        help="fail if a metric average (or integer total) rises above VALUE (repeatable)",
+    )
+    parser.add_argument(
+        "--evaluate-notice",
+        action="store_true",
+        help="score the grounds the production selector would cite (k=8, three queries)",
+    )
+    parser.add_argument(
+        "--notice-pipeline",
+        choices=("offline", "configured"),
+        default="offline",
+        help="stack used by --evaluate-notice; 'configured' needs an active legal index",
+    )
+    parser.add_argument(
+        "--require-semantic",
+        action="store_true",
+        help="with --evaluate-notice, fail when any case fell back to lexical-only retrieval",
     )
     args = parser.parse_args()
 
+    if args.evaluate_notice and (args.retriever or args.empty_baseline):
+        parser.error("--evaluate-notice cannot be combined with --retriever or --empty-baseline")
+    if args.require_semantic and not args.evaluate_notice:
+        parser.error("--require-semantic requires --evaluate-notice")
     if args.retriever and args.empty_baseline:
         parser.error("--retriever and --empty-baseline are mutually exclusive")
-    if args.retriever:
-        retriever = _import_retriever(args.retriever)
-    elif args.empty_baseline:
-        retriever = _empty_retriever
-    else:
-        from app.evaluation.consumer_retrievers import offline_hybrid_retriever
-
-        retriever = offline_hybrid_retriever
     dataset = load_consumer_legal_dataset(Path(args.dataset))
-    summary = await ConsumerLegalRetrievalEvaluator(retriever).run(dataset)
+    summary, minimums = await _run_selected_evaluation(args, dataset)
     rendered = summary.model_dump_json(indent=2)
     if args.output:
         Path(args.output).write_text(rendered + "\n", encoding="utf-8")
@@ -622,7 +677,7 @@ async def _cli() -> None:
         raise SystemExit(2)
     violations = check_consumer_gates(
         summary,
-        minimums=args.minimums,
+        minimums=minimums,
         maximums=args.maximums,
     )
     if violations:

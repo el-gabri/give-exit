@@ -7,10 +7,12 @@ subdivision ids, so corpus re-chunking does not invalidate the judgments.
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from pathlib import Path
 
 from app.consumer.legal_corpus import LegalCorpus, get_default_legal_corpus
-from app.schemas.evaluation import ConsumerLegalGoldenDataset
+from app.consumer.schemas import LegalProvision, LegalTextUnit
+from app.schemas.evaluation import ConsumerLegalGoldenCase, ConsumerLegalGoldenDataset
 
 DEFAULT_DATASET_FILENAME = "dataset.json"
 
@@ -66,33 +68,9 @@ def validate_consumer_legal_labels(
     units = {
         unit.unit_id: unit for provision in effective_corpus.provisions for unit in provision.units
     }
-    known_ids = {*articles, *units}
-    errors: list[str] = []
-
-    for case in dataset.cases:
-        for judgment in case.relevant:
-            article = articles.get(judgment.article_id)
-            if article is None:
-                errors.append(f"{case.case_id}: unknown relevant article {judgment.article_id}")
-                continue
-            if _status_value(article.status) != "active":
-                errors.append(
-                    f"{case.case_id}: relevant article {judgment.article_id} is "
-                    f"{_status_value(article.status)}"
-                )
-            if judgment.unit_id is None:
-                continue
-            unit = units.get(judgment.unit_id)
-            if unit is None:
-                errors.append(f"{case.case_id}: unknown relevant unit {judgment.unit_id}")
-            elif _status_value(unit.status) != "active":
-                errors.append(
-                    f"{case.case_id}: relevant unit {judgment.unit_id} is "
-                    f"{_status_value(unit.status)}"
-                )
-        for hard_negative in case.hard_negatives:
-            if hard_negative not in known_ids:
-                errors.append(f"{case.case_id}: unknown hard negative {hard_negative}")
+    errors = [
+        error for case in dataset.cases for error in _case_label_errors(case, articles, units)
+    ]
 
     if errors:
         preview = "; ".join(errors[:10])
@@ -100,6 +78,41 @@ def validate_consumer_legal_labels(
         suffix = f"; and {remainder} more" if remainder > 0 else ""
         raise ValueError(f"golden labels do not match corpus: {preview}{suffix}")
     return effective_corpus
+
+
+def _case_label_errors(
+    case: ConsumerLegalGoldenCase,
+    articles: Mapping[str, LegalProvision],
+    units: Mapping[str, LegalTextUnit],
+) -> list[str]:
+    """Relevant labels must resolve to active text; hard negatives only have to exist."""
+    errors: list[str] = []
+    for judgment in case.relevant:
+        article = articles.get(judgment.article_id)
+        if article is None:
+            errors.append(f"{case.case_id}: unknown relevant article {judgment.article_id}")
+            continue
+        if _status_value(article.status) != "active":
+            errors.append(
+                f"{case.case_id}: relevant article {judgment.article_id} is "
+                f"{_status_value(article.status)}"
+            )
+        if judgment.unit_id is None:
+            continue
+        unit = units.get(judgment.unit_id)
+        if unit is None:
+            errors.append(f"{case.case_id}: unknown relevant unit {judgment.unit_id}")
+        elif _status_value(unit.status) != "active":
+            errors.append(
+                f"{case.case_id}: relevant unit {judgment.unit_id} is "
+                f"{_status_value(unit.status)}"
+            )
+    errors.extend(
+        f"{case.case_id}: unknown hard negative {hard_negative}"
+        for hard_negative in case.hard_negatives
+        if hard_negative not in articles and hard_negative not in units
+    )
+    return errors
 
 
 def _status_value(value: object) -> str:

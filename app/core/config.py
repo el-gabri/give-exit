@@ -128,6 +128,11 @@ class Settings(BaseSettings):
     embedding_circuit_breaker_reset_seconds: float = Field(default=60.0, gt=0, le=3_600)
     embedding_query_cache_ttl_seconds: float = Field(default=300.0, ge=0, le=86_400)
     embedding_query_cache_max_entries: int = Field(default=256, ge=0, le=100_000)
+    # How long a query may wait for a free embedding slot before semantic
+    # retrieval is declared unavailable. This is a queue, not a rejection: with
+    # one slow local model, overlapping requests must wait their turn instead of
+    # silently degrading the notice to lexical-only retrieval.
+    embedding_query_queue_timeout_seconds: float = Field(default=30.0, gt=0, le=600)
     embedding_lexical_fallback: bool = True
     gemini_embedding_dimensions: int = Field(default=768, ge=128, le=3072)
 
@@ -141,6 +146,26 @@ class Settings(BaseSettings):
     # particular authentication scheme.
     postgres_dsn: str | None = Field(default=None, repr=False)
     max_document_pages: int = Field(default=250, ge=1)
+    # Hard ceiling for one evidence upload. It is enforced twice: as an early
+    # ASGI body limit (before the server buffers the request to disk) and again
+    # while streaming the decoded part, which produces the friendly 413.
+    max_upload_bytes: int = Field(default=20 * 1024 * 1024, ge=1_024, le=512 * 1024 * 1024)
+
+    # --- In-process case retention ---
+    # Cases live in process memory, so every bound here is also a denial-of-service
+    # control. Idle cases expire; a full store refuses new cases instead of
+    # evicting somebody's live evidence.
+    max_active_cases: int = Field(default=500, ge=1, le=100_000)
+    max_documents_per_case: int = Field(default=20, ge=1, le=200)
+    max_messages_per_case: int = Field(default=200, ge=2, le=5_000)
+    max_idempotency_keys_per_case: int = Field(default=50, ge=1, le=1_000)
+    case_idle_ttl_seconds: float = Field(default=86_400.0, gt=0)
+    case_sweep_interval_seconds: float = Field(default=300.0, gt=0)
+    # Deleting "orphaned" evidence vectors is only safe when this process is the
+    # sole owner of the vector-store namespace. Two API workers, two replicas or
+    # a shared PostgreSQL namespace make each startup delete the others' live
+    # case evidence, so such deployments must turn this off.
+    purge_orphaned_evidence_on_startup: bool = True
 
     # --- RAG ---
     chunk_target_chars: int = 1200
@@ -176,9 +201,18 @@ class Settings(BaseSettings):
     # When set, every route except /health requires the X-API-Key header.
     # The local demo stays open; any network-reachable deployment must set it.
     api_auth_key: str | None = Field(default=None, repr=False)
-    # Per-client ceiling for the expensive upload endpoints (OCR + scan + LLM).
-    # 0 disables the limiter.
+    # Per-client ceilings. Every endpoint that allocates memory or CPU on the
+    # caller's behalf has one; 0 disables an individual limiter.
     upload_rate_limit_per_minute: int = Field(default=20, ge=0)
+    case_rate_limit_per_minute: int = Field(default=30, ge=0)
+    message_rate_limit_per_minute: int = Field(default=60, ge=0)
+    # Notice generation is the most expensive route: embeddings, retrieval and
+    # an optional provider call.
+    notice_rate_limit_per_minute: int = Field(default=10, ge=0)
+    # Number of trusted reverse proxies in front of the API. Rate limiting reads
+    # the client address from X-Forwarded-For only for this many hops; 0 means
+    # the header is ignored entirely and the socket peer is used.
+    trusted_proxy_hops: int = Field(default=0, ge=0, le=10)
     # --- Logging ---
     log_level: str = "INFO"
     # Optional high-entropy HMAC key for privacy-safe telemetry references.
