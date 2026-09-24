@@ -26,3 +26,6 @@ plan.md
 
 # Evaluation results written at the repository root (consumer_runner --output).
 /configured-*.json
+/.agents/
+/.claude/
+/demo/
