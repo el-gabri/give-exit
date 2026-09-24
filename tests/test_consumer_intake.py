@@ -76,3 +76,24 @@ def test_chat_amount_is_not_promoted_to_confirmed_direct_loss() -> None:
     )
 
     assert extraction.direct_loss_amount is None
+
+
+def test_request_sentences_become_the_resolution_and_leave_the_account() -> None:
+    """A notice drafted without review must not repeat the whole message as a request."""
+    extraction = extract_explicit_facts(
+        "O Nubank debitou R$ 100,00 em julho de 2026 sem autorização. "
+        "Quero o estorno imediato da cobrança.",
+        ConsumerCaseFacts(),
+    )
+
+    assert extraction.complaint_summary == (
+        "O Nubank debitou R$ 100,00 em julho de 2026 sem autorização."
+    )
+    assert extraction.desired_resolution == "Quero o estorno imediato da cobrança."
+
+
+def test_a_message_that_only_asks_keeps_it_as_the_account_too() -> None:
+    extraction = extract_explicit_facts("Quero meu dinheiro de volta.", ConsumerCaseFacts())
+
+    assert extraction.complaint_summary == "Quero meu dinheiro de volta."
+    assert extraction.desired_resolution == "Quero meu dinheiro de volta."

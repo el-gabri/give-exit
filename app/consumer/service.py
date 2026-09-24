@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import uuid
+from dataclasses import dataclass, field
 from decimal import Decimal
 from pathlib import Path
 from time import perf_counter
@@ -65,6 +66,7 @@ from app.consumer.schemas import (
     EvidenceStatus,
     LegalGround,
     MonetarySourceType,
+    NoticeGenerationMode,
     NoticeGenerationTiming,
     SettlementComponentSource,
     SettlementInputs,
@@ -112,6 +114,10 @@ class ConsumerEvidenceLimitError(ValueError):
     def __init__(self, limit: int) -> None:
         self.limit = limit
         super().__init__(f"a consumer case accepts at most {limit} evidence documents")
+
+
+class ConsumerPromptNoticeError(ValueError):
+    """A one-request notice was refused for a reason the client can correct."""
 
 
 class ConsumerCaseService:
@@ -341,6 +347,31 @@ class ConsumerCaseService:
         )
         return self._snapshot(record), public
 
+    def start_prompt_case(self, text: str) -> tuple[str, str]:
+        """Open a case from one free-text request, through the chat intake.
+
+        The text is recorded as the case's first message, so the request stays
+        part of the case's audit. Its facts are extracted but not confirmed:
+        this path trades the review step for a single call, and every notice it
+        produces says so.
+        """
+        normalized = " ".join(text.split())
+        if not normalized:
+            raise ConsumerPromptNoticeError("O texto da solicitação não pode estar vazio.")
+        if not is_consumer_scope(complaint=normalized):
+            raise ConsumerPromptNoticeError(
+                "O relato não caracteriza relação de consumo elegível para este rascunho."
+            )
+        snapshot, token, _ = self.create_case()
+        self.add_message(snapshot.case_id, token, text.strip())
+        return snapshot.case_id, token
+
+    async def generate_prompt_notice(self, case_id: str, token: str) -> ConsumerNotice:
+        """Draft from unconfirmed facts, with or without accepted evidence."""
+        record = self._store.get_authorized(case_id, token)
+        async with record.mutation_lock:
+            return await self._generate_notice(record, mode=NoticeGenerationMode.PROMPT)
+
     async def generate_notice(self, case_id: str, token: str) -> ConsumerNotice:
         record = self._store.get_authorized(case_id, token)
         # One notice per case at a time. Without this, two concurrent requests
@@ -349,24 +380,26 @@ class ConsumerCaseService:
         async with record.mutation_lock:
             return await self._generate_notice(record)
 
-    async def _generate_notice(self, record: ConsumerCaseRecord) -> ConsumerNotice:
+    async def _generate_notice(
+        self,
+        record: ConsumerCaseRecord,
+        *,
+        mode: NoticeGenerationMode = NoticeGenerationMode.CASE,
+    ) -> ConsumerNotice:
         generation_started = perf_counter()
-        missing = self._readiness_missing(record)
+        missing = self._generation_blockers(record, mode)
         if missing:
             raise ConsumerCaseNotReadyError(missing)
 
         await self._ensure_legal_corpus_indexed()
-        evidence_document, page_sources = self._combined_evidence(record)
-        index_started = perf_counter()
-        evidence_index_reused = await self._ensure_evidence_indexed(record, evidence_document)
-        evidence_index_ms = (perf_counter() - index_started) * 1000
+        evidence = await self._index_case_evidence(record)
 
         retrieval_started = perf_counter()
         try:
             legal_results, legal_traces, evidence_results, evidence_traces = (
                 await self._retrieve_notice_support(
                     facts=record.facts,
-                    evidence_doc_id=evidence_document.doc_id,
+                    evidence_doc_id=evidence.doc_id,
                 )
             )
         except Exception as exc:
@@ -387,10 +420,15 @@ class ConsumerCaseService:
         )
         legal_grounds = verification.grounds
         evidence_references = self._evidence_references(
-            evidence_results, page_sources, evidence_traces, record.facts
+            evidence_results, evidence.page_sources, evidence_traces, record.facts
         )
         _require_grounding(
-            record.case_id, legal_grounds, evidence_references, legal_traces, evidence_traces
+            record.case_id,
+            legal_grounds,
+            evidence_references,
+            legal_traces,
+            evidence_traces,
+            require_evidence=mode is NoticeGenerationMode.CASE,
         )
         legal_traces = _annotate_composer_selection(
             legal_traces,
@@ -429,6 +467,7 @@ class ConsumerCaseService:
         notice = ConsumerNotice(
             notice_id=uuid.uuid4().hex,
             case_id=record.case_id,
+            generation_mode=mode,
             addressee=record.facts.bank_name or "[EMPRESA, FORNECEDOR OU INSTITUIÇÃO]",
             facts_summary=record.facts.complaint_summary or "",
             evidence_references=evidence_references,
@@ -445,8 +484,8 @@ class ConsumerCaseService:
             composition_metadata=composition.metadata,
             ground_verification=verification.summary,
             generation_timing=NoticeGenerationTiming(
-                evidence_index_ms=evidence_index_ms,
-                evidence_index_reused=evidence_index_reused,
+                evidence_index_ms=evidence.index_ms,
+                evidence_index_reused=evidence.index_reused,
                 retrieval_ms=retrieval_ms,
                 composition_ms=composition_ms,
                 total_ms=(perf_counter() - generation_started) * 1000,
@@ -454,6 +493,12 @@ class ConsumerCaseService:
             retrievals=[*legal_traces, *evidence_traces],
             retrieval_degraded_modes=degraded_modes,
             warnings=[
+                *_prompt_mode_warnings(
+                    record.facts,
+                    mode=mode,
+                    evidence_attached=evidence.doc_id is not None,
+                    evidence_cited=bool(evidence_references),
+                ),
                 *verification.warnings,
                 *composition_warnings,
                 *_degraded_retrieval_warnings(degraded_modes),
@@ -472,14 +517,17 @@ class ConsumerCaseService:
         self,
         *,
         facts: ConsumerCaseFacts,
-        evidence_doc_id: str,
+        evidence_doc_id: str | None,
     ) -> tuple[
         list[list[RetrievedChunk]],
         list[RetrievalTrace],
         list[list[RetrievedChunk]],
         list[RetrievalTrace],
     ]:
-        """Retrieve both source sets without making them compete for one model slot."""
+        """Retrieve both source sets without making them compete for one model slot.
+
+        A case without accepted evidence searches the legal corpus only.
+        """
 
         legal_results, legal_traces = await retrieve_legal_candidates(
             self._rag,
@@ -487,6 +535,8 @@ class ConsumerCaseService:
             doc_id=self._legal_corpus.document_id,
             k=LEGAL_REQUESTED_K,
         )
+        if evidence_doc_id is None:
+            return legal_results, legal_traces, [], []
         evidence_results, evidence_traces = await self._rag.retrieve_many_with_traces(
             build_evidence_queries(facts),
             doc_id=evidence_doc_id,
@@ -495,6 +545,28 @@ class ConsumerCaseService:
             mode="hybrid",
         )
         return legal_results, legal_traces, evidence_results, evidence_traces
+
+    def _generation_blockers(
+        self, record: ConsumerCaseRecord, mode: NoticeGenerationMode
+    ) -> list[str]:
+        """What stops generation: full readiness for a case, a complaint for a prompt."""
+        if mode is NoticeGenerationMode.CASE:
+            return self._readiness_missing(record)
+        return [] if record.facts.complaint_summary else ["complaint_summary"]
+
+    async def _index_case_evidence(self, record: ConsumerCaseRecord) -> _IndexedEvidence:
+        """Index the case's accepted evidence, if it has any."""
+        if not self._has_accepted_evidence(record):
+            return _IndexedEvidence()
+        evidence_document, page_sources = self._combined_evidence(record)
+        started = perf_counter()
+        reused = await self._ensure_evidence_indexed(record, evidence_document)
+        return _IndexedEvidence(
+            doc_id=evidence_document.doc_id,
+            page_sources=page_sources,
+            index_ms=(perf_counter() - started) * 1000,
+            index_reused=reused,
+        )
 
     async def _ensure_evidence_indexed(
         self, record: ConsumerCaseRecord, evidence_document: ParsedDocument
@@ -653,7 +725,8 @@ class ConsumerCaseService:
             return
         raise ConsumerLegalCorpusNotReadyError(
             "A base legal do modelo configurado ainda não foi pré-indexada. "
-            "Execute `python -m app.consumer.preindex_legal` e reinicie a API."
+            "Com Docker Compose, o serviço `legal-index` faz isso antes da API; sem "
+            "Docker, execute `python -m app.consumer.preindex_legal` e reinicie a API."
         )
 
     def _snapshot(self, record: ConsumerCaseRecord) -> ConsumerCaseSnapshot:
@@ -932,14 +1005,17 @@ def _require_grounding(
     evidence_references: list[EvidenceCitation],
     legal_traces: list[RetrievalTrace],
     evidence_traces: list[RetrievalTrace],
+    *,
+    require_evidence: bool = True,
 ) -> None:
-    """Refuse a notice without both a legal ground and a documentary citation."""
-    if legal_grounds and evidence_references:
+    """Refuse a notice without a legal ground, or without a documentary citation
+    when the generation path requires one."""
+    if legal_grounds and (evidence_references or not require_evidence):
         return
     missing_support: list[str] = []
     if not legal_grounds:
         missing_support.append("fundamentos jurídicos")
-    if not evidence_references:
+    if require_evidence and not evidence_references:
         missing_support.append("trechos dos documentos enviados")
     logger.warning(
         "consumer_grounding_insufficient",
@@ -952,7 +1028,7 @@ def _require_grounding(
     raise ConsumerRetrievalError(
         "Não foi possível gerar o rascunho com segurança porque a recuperação "
         f"não encontrou suporte verificável em {' e '.join(missing_support)}. "
-        "Tente novamente; se o problema persistir, revise a categoria e os "
+        "Tente novamente; se o problema persistir, revise o relato e os "
         "documentos enviados."
     )
 
@@ -998,6 +1074,53 @@ def _annotate_composer_selection(
             )
         )
     return annotated
+
+
+@dataclass(frozen=True, slots=True)
+class _IndexedEvidence:
+    """A case's indexed evidence document, or its absence."""
+
+    doc_id: str | None = None
+    page_sources: dict[int, tuple[StoredEvidence, int]] = field(default_factory=dict)
+    index_ms: float = 0.0
+    index_reused: bool = False
+
+
+# Facts the renderer replaces with a [PREENCHER ...] placeholder when missing.
+_PLACEHOLDER_FIELDS = {
+    "consumer_name": "nome do(a) consumidor(a)",
+    "bank_name": "empresa ou fornecedor notificado",
+    "incident_date_or_period": "data ou período dos fatos",
+}
+
+
+def _prompt_mode_warnings(
+    facts: ConsumerCaseFacts,
+    *,
+    mode: NoticeGenerationMode,
+    evidence_attached: bool,
+    evidence_cited: bool,
+) -> list[str]:
+    """Say what a one-request draft skipped, where the consumer will read it."""
+    if mode is not NoticeGenerationMode.PROMPT:
+        return []
+    warnings = [
+        "Rascunho gerado a partir de um único texto: os fatos foram extraídos "
+        "automaticamente e não foram revisados pelo(a) consumidor(a)."
+    ]
+    if not evidence_attached:
+        warnings.append("Nenhum documento foi anexado; a notificação não cita evidências.")
+    elif not evidence_cited:
+        warnings.append(
+            "O documento anexado não trouxe trecho que sustente os fatos relatados; "
+            "nenhuma evidência foi citada."
+        )
+    blanks = [
+        label for name, label in _PLACEHOLDER_FIELDS.items() if not getattr(facts, name)
+    ]
+    if blanks:
+        warnings.append(f"Preencha antes de enviar: {', '.join(blanks)}.")
+    return warnings
 
 
 def _degraded_retrieval_warnings(degraded_modes: list[str]) -> list[str]:

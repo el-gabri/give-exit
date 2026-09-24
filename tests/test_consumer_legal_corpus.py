@@ -550,10 +550,11 @@ def test_constant_provenance_fields_left_the_embedded_text_for_metadata() -> Non
 def test_cdc_and_cf_chunk_texts_are_unchanged() -> None:
     """Pinned so an index rebuild reuses their vectors (ADR 0017).
 
-    Re-pinned when uncitable chapters left the index (472 texts to 317). Every
-    remaining text is byte-identical to one under the former pin; the sentence
-    boundary fix in ``_split_text`` changed only two chunks, both in excluded
-    chapters.
+    Re-pinned when uncitable chapters left the index (472 texts to 317). All
+    but two remaining texts are byte-identical to ones under the former pin:
+    the sentence-boundary fix in ``_split_text`` moved the split of CDC art.
+    54-G, I, which previously cut inside "Lei nº | 14.181", so both of its
+    parts are embedded again on rebuild.
     """
 
     texts = sorted(

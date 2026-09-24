@@ -46,6 +46,15 @@ class ConsumerCaseStatus(str, Enum):
     NOTICE_GENERATED = "notice_generated"
 
 
+class NoticeGenerationMode(str, Enum):
+    """How the facts behind a notice reached the generator."""
+
+    # The consumer reviewed and confirmed the facts, and attached evidence.
+    CASE = "case"
+    # One free-text request: facts extracted without review, evidence optional.
+    PROMPT = "prompt"
+
+
 class LegalSource(str, Enum):
     FEDERAL_CONSTITUTION = "federal_constitution"
     CONSUMER_DEFENSE_CODE = "consumer_defense_code"
@@ -562,6 +571,7 @@ class ConsumerNotice(BaseModel):
 
     notice_id: str
     case_id: str
+    generation_mode: NoticeGenerationMode = NoticeGenerationMode.CASE
     generated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     title: str = "Notificação extrajudicial com proposta de acordo"
     addressee: str
@@ -588,3 +598,15 @@ class ConsumerNotice(BaseModel):
     # instead of only inside the per-query audit records.
     retrieval_degraded_modes: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
+
+
+class ConsumerPromptNotice(BaseModel):
+    """A notice drafted from one request, and the credentials to audit it.
+
+    The case stays available until it expires or is deleted: the token opens
+    the notice exports and the complete retrieval audit under ``/cases``.
+    """
+
+    case_id: str
+    case_token: str
+    notice: ConsumerNotice

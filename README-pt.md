@@ -24,6 +24,14 @@ notificações automaticamente e não substitui a revisão de advogado habilitad
 7. A notificação é exportada em Markdown, PDF ou DOCX com auditoria completa da
    recuperação.
 
+Para clientes da API, `POST /consumer/prompt-notices` resume essa jornada a uma
+requisição: texto livre e, opcionalmente, um arquivo de evidência. Os passos 2 e
+3 tornam-se automáticos e opcionais, e a notificação registra isso
+(`generation_mode: prompt`, avisos e marcadores `[PREENCHER ...]` para o que o
+texto não informou). Fundamentação jurídica, caso, exportações e auditoria da
+recuperação são os mesmos da jornada revisada. Veja
+[docs/api-consumer.md](docs/api-consumer.md).
+
 Não existem mais jornada empresarial, análise de petição para defesa,
 estratégia processual, DataJud, grafo multiagente ou relatório geral de litígio.
 
@@ -105,6 +113,22 @@ docker compose up --build
 
 - Interface: <http://localhost:8501>
 - OpenAPI: <http://localhost:8000/docs>
+
+O serviço `legal-index` roda uma vez antes da API: cria o índice legal ou
+confirma que ele está atual e termina. As gerações de embeddings ficam em
+`./data/embedding_generations`, compartilhadas com execuções locais de
+`python -m app.consumer.preindex_legal`, então um índice criado fora do Docker é
+reaproveitado. A API monta esse diretório somente leitura. Para forçar a
+reconstrução:
+
+```bash
+docker compose run --rm legal-index python -m app.consumer.preindex_legal --force
+```
+
+A imagem da API inicia como root apenas para ajustar a posse de volumes novos e
+depois roda como `appuser` (uid 10001). O Compose mapeia `host.docker.internal`
+para o gateway do host, então o DSN padrão do PostgreSQL também funciona no
+Docker Engine em Linux.
 
 O container instala Tesseract em português. O arquivo bruto enviado é apagado
 depois da ingestão.
@@ -202,10 +226,10 @@ uma reconstrução deliberada.
 
 O chunking `legal-hierarchy-v4` (ADR 0019) deixa fora do índice os capítulos que
 não podem ser citados. Um índice construído com a v3 aparece como não pronto;
-executar a pré-indexação uma vez o reconstrói. O texto de todos os chunks
-restantes não mudou, então, havendo uma geração anterior embedada (não adotada)
-do mesmo modelo, o reaproveitamento abaixo fornece todos os vetores sem novo
-embedding.
+executar a pré-indexação uma vez o reconstrói. Só dois textos mudaram: as duas
+partes do art. 54-G, I, do CDC, que agora quebram no fim de uma frase. Havendo
+uma geração anterior embedada (não adotada) do mesmo modelo, o reaproveitamento
+abaixo fornece os outros 1.642 vetores e só esses dois são embedados.
 
 Um novo release do corpus reaproveita os vetores de todo chunk cujo texto não
 mudou, vindos de gerações anteriores verificadas do mesmo modelo, revisão e
@@ -246,6 +270,7 @@ ou de citação.
 | Método | Rota | Finalidade |
 |---|---|---|
 | `GET` | `/health` | Vida da API e prontidão do corpus legal |
+| `POST` | `/consumer/prompt-notices` | Uma requisição: texto livre e arquivo opcional viram notificação, caso e token |
 | `POST` | `/consumer/cases` | Criar caso efêmero e token |
 | `GET` | `/consumer/cases/{id}` | Consultar caso autorizado |
 | `POST` | `/consumer/cases/{id}/messages` | Adicionar mensagem |
@@ -258,7 +283,9 @@ ou de citação.
 | `DELETE` | `/consumer/cases/{id}` | Apagar caso e vetores de evidência |
 
 Todas as operações do caso exigem o token opaco devolvido na criação. O modo
-produção também exige uma API key configurada.
+produção também exige uma API key configurada. Exemplos de requisição e
+resposta, erros e o fluxo em uma requisição estão em
+[docs/api-consumer.md](docs/api-consumer.md).
 
 ## Testes e avaliação
 
