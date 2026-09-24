@@ -1,6 +1,8 @@
 """Offline tests for purpose-aware embeddings and hybrid retrieval."""
 
 import hashlib
+import sys
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -488,6 +490,53 @@ def test_postgres_rows_store_the_lexical_tokens_bm25_reads() -> None:
     [row] = _postgres_rows([chunk], [[1.0, 0.0]], namespace="legal-index")
 
     assert row[-1] == ["artigo", "42", "cobranca", "indevida", "consumidor"]
+
+
+def test_postgres_connection_errors_surface_before_a_pool_hides_them(monkeypatch) -> None:
+    """An unreachable server used to surface as a PoolTimeout 30 s later."""
+
+    class Refused(Exception):
+        pass
+
+    pools: list[str] = []
+
+    def refuse(dsn: str) -> None:
+        raise Refused(f"connection to {dsn} failed: Connection refused")
+
+    monkeypatch.setitem(sys.modules, "psycopg", SimpleNamespace(connect=refuse))
+    monkeypatch.setitem(
+        sys.modules,
+        "psycopg_pool",
+        SimpleNamespace(ConnectionPool=lambda dsn, **kwargs: pools.append(dsn)),
+    )
+    store = PostgresVectorStore(dsn="postgresql://unreachable", index_name="x")
+
+    with pytest.raises(Refused, match="Connection refused"):
+        store._connect()
+    assert pools == []
+
+
+def test_postgres_pool_opens_after_a_successful_direct_connection(monkeypatch) -> None:
+    events: list[str] = []
+
+    class Probe:
+        def close(self) -> None:
+            events.append("probe closed")
+
+    class Pool:
+        def __init__(self, dsn: str, **kwargs: object) -> None:
+            events.append(f"pool max_size={kwargs['max_size']}")
+
+        def connection(self) -> str:
+            return "pooled connection"
+
+    monkeypatch.setitem(sys.modules, "psycopg", SimpleNamespace(connect=lambda dsn: Probe()))
+    monkeypatch.setitem(sys.modules, "psycopg_pool", SimpleNamespace(ConnectionPool=Pool))
+    store = PostgresVectorStore(dsn="postgresql://db", index_name="x", pool_max_size=3)
+
+    assert store._connect() == "pooled connection"
+    assert store._connect() == "pooled connection"
+    assert events == ["probe closed", "pool max_size=3"]
 
 
 def test_postgres_store_rejects_an_empty_pool() -> None:
