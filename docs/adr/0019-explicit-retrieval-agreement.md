@@ -116,8 +116,10 @@ words, so this depth must be rechecked on the configured embedding stack
 - (+) Irrelevant uploads no longer pass the evidence gate through scaffolding.
 - (+) Legal retrieval spends its slots on citable text only.
 - (-) Existing legal indexes must be rebuilt once (`python -m
-  app.consumer.preindex_legal`); remaining chunk texts are unchanged, so
-  vectors are reused (ADR 0017) where an embedded generation exists.
+  app.consumer.preindex_legal`). All remaining chunk texts but two are
+  unchanged, so their vectors are reused (ADR 0017) where an embedded
+  generation exists; the two parts of CDC art. 54-G, I, now split at a
+  sentence end instead of inside "Lei nº 14.181", are embedded again.
 - (-) In lexical-only mode notices abstain more often; the service asks for a
   retry rather than citing an uncorroborated keyword match.
 - (-) Offline notice metrics are near their noise floor (one exact hit), so

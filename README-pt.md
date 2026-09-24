@@ -202,10 +202,10 @@ uma reconstrução deliberada.
 
 O chunking `legal-hierarchy-v4` (ADR 0019) deixa fora do índice os capítulos que
 não podem ser citados. Um índice construído com a v3 aparece como não pronto;
-executar a pré-indexação uma vez o reconstrói. O texto de todos os chunks
-restantes não mudou, então, havendo uma geração anterior embedada (não adotada)
-do mesmo modelo, o reaproveitamento abaixo fornece todos os vetores sem novo
-embedding.
+executar a pré-indexação uma vez o reconstrói. Só dois textos mudaram: as duas
+partes do art. 54-G, I, do CDC, que agora quebram no fim de uma frase. Havendo
+uma geração anterior embedada (não adotada) do mesmo modelo, o reaproveitamento
+abaixo fornece os outros 1.642 vetores e só esses dois são embedados.
 
 Um novo release do corpus reaproveita os vetores de todo chunk cujo texto não
 mudou, vindos de gerações anteriores verificadas do mesmo modelo, revisão e

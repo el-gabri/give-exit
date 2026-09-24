@@ -314,9 +314,10 @@ Use `--force` only for a deliberate rebuild.
 
 Chunking `legal-hierarchy-v4` (ADR 0019) leaves uncitable chapters out of the
 index. An index built with v3 is reported as not ready; running the pre-index
-command once rebuilds it. Every remaining chunk text is unchanged, so when an
-earlier embedded (not adopted) generation of the same model exists, the reuse
-below supplies all of their vectors and nothing is re-embedded.
+command once rebuilds it. Only two chunk texts changed: the two parts of CDC
+art. 54-G, I, which now split at a sentence end. When an earlier embedded (not
+adopted) generation of the same model exists, the reuse below supplies the
+other 1,642 vectors and only those two are embedded.
 
 A new corpus release reuses the vectors of every chunk whose text did not
 change, taken from verified earlier generations of the same model, revision
