@@ -94,6 +94,17 @@ _NON_CONSUMER_SIGNALS = (
     "vale transporte",
     "vínculo empregatício",
     "vinculo empregaticio",
+    # A traffic fine or a vehicle tax is owed to the State, not to a supplier.
+    "multa de trânsito",
+    "multa de transito",
+    "infração de trânsito",
+    "infracao de transito",
+    "detran",
+    "ipva",
+    # Lending one's own money to someone is a private loan, not consumption.
+    # "Emprestei meu cartão" still names a card dispute, so only money counts.
+    "emprestei dinheiro",
+    "dinheiro emprestado",
 )
 _BANK_ACCOUNT_SIGNALS = (
     "conta bancária",

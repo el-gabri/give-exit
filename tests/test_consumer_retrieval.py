@@ -97,6 +97,26 @@ def test_scope_gate_abstains_only_on_strong_non_consumer_signals() -> None:
     assert not is_consumer_scope(
         complaint="Meu empregador não fez a entrega do EPI exigido para o trabalho.",
     )
+    assert not is_consumer_scope(
+        complaint=(
+            "Recebi uma multa de trânsito por excesso de velocidade em uma cidade "
+            "onde eu nunca estive com o meu carro."
+        ),
+    )
+    assert not is_consumer_scope(
+        complaint="Emprestei dinheiro para um amigo e ele não me devolve.",
+    )
+    # A contractual penalty is not a traffic fine, and lending a card to a
+    # relative does not remove the bank from the dispute.
+    assert is_consumer_scope(
+        complaint="A academia quer cobrar multa de cancelamento do plano anual.",
+    )
+    assert is_consumer_scope(
+        complaint=(
+            "Emprestei meu cartão para minha mãe e o banco cobrou duas vezes a "
+            "mesma compra na fatura."
+        ),
+    )
     assert is_consumer_scope(
         complaint="A loja não entregou o produto que comprei.",
     )
