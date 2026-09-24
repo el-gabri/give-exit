@@ -6,9 +6,19 @@ import asyncio
 import uuid
 from decimal import Decimal
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request, UploadFile
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    Header,
+    HTTPException,
+    Query,
+    Request,
+    UploadFile,
+)
 from fastapi.responses import JSONResponse, PlainTextResponse, Response
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -23,11 +33,14 @@ from app.consumer.schemas import (
     ConsumerCaseSnapshot,
     ConsumerEvidence,
     ConsumerNotice,
+    ConsumerPromptNotice,
+    EvidenceStatus,
 )
 from app.consumer.service import (
     ConsumerCaseNotReadyError,
     ConsumerCaseService,
     ConsumerEvidenceLimitError,
+    ConsumerPromptNoticeError,
     ConsumerRetrievalError,
 )
 from app.consumer.store import ConsumerCaseCapacityError
@@ -36,6 +49,8 @@ from app.reporting.convert import render_docx, render_pdf
 from app.schemas.trace import RetrievalTrace
 
 router = APIRouter(prefix="/consumer", tags=["consumer"])
+
+PromptNoticeFormat = Literal["json", "markdown"]
 
 EVIDENCE_MEDIA_TYPES = {
     ".pdf": "application/pdf",
@@ -141,13 +156,7 @@ async def create_consumer_case(service: ConsumerServiceDep) -> ConsumerCaseCreat
     try:
         snapshot, token, assistant = service.create_case()
     except ConsumerCaseCapacityError as exc:
-        raise HTTPException(
-            status_code=503,
-            detail=(
-                "O serviço está com a capacidade de atendimentos simultâneos esgotada. "
-                "Tente novamente em alguns minutos."
-            ),
-        ) from exc
+        raise _capacity_exhausted() from exc
     return ConsumerCaseCreated(
         case_id=snapshot.case_id,
         case_token=token,
@@ -212,6 +221,33 @@ async def add_consumer_document(
     uploads_dir: UploadsDirDep,
     max_upload_bytes: MaxUploadBytesDep,
 ) -> ConsumerDocumentAdded:
+    if Path(file.filename or "").suffix.casefold() not in EVIDENCE_MEDIA_TYPES:
+        raise HTTPException(
+            status_code=422,
+            detail="Formato não suportado. Envie um arquivo PDF, PNG ou JPG.",
+        )
+    service.get_case(case_id, token)
+    snapshot, document = await _receive_evidence(
+        case_id,
+        token,
+        file=file,
+        service=service,
+        uploads_dir=uploads_dir,
+        max_upload_bytes=max_upload_bytes,
+    )
+    return ConsumerDocumentAdded(case=snapshot, document=document)
+
+
+async def _receive_evidence(
+    case_id: str,
+    token: str,
+    *,
+    file: UploadFile,
+    service: ConsumerCaseService,
+    uploads_dir: Path,
+    max_upload_bytes: int,
+) -> tuple[ConsumerCaseSnapshot, ConsumerEvidence]:
+    """Stream, verify and ingest one upload into a case; the raw file never stays."""
     filename = Path(file.filename or "evidencia").name
     suffix = Path(filename).suffix.casefold()
     media_type = EVIDENCE_MEDIA_TYPES.get(suffix)
@@ -220,8 +256,6 @@ async def add_consumer_document(
             status_code=422,
             detail="Formato não suportado. Envie um arquivo PDF, PNG ou JPG.",
         )
-
-    service.get_case(case_id, token)
     await asyncio.to_thread(uploads_dir.mkdir, parents=True, exist_ok=True)
     upload_path = uploads_dir / f"{uuid.uuid4().hex}{suffix}"
     try:
@@ -235,7 +269,7 @@ async def add_consumer_document(
                 status_code=422,
                 detail="O conteúdo do arquivo não corresponde ao formato informado.",
             )
-        snapshot, document = await service.add_document(
+        return await service.add_document(
             case_id,
             token,
             filename=filename,
@@ -265,7 +299,98 @@ async def add_consumer_document(
     finally:
         await file.close()
         await asyncio.to_thread(upload_path.unlink, missing_ok=True)
-    return ConsumerDocumentAdded(case=snapshot, document=document)
+
+
+@router.post(
+    "/prompt-notices",
+    response_model=ConsumerPromptNotice,
+    status_code=201,
+    responses={201: {"content": {"text/markdown": {}}}},
+    # The request creates a case, uploads and generates, so it spends from
+    # every one of those budgets.
+    dependencies=[
+        Depends(enforce_case_rate_limit),
+        Depends(enforce_upload_rate_limit),
+        Depends(enforce_notice_rate_limit),
+    ],
+)
+async def generate_prompt_notice(
+    service: ConsumerServiceDep,
+    uploads_dir: UploadsDirDep,
+    max_upload_bytes: MaxUploadBytesDep,
+    text: Annotated[str, Form(min_length=1, max_length=20_000)],
+    file: Annotated[UploadFile | None, File()] = None,
+    response_format: Annotated[PromptNoticeFormat, Query(alias="format")] = "json",
+) -> ConsumerPromptNotice | Response:
+    """Draft a notice from one free-text request and an optional evidence file.
+
+    Facts are extracted without a review step and evidence is optional; the
+    notice records both in ``generation_mode`` and its warnings. The case is
+    kept like any other: ``case_id`` and ``case_token`` open the exports and
+    the retrieval audit under ``/consumer/cases/{case_id}`` until the case
+    expires or is deleted. ``format=markdown`` returns only the draft text,
+    with the case credentials in the ``X-Consumer-Case-Id`` and
+    ``X-Consumer-Case-Token`` headers.
+    """
+    try:
+        case_id, token = service.start_prompt_case(text)
+    except ConsumerPromptNoticeError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except ConsumerCaseCapacityError as exc:
+        raise _capacity_exhausted() from exc
+    try:
+        notice = await _draft_prompt_notice(
+            case_id,
+            token,
+            file=file,
+            service=service,
+            uploads_dir=uploads_dir,
+            max_upload_bytes=max_upload_bytes,
+        )
+    except BaseException:
+        # The client never received this case's credentials; keep nothing.
+        await service.delete_case(case_id, token)
+        raise
+    if response_format == "markdown":
+        return PlainTextResponse(
+            notice.full_text,
+            status_code=201,
+            media_type="text/markdown; charset=utf-8",
+            headers={"X-Consumer-Case-Id": case_id, "X-Consumer-Case-Token": token},
+        )
+    return ConsumerPromptNotice(case_id=case_id, case_token=token, notice=notice)
+
+
+async def _draft_prompt_notice(
+    case_id: str,
+    token: str,
+    *,
+    file: UploadFile | None,
+    service: ConsumerCaseService,
+    uploads_dir: Path,
+    max_upload_bytes: int,
+) -> ConsumerNotice:
+    if file is not None and (file.filename or "").strip():
+        _, document = await _receive_evidence(
+            case_id,
+            token,
+            file=file,
+            service=service,
+            uploads_dir=uploads_dir,
+            max_upload_bytes=max_upload_bytes,
+        )
+        if document.status is not EvidenceStatus.ACCEPTED:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    "O anexo não pôde ser usado automaticamente. Envie um PDF, PNG ou JPG "
+                    "legível e sem instruções dirigidas à IA, ou gere sem anexo."
+                ),
+            )
+    try:
+        return await service.generate_prompt_notice(case_id, token)
+    except ConsumerRetrievalError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @router.post(
@@ -343,6 +468,16 @@ async def delete_consumer_case(
 ) -> Response:
     await service.delete_case(case_id, token)
     return Response(status_code=204)
+
+
+def _capacity_exhausted() -> HTTPException:
+    return HTTPException(
+        status_code=503,
+        detail=(
+            "O serviço está com a capacidade de atendimentos simultâneos esgotada. "
+            "Tente novamente em alguns minutos."
+        ),
+    )
 
 
 def _notice_attachment(

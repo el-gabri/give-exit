@@ -141,8 +141,14 @@ def _render_sidebar(client: ConsumerApiClient, api_url: str) -> bool:
             st.success("API conectada", icon=":material/check_circle:")
             if health.get("legal_corpus_ready") is False:
                 st.warning(
-                    "Base legal ainda não pré-indexada para o modelo configurado.",
+                    "Base legal ainda não pré-indexada para o modelo configurado. "
+                    "A geração de rascunho retornará erro 503 até concluir a etapa.",
                     icon=":material/hourglass_top:",
+                )
+                st.caption(
+                    "No Docker, o serviço `legal-index` faz essa etapa ao subir. "
+                    "Fora dele, execute `python -m app.consumer.preindex_legal` e "
+                    "reinicie a API."
                 )
             connected = True
         except ConsumerApiError:

@@ -87,6 +87,8 @@ def render_notice_markdown(
             f"- **{markdown_inline(item.filename)}, p. {item.page}** — "
             f"{markdown_inline(item.quote)}"
         )
+    if not evidence:
+        lines.append("Nenhum documento foi citado nesta notificação.")
     lines.extend(["", "## 4. Fundamentos jurídicos", ""])
     if prose is not None:
         lines.extend([prose.legal_transition, ""])

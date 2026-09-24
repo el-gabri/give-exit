@@ -29,6 +29,13 @@ Exit serves consumers only:
 7. The application exports the notice as Markdown, PDF or DOCX and exposes the
    complete retrieval audit.
 
+`POST /consumer/prompt-notices` shortens this journey to one request for API
+clients: free text plus an optional evidence file. Steps 2 and 3 become
+automatic and optional, and the notice says so (`generation_mode: prompt`,
+warnings, `[PREENCHER ...]` placeholders for facts the text did not give). Legal
+grounding, the case, its exports and its retrieval audit are the same as in the
+reviewed journey. See [docs/api-consumer.md](docs/api-consumer.md).
+
 There is no company-side lawsuit-analysis journey, defense strategy, DataJud
 enrichment, multi-agent graph, or general litigation report.
 
@@ -138,6 +145,20 @@ docker compose up --build
 - UI: <http://localhost:8501>
 - API docs: <http://localhost:8000/docs>
 
+The one-shot `legal-index` service builds the legal index (or confirms it is
+current) before the API starts; on an indexed corpus it only checks and exits.
+Its embedding generations live in `./data/embedding_generations`, shared with
+local `python -m app.consumer.preindex_legal` runs, so an index built on the
+host is reused. The API mounts that directory read-only. To force a rebuild:
+
+```bash
+docker compose run --rm legal-index python -m app.consumer.preindex_legal --force
+```
+
+The API image starts as root only to fix the ownership of fresh volumes, then
+runs as `appuser` (uid 10001). Compose maps `host.docker.internal` to the host
+gateway, so the default PostgreSQL DSN also works on Docker Engine for Linux.
+
 Docker installs Portuguese Tesseract OCR by default. Raw uploads are deleted
 after ingestion. Downloaded Hugging Face model weights are cached in a dedicated `model-cache`
 volume, separate from the application state in `consumer-data`, so rebuilding
@@ -155,7 +176,7 @@ pwsh -NoProfile -File .\scripts\smoke_docker_runtime.ps1
 
 The script creates an isolated Compose project, writes a lightweight sentinel to
 the API service's `HF_HOME`, rebuilds the API image with `--no-cache`, and checks
-that a new API container can still read the sentinel from `consumer-data`. It
+that a new API container can still read the sentinel from `model-cache`. It
 also injects a non-default timeout and reads it inside the frontend container.
 It removes the isolated containers and volume when done. Among the normal Docker
 build progress, a successful run prints:
@@ -364,6 +385,7 @@ abstain. A degraded draft is labelled as such: the notice carries
 | Method | Route | Purpose |
 |---|---|---|
 | `GET` | `/health` | API liveness and legal-corpus readiness |
+| `POST` | `/consumer/prompt-notices` | One request: free text and an optional file to a notice, its case and token |
 | `POST` | `/consumer/cases` | Create an ephemeral case and possession token |
 | `GET` | `/consumer/cases/{id}` | Read the authorized case |
 | `POST` | `/consumer/cases/{id}/messages` | Add a consumer message |
@@ -376,7 +398,9 @@ abstain. A degraded draft is labelled as such: the notice carries
 | `DELETE` | `/consumer/cases/{id}` | Delete case state and evidence vectors |
 
 Every case operation requires the opaque possession token returned at case
-creation. Production mode also requires a configured API key.
+creation. Production mode also requires a configured API key. Request and
+response examples, errors and the one-request flow are in
+[docs/api-consumer.md](docs/api-consumer.md).
 
 ### Resource bounds
 

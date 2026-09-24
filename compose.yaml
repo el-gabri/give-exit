@@ -1,57 +1,64 @@
-services:
-  api:
-    build:
-      context: .
-      target: api
-      args:
-        API_EXTRAS: ${LITIGATION_API_EXTRAS:-ocr}
-    env_file:
-      - path: .env
-        required: false
-    environment:
-      LITIGATION_DATA_DIR: /app/data
-      # A local Python process reaches the host database through localhost;
-      # the API container needs Docker Desktop's host gateway instead.
-      LITIGATION_POSTGRES_DSN: ${LITIGATION_DOCKER_POSTGRES_DSN:-postgresql://postgres:giveexit@host.docker.internal:5432/postgres}
-      # Model weights live in their own volume, not beside application data.
-      # They are immutable, re-downloadable and pinned by repo@revision, while
-      # consumer-data holds the state that cannot be recovered; mixing them made
-      # a 200 KB data volume impossible to prune, back up or move without
-      # dragging 7.5 GB of weights along.
-      HF_HOME: /models/huggingface
-      # Once the cache is warm and the revision is pinned, production should
-      # forbid runtime calls to the Hub so start-up is deterministic.
-      HF_HUB_OFFLINE: ${LITIGATION_HF_HUB_OFFLINE:-0}
-    ports:
-      - "${LITIGATION_BIND_HOST:-127.0.0.1}:8000:8000"
-    volumes:
-      - consumer-data:/app/data   # ChromaDB and upload workspace
-      - model-cache:/models       # Hugging Face weights, shared, never mutated here
-      - ./data/embedding_generations:/app/data/embedding_generations:ro
+# `docker compose up --build` indexes the legal corpus (or confirms the index is
+# ready) before the API starts. The embedding generations live in
+# ./data/embedding_generations, shared with local `python -m
+# app.consumer.preindex_legal` runs, so an index built on the host is reused.
+#
+# Force a rebuild: docker compose run --rm legal-index python -m app.consumer.preindex_legal --force
 
-  # Building a generation writes shards and a manifest, which the API must never
-  # do - hence its read-only mount above. This service exists so indexing runs in
-  # Docker like everything else, instead of depending on a developer's own
-  # ~/.cache and locally installed CUDA/torch.
-  indexer:
-    profiles: ["tools"]
-    build:
-      context: .
-      target: api
-      args:
-        API_EXTRAS: ${LITIGATION_API_EXTRAS:-ocr}
-    env_file:
-      - path: .env
-        required: false
-    environment:
-      LITIGATION_DATA_DIR: /app/data
-      LITIGATION_POSTGRES_DSN: ${LITIGATION_DOCKER_POSTGRES_DSN:-postgresql://postgres:giveexit@host.docker.internal:5432/postgres}
-      HF_HOME: /models/huggingface
+x-api-image: &api-image
+  build:
+    context: .
+    target: api
+    args:
+      API_EXTRAS: ${LITIGATION_API_EXTRAS:-ocr}
+  env_file:
+    - path: .env
+      required: false
+  # Docker Desktop defines host.docker.internal; Docker Engine on Linux needs
+  # the mapping to reach a database running on the host.
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
+  environment:
+    LITIGATION_DATA_DIR: /app/data
+    # A local Python process reaches the host database through localhost;
+    # containers need Docker Desktop's host gateway instead.
+    LITIGATION_POSTGRES_DSN: ${LITIGATION_DOCKER_POSTGRES_DSN:-postgresql://postgres:giveexit@host.docker.internal:5432/postgres}
+    # Model weights live in their own volume, not beside application data.
+    # They are immutable, re-downloadable and pinned by repo@revision, while
+    # consumer-data holds the state that cannot be recovered; mixing them made
+    # a 200 KB data volume impossible to prune, back up or move without
+    # dragging 7.5 GB of weights along.
+    HF_HOME: /models/huggingface
+    # Once the cache is warm and the revision is pinned, production should
+    # forbid runtime calls to the Hub so start-up is deterministic.
+    HF_HUB_OFFLINE: ${LITIGATION_HF_HUB_OFFLINE:-0}
+
+services:
+  # One-shot job: build or reuse the versioned legal index. It is idempotent,
+  # so on an already indexed corpus it only checks and exits.
+  legal-index:
+    <<: *api-image
+    restart: "no"
     volumes:
       - consumer-data:/app/data
       - model-cache:/models
       - ./data/embedding_generations:/app/data/embedding_generations
     command: ["python", "-m", "app.consumer.preindex_legal"]
+
+  api:
+    <<: *api-image
+    depends_on:
+      legal-index:
+        condition: service_completed_successfully
+    ports:
+      - "${LITIGATION_BIND_HOST:-127.0.0.1}:8000:8000"
+    volumes:
+      - consumer-data:/app/data   # ChromaDB and upload workspace
+      - model-cache:/models       # Hugging Face weights; queries still need the model
+      # Building a generation writes shards and a manifest, which the API must
+      # never do; only legal-index mounts this directory writable.
+      - ./data/embedding_generations:/app/data/embedding_generations:ro
+
   frontend:
     build:
       context: .

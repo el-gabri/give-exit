@@ -102,6 +102,11 @@ _RECOMMENDED_DOCUMENTS = (
 )
 
 
+# Words that turn a sentence into a statement of the resolution sought.
+_REQUEST_TERMS = ("quero ", "desejo ", "solicito ")
+_SENTENCE_BOUNDARY_RE = re.compile(r"(?<=[.!?])\s+")
+
+
 def recommended_documents() -> list[str]:
     return list(_RECOMMENDED_DOCUMENTS)
 
@@ -109,27 +114,43 @@ def recommended_documents() -> list[str]:
 def extract_explicit_facts(text: str, current: ConsumerCaseFacts) -> ConsumerIntakeExtraction:
     """Extract only facts directly present in a message.
 
-    The first message becomes the complaint summary. Later edits remain the
+    The first message becomes the complaint summary. Sentences that state
+    what the consumer wants ("Quero o estorno...") become the desired
+    resolution and leave the account, so a notice drafted without review does
+    not repeat the whole message as a request. Later edits remain the
     consumer's responsibility through the confirmation form; this extractor
     intentionally does not silently replace already collected facts.
     """
     normalized = " ".join(text.split())
-    lowered = normalized.casefold()
+    account, request = _split_request(normalized)
     bank_name = _extract_supplier(normalized) if current.bank_name is None else None
     period = None
     if current.incident_date_or_period is None and (match := _DATE_RE.search(normalized)):
         period = match.group(0)
     return ConsumerIntakeExtraction(
         bank_name=bank_name,
-        complaint_summary=(normalized if current.complaint_summary is None else None),
+        complaint_summary=(account if current.complaint_summary is None else None),
         incident_date_or_period=period,
-        desired_resolution=(
-            normalized
-            if current.desired_resolution is None
-            and any(term in lowered for term in ("quero ", "desejo ", "solicito "))
-            else None
-        ),
+        desired_resolution=(request if current.desired_resolution is None else None),
     )
+
+
+def _split_request(text: str) -> tuple[str, str | None]:
+    """The account and the sentences that ask for something, each verbatim.
+
+    A message made only of requests keeps it whole as the account too, so the
+    complaint is never empty.
+    """
+    sentences = _SENTENCE_BOUNDARY_RE.split(text)
+    requests = [
+        sentence
+        for sentence in sentences
+        if any(term in sentence.casefold() for term in _REQUEST_TERMS)
+    ]
+    if not requests:
+        return text, None
+    account = " ".join(sentence for sentence in sentences if sentence not in requests)
+    return account or text, " ".join(requests)
 
 
 def merge_explicit_facts(

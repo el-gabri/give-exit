@@ -18,12 +18,16 @@ RUN apt-get update \
 COPY app ./app
 ARG API_EXTRAS=ocr
 RUN pip install ".[${API_EXTRAS}]"
-# The API parses hostile PDFs and images, so it must not run as root. /app/data
-# is a mount point for ChromaDB, uploads and run history.
+COPY scripts/docker-entrypoint.sh /app/docker-entrypoint.sh
+# The API parses hostile PDFs and images, so it must not stay root. /app/data is
+# a mount point for ChromaDB, embedding generations and uploads; /models holds
+# the Hugging Face cache. The entrypoint starts as root only to fix ownership of
+# freshly created volumes, then drops to appuser before running the command.
 RUN useradd --create-home --uid 10001 appuser \
-    && mkdir -p /app/data \
-    && chown -R appuser:appuser /app
-USER appuser
+    && mkdir -p /app/data /models/huggingface \
+    && chmod +x /app/docker-entrypoint.sh \
+    && chown -R appuser:appuser /app /models
+ENTRYPOINT ["/app/docker-entrypoint.sh"]
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s \
     CMD python -c "import urllib.request as u; u.urlopen('http://localhost:8000/health')"

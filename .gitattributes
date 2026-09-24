@@ -1,1 +1,3 @@
 app/consumer/data/**/*.html binary
+# Shell scripts run inside Linux containers; CRLF from a Windows checkout breaks them.
+*.sh text eol=lf
