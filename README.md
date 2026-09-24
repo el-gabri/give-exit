@@ -293,13 +293,16 @@ writes checksummed gzip shards and a manifest under
 validates full chunk coverage/dimension/L2 normalization and activates the
 destination namespace only after a successful import.
 
-Once the pinned revision is in the local Hugging Face cache, set
-`LITIGATION_HF_HUB_OFFLINE=1` (or `HF_HUB_OFFLINE=1`) in `.env`: the model then
-loads without contacting the Hub, start-up is faster and the "unauthenticated
-requests to the HF Hub" warning goes away. An optional `HF_TOKEN` in `.env` is
-passed to the embedding model when the Hub is contacted. The app reads both
-from `.env` itself; the Hugging Face libraries alone read only the process
-environment.
+A model pinned to a commit hash loads from the local Hugging Face cache once
+it has been downloaded, without contacting the Hub, so start-up is faster and
+the "unauthenticated requests to the HF Hub" warning appears only on the first
+download. The cached copy is used only when its `modules.json` is there too;
+otherwise sentence-transformers would silently build a different encoder from
+the weights. Branch or tag revisions still ask the Hub. `LITIGATION_HF_HUB_OFFLINE=1`
+(or `HF_HUB_OFFLINE=1`) forbids the Hub entirely and fails clearly when the
+model is not cached. An optional `HF_TOKEN` in `.env` is passed to the embedding
+model when the Hub is contacted. The app reads both from `.env` itself; the
+Hugging Face libraries alone read only the process environment.
 
 Chroma is the default backend. PostgreSQL uses server-side Portuguese full-text
 search plus pgvector. To move an existing local collection to PostgreSQL without

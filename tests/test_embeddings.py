@@ -83,6 +83,12 @@ async def test_sentence_transformer_loads_weights_only_on_first_embedding(
         "sentence_transformers",
         SimpleNamespace(SentenceTransformer=FakeModel),
     )
+    # Offline loading requires the model to be complete in the local cache.
+    monkeypatch.setitem(
+        sys.modules,
+        "huggingface_hub",
+        SimpleNamespace(try_to_load_from_cache=lambda repo, name, revision=None: f"/c/{name}"),
+    )
     client = SentenceTransformerEmbeddingClient(
         "modelo-juridico",
         device="cpu",

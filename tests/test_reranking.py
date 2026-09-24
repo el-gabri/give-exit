@@ -64,6 +64,11 @@ def test_the_cross_encoder_loads_from_the_local_cache_when_offline(
     fake_module = types.ModuleType("sentence_transformers")
     fake_module.CrossEncoder = lambda *args, **kwargs: calls.append(kwargs)  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "sentence_transformers", fake_module)
+    monkeypatch.setitem(
+        sys.modules,
+        "huggingface_hub",
+        types.SimpleNamespace(try_to_load_from_cache=lambda repo, name, revision=None: name),
+    )
 
     SentenceTransformerReranker("some/cross-encoder-model", local_files_only=True)
 

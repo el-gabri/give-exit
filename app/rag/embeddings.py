@@ -20,6 +20,7 @@ from openai import AsyncOpenAI
 from app.core.logging import get_logger
 from app.llm.base import TokenUsage
 from app.llm.pricing import estimate_cost_usd
+from app.rag.hub_loading import load_cache_first
 
 logger = get_logger(__name__)
 
@@ -352,12 +353,19 @@ class SentenceTransformerEmbeddingClient:
                 device=self._device or "auto",
             )
             started = time.perf_counter()
-            self._model = sentence_transformers.SentenceTransformer(
-                self._model_name,
-                device=self._device,
+            self._model = load_cache_first(
+                lambda local_only: sentence_transformers.SentenceTransformer(
+                    self._model_name,
+                    device=self._device,
+                    revision=self._model_revision,
+                    token=self._hf_token,
+                    local_files_only=local_only,
+                ),
+                repo_id=self._model_name,
                 revision=self._model_revision,
-                token=self._hf_token,
-                local_files_only=self._local_files_only,
+                # Without modules.json the library would improvise a model.
+                required_files=("modules.json",),
+                offline=self._local_files_only,
             )
             logger.info(
                 "local_embedding_model_loaded",

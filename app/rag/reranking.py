@@ -3,6 +3,7 @@
 import asyncio
 from typing import Any, Protocol, runtime_checkable
 
+from app.rag.hub_loading import load_cache_first
 from app.schemas.rag import RetrievedChunk
 
 
@@ -43,9 +44,15 @@ class SentenceTransformerReranker:
         self._model_revision = model_revision
         self._predict_lock = asyncio.Lock()
         # CrossEncoder takes a token argument only in recent sentence-transformers
-        # releases; reranker models are public, so only the offline flag is set.
-        self._model: Any = sentence_transformers.CrossEncoder(
-            model, device=device, revision=model_revision, local_files_only=local_files_only
+        # releases; reranker models are public, so only the cache mode is set.
+        self._model: Any = load_cache_first(
+            lambda local_only: sentence_transformers.CrossEncoder(
+                model, device=device, revision=model_revision, local_files_only=local_only
+            ),
+            repo_id=model,
+            revision=model_revision,
+            required_files=("config.json",),
+            offline=local_files_only,
         )
 
     @property

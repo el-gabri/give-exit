@@ -189,10 +189,14 @@ shards gzip com checksum e manifesto em
 `data/embedding_generations/<generation-id>/`, retoma somente shards válidos e
 só ativa o namespace após validar cobertura, dimensão e normalização.
 
-Com a revisão fixada já no cache local do Hugging Face, defina
-`LITIGATION_HF_HUB_OFFLINE=1` (ou `HF_HUB_OFFLINE=1`) no `.env`: o modelo passa a
-carregar sem consultar o Hub, a inicialização fica mais rápida e o aviso
-"unauthenticated requests to the HF Hub" some. Um `HF_TOKEN` opcional no `.env`
+Um modelo fixado em um commit carrega do cache local do Hugging Face depois do
+primeiro download, sem consultar o Hub: a inicialização fica mais rápida e o
+aviso "unauthenticated requests to the HF Hub" só aparece no primeiro download.
+A cópia em cache só é usada se o `modules.json` também estiver lá; sem ele, o
+sentence-transformers montaria silenciosamente outro encoder a partir dos pesos.
+Revisões por branch ou tag continuam consultando o Hub.
+`LITIGATION_HF_HUB_OFFLINE=1` (ou `HF_HUB_OFFLINE=1`) proíbe o Hub e falha com uma
+mensagem clara se o modelo não estiver em cache. Um `HF_TOKEN` opcional no `.env`
 é repassado ao modelo de embedding quando o Hub é consultado. A aplicação lê os
 dois do `.env`; as bibliotecas do Hugging Face sozinhas leem apenas o ambiente
 do processo.
