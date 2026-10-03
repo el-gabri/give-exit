@@ -633,6 +633,7 @@ def render_agreement_sweep(sweep: Mapping[int, EvaluationSummary]) -> str:
         ("grounds", "consumer_notice_grounds"),
         ("complementary", "consumer_notice_complementary_grounds"),
         ("known_bad", "consumer_notice_known_bad_citations"),
+        ("labelled", "consumer_notice_labelled_grounds"),
         ("verifier_removed", "consumer_notice_verifier_removed"),
     )
     lines = [

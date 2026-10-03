@@ -106,11 +106,69 @@ def test_final_grounds_are_scored_by_exact_unit_and_known_bad_citations() -> Non
     assert counts == {
         "consumer_notice_grounds": 2,
         "consumer_notice_known_bad_citations": 1,
+        "consumer_notice_labelled_grounds": 1,
+        "consumer_notice_unlabelled_grounds": 0,
         "consumer_notice_complementary_grounds": 0,
     }
     assert {metric.name: metric.score for metric in metrics} == {
         "consumer_notice_semantic_success": 1.0,
+        "consumer_notice_precision": 0.5,
         "consumer_notice_exact_recall": 0.5,
+        "consumer_notice_article_recall": 0.5,
+    }
+
+
+def test_a_known_bad_unit_of_a_labelled_article_is_not_counted_as_labelled() -> None:
+    case = _case(
+        relevant=(
+            ConsumerLegalRelevance(
+                article_id="br-cdc-art-39",
+                unit_id="br-cdc-art-39-inciso-i",
+                grade=3,
+                rationale="venda casada",
+            ),
+        ),
+        hard_negatives=("br-cdc-art-39-inciso-iii",),
+    )
+
+    metrics, counts = notice_ground_metrics(
+        [_ground("br-cdc-art-39-inciso-iii")], case, degraded=False
+    )
+
+    assert counts["consumer_notice_known_bad_citations"] == 1
+    assert counts["consumer_notice_labelled_grounds"] == 0
+    assert counts["consumer_notice_unlabelled_grounds"] == 0
+    scores = {metric.name: metric.score for metric in metrics}
+    assert scores["consumer_notice_precision"] == 0.0
+    assert scores["consumer_notice_article_recall"] == 0.0
+
+
+def test_article_recall_counts_distinct_labelled_articles() -> None:
+    grounds = [
+        _ground("br-cdc-art-42-paragrafo-unico"),
+        _ground("br-cdc-art-42-caput"),
+        _ground("br-cdc-art-51-inciso-iv"),
+    ]
+
+    metrics, counts = notice_ground_metrics(grounds, _case(), degraded=False)
+
+    assert counts["consumer_notice_labelled_grounds"] == 2
+    assert counts["consumer_notice_unlabelled_grounds"] == 1
+    scores = {metric.name: metric.score for metric in metrics}
+    assert scores["consumer_notice_precision"] == 0.667
+    # Two grounds cite art. 42 and none cites art. 6: one of two labelled articles.
+    assert scores["consumer_notice_article_recall"] == 0.5
+    assert scores["consumer_notice_exact_recall"] == 0.5
+
+
+def test_a_case_that_cites_nothing_has_no_precision() -> None:
+    metrics, counts = notice_ground_metrics([], _case(), degraded=False)
+
+    assert counts["consumer_notice_grounds"] == 0
+    assert {metric.name: metric.score for metric in metrics} == {
+        "consumer_notice_semantic_success": 1.0,
+        "consumer_notice_exact_recall": 0.0,
+        "consumer_notice_article_recall": 0.0,
     }
 
 
@@ -131,7 +189,9 @@ def test_no_ground_cases_score_abstention_and_degradation() -> None:
         "consumer_notice_semantic_success": 0.0,
         "consumer_notice_abstention": 1.0,
     }
-    assert {metric.name: metric.score for metric in cited}["consumer_notice_abstention"] == 0.0
+    cited_scores = {metric.name: metric.score for metric in cited}
+    assert cited_scores["consumer_notice_abstention"] == 0.0
+    assert cited_scores["consumer_notice_precision"] == 0.0
 
 
 async def test_offline_notice_baseline_on_the_seed_dataset() -> None:
@@ -174,6 +234,10 @@ async def test_offline_notice_baseline_on_the_seed_dataset() -> None:
     unchanged): 22 grounds, 7 complementary, still no known-bad citation. The
     offline stack cites nothing in 9 of the 13 new in-scope cases, whose lay
     wording shares few words with the statute (see app.evaluation.label_ranks).
+
+    Re-measured on 2026-10-02 for the ground classes (precision and article
+    recall, spec 2026-10-02): of the 22 grounds, 2 cite an article the case
+    labels and 20 cite one it does not.
     """
 
     summary = await run_notice_evaluation(load_consumer_legal_dataset(DATASET_PATH))
@@ -183,6 +247,8 @@ async def test_offline_notice_baseline_on_the_seed_dataset() -> None:
         "consumer_notice_complementary_grounds": 7,
         "consumer_notice_grounds": 22,
         "consumer_notice_known_bad_citations": 0,
+        "consumer_notice_labelled_grounds": 2,
+        "consumer_notice_unlabelled_grounds": 20,
     }
     assert summary.averages["consumer_notice_exact_recall"] == 0.0
     assert summary.averages["consumer_notice_abstention"] == 1.0
@@ -225,6 +291,8 @@ async def test_a_failing_case_is_recorded_without_stopping_the_run() -> None:
     assert len(failed) == 33
     assert summary.failed_case_count == 33
     assert all("store offline" in case.errors[0] for case in failed)
+    assert failed[0].score("consumer_notice_article_recall") == 0.0
+    assert failed[0].score("consumer_notice_precision") is None
 
 
 def test_cli_writes_notice_results_and_gates_on_totals(
@@ -391,6 +459,7 @@ def test_cli_prints_an_agreement_sweep(
     start = next(i for i, line in enumerate(printed) if line.startswith("agreement_max_rank"))
     table = printed[start : start + 3]
     assert table[0].split()[:4] == ["agreement_max_rank", "grounds", "complementary", "known_bad"]
+    assert "labelled" in table[0].split()
     assert [line.split()[:2] for line in table[1:]] == [["16", "27"], ["20", "33"]]
     payload = json.loads(output.read_text(encoding="utf-8"))
     assert sorted(payload["agreement_sweep"]) == ["16", "20"]

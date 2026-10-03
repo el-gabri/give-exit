@@ -87,6 +87,29 @@ def _is_unit_id(stable_id: str) -> bool:
     return any(marker in stable_id for marker in LEGAL_UNIT_MARKERS)
 
 
+GroundClass = Literal["known_bad", "labelled", "unlabelled"]
+
+
+def _ground_class(
+    ground: LegalGround,
+    hard_negatives: frozenset[str],
+    labelled_articles: frozenset[str],
+) -> GroundClass:
+    """Classify one cited ground. A known-bad citation is never labelled.
+
+    The precedence matters when a hard negative is a unit of a labelled
+    article: citing CDC art. 39 III in a case labelled art. 39 I, with 39 III
+    as its hard negative, is a wrong citation, not a right article.
+    """
+
+    authority = ground.authority
+    if is_known_bad_citation(authority.provision_id, authority.unit_id, hard_negatives):
+        return "known_bad"
+    if authority.provision_id in labelled_articles:
+        return "labelled"
+    return "unlabelled"
+
+
 def notice_ground_metrics(
     grounds: list[LegalGround],
     case: ConsumerLegalGoldenCase,
@@ -95,15 +118,15 @@ def notice_ground_metrics(
 ) -> tuple[list[MetricResult], dict[str, int]]:
     """Score the grounds of one case; counts are summed across the run."""
 
+    labelled_articles = frozenset(judgment.article_id for judgment in case.relevant)
     hard_negatives = frozenset(case.hard_negatives)
+    classes = [_ground_class(ground, hard_negatives, labelled_articles) for ground in grounds]
+    labelled = classes.count("labelled")
     counts = {
         "consumer_notice_grounds": len(grounds),
-        "consumer_notice_known_bad_citations": sum(
-            is_known_bad_citation(
-                ground.authority.provision_id, ground.authority.unit_id, hard_negatives
-            )
-            for ground in grounds
-        ),
+        "consumer_notice_known_bad_citations": classes.count("known_bad"),
+        "consumer_notice_labelled_grounds": labelled,
+        "consumer_notice_unlabelled_grounds": classes.count("unlabelled"),
         "consumer_notice_complementary_grounds": sum(
             ground.authority.law_id in COMPLEMENTARY_LAW_IDS for ground in grounds
         ),
@@ -117,6 +140,16 @@ def notice_ground_metrics(
             ),
         )
     ]
+    if grounds:
+        # A case that cites nothing has no precision, so a run that cites
+        # nothing produces none and a gate on it fails instead of passing.
+        metrics.append(
+            MetricResult(
+                name="consumer_notice_precision",
+                score=round(labelled / len(grounds), 3),
+                details=f"{labelled}/{len(grounds)} cited grounds are labelled for the case",
+            )
+        )
     if case.no_applicable_ground:
         metrics.append(
             MetricResult(
@@ -130,12 +163,26 @@ def notice_ground_metrics(
         any(_cites(ground, judgment.article_id, judgment.unit_id) for ground in grounds)
         for judgment in case.relevant
     )
-    metrics.append(
-        MetricResult(
-            name="consumer_notice_exact_recall",
-            score=round(cited / len(case.relevant), 3),
-            details=f"{cited}/{len(case.relevant)} labelled judgments cited",
-        )
+    cited_articles = {
+        ground.authority.provision_id
+        for ground, kind in zip(grounds, classes, strict=True)
+        if kind == "labelled"
+    }
+    metrics.extend(
+        [
+            MetricResult(
+                name="consumer_notice_exact_recall",
+                score=round(cited / len(case.relevant), 3),
+                details=f"{cited}/{len(case.relevant)} labelled judgments cited",
+            ),
+            MetricResult(
+                name="consumer_notice_article_recall",
+                score=round(len(cited_articles) / len(labelled_articles), 3),
+                details=(
+                    f"{len(cited_articles)}/{len(labelled_articles)} labelled articles cited"
+                ),
+            ),
+        ]
     )
     return metrics, counts
 
@@ -147,22 +194,19 @@ def _cites(ground: LegalGround, article_id: str, unit_id: str | None) -> bool:
 
 
 def _failed_notice_metrics(case: ConsumerLegalGoldenCase) -> list[MetricResult]:
-    name = (
-        "consumer_notice_abstention"
-        if case.no_applicable_ground
-        else "consumer_notice_exact_recall"
+    invalid = "retrieval failure is not a valid result"
+    semantic = MetricResult(
+        name="consumer_notice_semantic_success", score=0.0, details="retrieval failed"
     )
+    if case.no_applicable_ground:
+        return [
+            semantic,
+            MetricResult(name="consumer_notice_abstention", score=0.0, details=invalid),
+        ]
     return [
-        MetricResult(
-            name="consumer_notice_semantic_success",
-            score=0.0,
-            details="retrieval failed",
-        ),
-        MetricResult(
-            name=name,
-            score=0.0,
-            details="retrieval failure is not a valid result",
-        ),
+        semantic,
+        MetricResult(name="consumer_notice_exact_recall", score=0.0, details=invalid),
+        MetricResult(name="consumer_notice_article_recall", score=0.0, details=invalid),
     ]
 
 
