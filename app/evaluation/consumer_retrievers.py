@@ -11,13 +11,16 @@ from app.core.config import RetrievalMode, Settings
 from app.evaluation.query_vectors import (
     CachedQueryEmbedder,
     QueryVectorCache,
+    QueryVectorCacheMiss,
     cache_contract,
+    missing_golden_queries,
     query_vector_root,
 )
 from app.rag.embeddings import MockEmbeddingClient
 from app.rag.factory import create_embedding_client, create_rag_pipeline
 from app.rag.pipeline import RagPipeline
 from app.rag.vector_store import InMemoryVectorStore
+from app.schemas.evaluation import ConsumerLegalGoldenDataset
 from app.schemas.rag import RetrievedChunk
 
 PipelineFactory = Callable[[LegalCorpus], RagPipeline]
@@ -133,6 +136,26 @@ def cached_configured_pipeline(
             "set LITIGATION_EMBEDDING_MODEL_REVISION"
         )
     return pipeline, embedder
+
+
+def enforce_cached_queries(dataset: ConsumerLegalGoldenDataset, *, configured: bool) -> None:
+    """Make a configured run fail on uncached golden queries, before any query runs.
+
+    Inside a run, a cache miss surfaces below the pipeline's query guard, which
+    turns it into a lexical-only fallback that scores as an abstention. Checking
+    coverage first turns it into an error naming the command that fills it.
+    """
+
+    if not configured:
+        raise ValueError("--require-cached-queries applies only to the configured stack")
+    configure_query_vectors(require_cached=True)
+    pipeline, embedder = cached_configured_pipeline(get_default_legal_corpus())
+    try:
+        missing = missing_golden_queries(embedder, dataset)
+    finally:
+        pipeline.close()
+    if missing:
+        raise ValueError(str(QueryVectorCacheMiss(missing)))
 
 
 def configured_pipeline(corpus: LegalCorpus, settings: Settings | None = None) -> RagPipeline:

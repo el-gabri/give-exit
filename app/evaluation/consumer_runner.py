@@ -59,6 +59,7 @@ _INACTIVE_STATUSES = {
 }
 _UNKNOWN_STATUSES = {"", "desconhecido", "unknown"}
 QUERY_BUILDER_VERSION = "consumer-legal-narrative-v7"
+_CONFIGURED_RETRIEVER = "app.evaluation.consumer_retrievers:configured_hybrid_retriever"
 
 
 def _threshold(raw: str) -> tuple[str, float]:
@@ -689,16 +690,23 @@ async def _run_agreement_sweep(
 def _prepare(
     parser: argparse.ArgumentParser, args: argparse.Namespace
 ) -> ConsumerLegalGoldenDataset:
-    """Load the dataset split the flags select and set the query-vector policy."""
-    if args.require_cached_queries:
-        from app.evaluation.consumer_retrievers import configure_query_vectors
-
-        configure_query_vectors(require_cached=True)
+    """Load the dataset split the flags select and enforce the query-vector policy."""
     dataset = load_consumer_legal_dataset(Path(args.dataset))
     try:
-        return dataset_split(dataset, args.split)
+        dataset = dataset_split(dataset, args.split)
+        if args.require_cached_queries:
+            from app.evaluation.consumer_retrievers import enforce_cached_queries
+
+            enforce_cached_queries(dataset, configured=_uses_configured_stack(args))
     except ValueError as exc:
         parser.error(str(exc))
+    return dataset
+
+
+def _uses_configured_stack(args: argparse.Namespace) -> bool:
+    if args.evaluate_notice:
+        return bool(args.notice_pipeline == "configured")
+    return bool(args.retriever == _CONFIGURED_RETRIEVER)
 
 
 def _positive_int(value: str) -> int:

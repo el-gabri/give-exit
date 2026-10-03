@@ -121,8 +121,7 @@ async def test_cli_prints_the_table_and_writes_json(
     )
 
 
-async def test_cli_ranks_one_split(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(consumer_retrievers, "_require_cached_queries", False)
+async def test_cli_ranks_one_split(tmp_path: Path) -> None:
     dataset = load_consumer_legal_dataset(DATASET_PATH)
     first = dataset.cases[0]
     holdout = ConsumerLegalGoldenCase.model_validate(
@@ -133,17 +132,19 @@ async def test_cli_ranks_one_split(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     dataset_path.write_text(subset.model_dump_json(), encoding="utf-8")
     output = tmp_path / "ranks.json"
 
-    await label_ranks._cli(
-        [
-            str(dataset_path),
-            "--split",
-            "holdout",
-            "--require-cached-queries",
-            "--output",
-            str(output),
-        ]
-    )
+    await label_ranks._cli([str(dataset_path), "--split", "holdout", "--output", str(output)])
 
     payload = json.loads(output.read_text(encoding="utf-8"))
     assert {label["case_id"] for label in payload["labels"]} == {"holdout_fixture"}
-    assert consumer_retrievers._require_cached_queries is True
+
+
+async def test_cli_refuses_require_cached_queries_offline(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr(consumer_retrievers, "_require_cached_queries", False)
+
+    with pytest.raises(SystemExit) as excinfo:
+        await label_ranks._cli([str(DATASET_PATH), "--require-cached-queries"])
+
+    assert excinfo.value.code == 2
+    assert "applies only to the configured stack" in capsys.readouterr().err

@@ -618,8 +618,8 @@ async def test_a_degraded_retrieval_fails_the_case_instead_of_scoring_lexical_on
     assert "retrieval degraded: lexical_only" in summary.cases[0].errors[0]
 
 
-def test_cli_can_forbid_loading_the_embedding_model(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+def test_cli_refuses_require_cached_queries_without_the_configured_stack(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     monkeypatch.setattr(consumer_retrievers, "_require_cached_queries", False)
     dataset_path = _write_dataset(tmp_path / "dataset.json", _split_dataset())
@@ -629,6 +629,9 @@ def test_cli_can_forbid_loading_the_embedding_model(
         ["consumer_runner", str(dataset_path), "--empty-baseline", "--require-cached-queries"],
     )
 
-    asyncio.run(consumer_runner._cli())
+    with pytest.raises(SystemExit) as excinfo:
+        asyncio.run(consumer_runner._cli())
 
-    assert consumer_retrievers._require_cached_queries is True
+    assert excinfo.value.code == 2
+    assert "applies only to the configured stack" in capsys.readouterr().err
+    assert consumer_retrievers._require_cached_queries is False

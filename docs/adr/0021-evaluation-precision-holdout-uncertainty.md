@@ -49,7 +49,9 @@ it most needed to:
    contract (model, revision, dimension, normalization, formatter versions,
    instruction hash) and the SHA-256 of each query; no query text is stored.
    `python -m app.evaluation.query_vectors` fills it one case at a time and
-   resumes after a crash; `--require-cached-queries` forbids loading the model.
+   resumes after a crash; `--require-cached-queries` forbids loading the model
+   and checks coverage before any query runs, because a miss inside a run
+   would surface below the query guard as a silent lexical-only fallback.
    Unpinned models are never cached. Production never persists a query.
 6. **Degraded runs fail.** A configured retrieval case that falls back to
    lexical-only is a failed case (exit 2), not a hybrid result.

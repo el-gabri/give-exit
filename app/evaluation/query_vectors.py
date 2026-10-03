@@ -260,6 +260,18 @@ def golden_queries(dataset: ConsumerLegalGoldenDataset) -> dict[str, list[str]]:
     }
 
 
+def missing_golden_queries(
+    embedder: CachedQueryEmbedder, dataset: ConsumerLegalGoldenDataset
+) -> int:
+    """How many distinct golden queries of ``dataset`` the bound cache lacks."""
+
+    cache = embedder.cache
+    if cache is None:
+        raise ValueError("the configured embedding model has no pinned revision; nothing is cached")
+    queries = {query for texts in golden_queries(dataset).values() for query in texts}
+    return sum(cache.get(query) is None for query in queries)
+
+
 async def fill_query_vectors(
     embedder: CachedQueryEmbedder,
     queries_by_case: Mapping[str, list[str]],

@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -10,7 +12,7 @@ import pytest
 
 from app.consumer.legal_corpus import get_default_legal_corpus
 from app.core.config import Settings
-from app.evaluation import consumer_retrievers, query_vectors
+from app.evaluation import consumer_retrievers, consumer_runner, label_ranks, query_vectors
 from app.evaluation.consumer_golden import load_consumer_legal_dataset
 from app.evaluation.query_vectors import (
     CONTRACT_FILENAME,
@@ -375,3 +377,73 @@ def test_the_cli_builds_the_configured_stack(monkeypatch: pytest.MonkeyPatch) ->
     )
 
     assert query_vectors._configured_embedder() == (embedder, pipeline)
+
+
+def _strict_configured(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """A pinned configured stack whose settings ignore the developer's .env."""
+    monkeypatch.setattr(consumer_retrievers, "_require_cached_queries", False)
+    monkeypatch.setattr(consumer_retrievers, "Settings", lambda: _settings(tmp_path))
+    monkeypatch.setattr(
+        consumer_retrievers, "create_embedding_client", lambda _settings: _PinnedEmbedder()
+    )
+
+
+def test_a_strict_notice_run_with_missing_vectors_fails_before_any_query(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # Inside a run the miss would become a lexical-only fallback and exit 0.
+    _strict_configured(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "consumer_runner",
+            str(DATASET_PATH),
+            "--evaluate-notice",
+            "--notice-pipeline",
+            "configured",
+            "--split",
+            "development",
+            "--require-cached-queries",
+        ],
+    )
+
+    with pytest.raises(SystemExit) as excinfo:
+        asyncio.run(consumer_runner._cli())
+
+    assert excinfo.value.code == 2
+    assert "golden query vector(s) are not cached" in capsys.readouterr().err
+
+
+async def test_a_strict_label_rank_run_with_missing_vectors_fails_before_any_query(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _strict_configured(monkeypatch, tmp_path)
+
+    with pytest.raises(SystemExit) as excinfo:
+        await label_ranks._cli(
+            [str(DATASET_PATH), "--pipeline", "configured", "--require-cached-queries"]
+        )
+
+    assert excinfo.value.code == 2
+    assert "golden query vector(s) are not cached" in capsys.readouterr().err
+
+
+async def test_a_full_cache_satisfies_a_strict_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _strict_configured(monkeypatch, tmp_path)
+    dataset = load_consumer_legal_dataset(DATASET_PATH)
+    subset = dataset.model_copy(update={"cases": dataset.cases[:1]})
+    pipeline, embedder = consumer_retrievers.cached_configured_pipeline(
+        get_default_legal_corpus()
+    )
+    await fill_query_vectors(embedder, golden_queries(subset))
+    pipeline.close()
+
+    consumer_retrievers.enforce_cached_queries(subset, configured=True)
+
+    assert consumer_retrievers._require_cached_queries is True
+    with pytest.raises(ValueError, match="no pinned revision"):
+        query_vectors.missing_golden_queries(CachedQueryEmbedder(_CountingEmbedder()), subset)
+

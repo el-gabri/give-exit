@@ -492,8 +492,10 @@ python -m app.evaluation.consumer_runner --evaluate-notice --notice-pipeline con
   --require-cached-queries --output configured-notice.json
 ```
 
-A configured retrieval run that degrades to lexical-only fails the case and
-exits 2 instead of scoring it as hybrid.
+`--require-cached-queries` checks the cache before any query runs and exits 2,
+naming the fill command, if a golden query vector is missing; it is refused on
+the offline stack. A configured retrieval run that degrades to lexical-only
+fails the case and exits 2 instead of scoring it as hybrid.
 
 To evaluate the active configured embedding generation rather than the offline
 baseline (this command refuses to re-embed the corpus implicitly):

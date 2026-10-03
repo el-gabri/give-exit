@@ -35,8 +35,8 @@ from app.evaluation.consumer_golden import (
     validate_consumer_legal_labels,
 )
 from app.evaluation.consumer_retrievers import (
-    configure_query_vectors,
     configured_pipeline,
+    enforce_cached_queries,
     offline_pipeline,
     prepare_evaluation_pipeline,
 )
@@ -183,10 +183,10 @@ async def _cli(argv: Sequence[str] | None = None) -> None:
         ),
     )
     args = parser.parse_args(argv)
-    if args.require_cached_queries:
-        configure_query_vectors(require_cached=True)
     try:
         dataset = dataset_split(load_consumer_legal_dataset(Path(args.dataset)), args.split)
+        if args.require_cached_queries:
+            enforce_cached_queries(dataset, configured=args.pipeline == "configured")
     except ValueError as exc:
         parser.error(str(exc))
     factory = offline_pipeline if args.pipeline == "offline" else configured_pipeline

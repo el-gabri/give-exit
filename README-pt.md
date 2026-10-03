@@ -344,8 +344,11 @@ python -m app.evaluation.consumer_runner --evaluate-notice --notice-pipeline con
   --require-cached-queries --output configured-notice.json
 ```
 
-Uma recuperação configurada que degrada para apenas lexical falha o caso e
-termina com código 2, em vez de ser pontuada como híbrida.
+`--require-cached-queries` confere o cache antes de qualquer consulta e termina
+com código 2, indicando o comando que o preenche, se faltar algum vetor de
+consulta golden; na pilha offline a opção é recusada. Uma recuperação
+configurada que degrada para apenas lexical falha o caso e termina com código
+2, em vez de ser pontuada como híbrida.
 
 Para avaliar a geração configurada que já está ativa, sem reindexação implícita:
 
