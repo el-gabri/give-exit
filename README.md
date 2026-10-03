@@ -463,6 +463,38 @@ subdivision precision, hard-negative rate, inactive-authority rate and
 out-of-scope abstention. It is an engineering-authored seed and still requires
 independent Brazilian legal review.
 
+The golden set has a development and a holdout split (dataset 2.2.0). Tune on
+development; the holdout is reported on every build and never gated, and a
+holdout case that informed a decision moves to development in the next
+version. `--split development|holdout` evaluates one split, and every summary
+reports `by_split` and 95% bootstrap `intervals`.
+
+The notice evaluation counts every cited ground once, as known-bad (a labelled
+hard negative), labelled (an article the case labels) or unlabelled, and
+reports `consumer_notice_precision` (labelled ÷ cited, only for cases that
+cite something) and `consumer_notice_article_recall` beside exact recall.
+
+Compare two runs case by case, with paired-bootstrap intervals:
+
+```bash
+python -m app.evaluation.compare before.json after.json --split development
+```
+
+The configured stack reads golden query vectors from a cache keyed by the
+embedding contract under `data/evaluation/query_vectors/`. Fill it once, one
+case at a time (an interrupted run resumes), then evaluate without loading
+the model:
+
+```bash
+python -m app.evaluation.query_vectors                 # or --case CASE_ID, repeatable
+python -m app.evaluation.query_vectors --check
+python -m app.evaluation.consumer_runner --evaluate-notice --notice-pipeline configured \
+  --require-cached-queries --output configured-notice.json
+```
+
+A configured retrieval run that degrades to lexical-only fails the case and
+exits 2 instead of scoring it as hybrid.
+
 To evaluate the active configured embedding generation rather than the offline
 baseline (this command refuses to re-embed the corpus implicitly):
 

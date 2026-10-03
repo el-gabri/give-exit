@@ -208,3 +208,4 @@ production claims.
 - [0018](adr/0018-narrative-only-consumer-intake.md) — narrative-only consumer intake
 - [0019](adr/0019-explicit-retrieval-agreement.md) — explicit retrieval agreement, citable-only index and verified grounds
 - [0020](adr/0020-lgpd-grounds-without-cdc-anchor.md) — the LGPD may ground a notice alone
+- [0021](adr/0021-evaluation-precision-holdout-uncertainty.md) — precision, a holdout and uncertainty in evaluation

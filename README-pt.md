@@ -313,6 +313,40 @@ subdivisão, hard negatives, autoridades inativas e abstenção fora do escopo.
 Ele é uma semente criada por engenharia e ainda exige revisão jurídica
 brasileira independente.
 
+O conjunto golden tem uma divisão de desenvolvimento e uma de holdout (dataset
+2.2.0). Ajuste parâmetros só no desenvolvimento; o holdout é medido em todo
+build e nunca vira gate, e um caso de holdout que embasou uma decisão passa
+para o desenvolvimento na versão seguinte. `--split development|holdout`
+avalia uma divisão, e todo resumo traz `by_split` e intervalos bootstrap de
+95% (`intervals`).
+
+A avaliação da notificação conta cada fundamento citado uma vez, como
+conhecidamente errado (um hard negative rotulado), rotulado (um artigo que o
+caso rotula) ou não rotulado, e informa `consumer_notice_precision` (rotulados
+÷ citados, só para casos que citam algo) e `consumer_notice_article_recall`
+ao lado do recall exato.
+
+Compare duas execuções caso a caso, com intervalos bootstrap pareados:
+
+```bash
+python -m app.evaluation.compare antes.json depois.json --split development
+```
+
+A pilha configurada lê os vetores das consultas golden de um cache indexado
+pelo contrato de embedding em `data/evaluation/query_vectors/`. Preencha-o uma
+vez, um caso por vez (uma execução interrompida continua de onde parou), e
+depois avalie sem carregar o modelo:
+
+```bash
+python -m app.evaluation.query_vectors                 # ou --case CASE_ID, repetível
+python -m app.evaluation.query_vectors --check
+python -m app.evaluation.consumer_runner --evaluate-notice --notice-pipeline configured \
+  --require-cached-queries --output configured-notice.json
+```
+
+Uma recuperação configurada que degrada para apenas lexical falha o caso e
+termina com código 2, em vez de ser pontuada como híbrida.
+
 Para avaliar a geração configurada que já está ativa, sem reindexação implícita:
 
 ```powershell

@@ -89,16 +89,23 @@ jobs:
         # at 1.0 and consumer_inactive_provision_rate@5 /
         # consumer_unknown_status_rate@5 stay pinned at 0.0 regardless of
         # measurement -- those are the hard invariants.
+        #
+        # Re-baselined on 2026-10-02 for the development split of dataset 2.2.0
+        # (the 22 original cases plus the traffic-fine and private-loan cases).
+        # The 19 holdout cases are reported by their own step and never gated, so
+        # no parameter is tuned against them. Development: recall@5 0.142,
+        # article recall@5 0.225, nDCG@5 0.075, hard-negative rate@5 0.025.
         run: |
           python -m app.evaluation.consumer_runner \
             eval_data/consumer_legal_retrieval \
+            --split development \
             --output consumer-legal-retrieval-results.json \
             --min consumer_retrieval_success@5=1.0 \
-            --min consumer_recall@5=0.08 \
-            --min consumer_article_recall@5=0.21 \
-            --min consumer_ndcg@5=0.04 \
+            --min consumer_recall@5=0.14 \
+            --min consumer_article_recall@5=0.22 \
+            --min consumer_ndcg@5=0.07 \
             --min consumer_abstention@5=1.0 \
-            --max consumer_hard_negative_rate@5=0.035 \
+            --max consumer_hard_negative_rate@5=0.03 \
             --max consumer_inactive_provision_rate@5=0.0 \
             --max consumer_unknown_status_rate@5=0.0
       - name: Consumer notice final-ground gates
@@ -130,13 +137,33 @@ jobs:
         # on the configured JUÁ stack): 17 grounds, 5 complementary, known-bad
         # 0. The offline stack's single exact hit needs depth 20, so offline
         # exact recall is 0; no gate reads it.
+        #
+        # Re-measured on 2026-10-02 for the development split of dataset 2.2.0:
+        # 17 grounds, 1 labelled, 16 unlabelled, known-bad 0, abstention 1.0.
+        # consumer_notice_labelled_grounds >= 1 fails a selector that cites
+        # nothing, which the known-bad and abstention gates alone would pass.
         run: |
           python -m app.evaluation.consumer_runner \
             eval_data/consumer_legal_retrieval \
             --evaluate-notice \
+            --split development \
             --output consumer-notice-results.json \
             --max consumer_notice_known_bad_citations=0 \
-            --min consumer_notice_abstention=1.0
+            --min consumer_notice_abstention=1.0 \
+            --min consumer_notice_labelled_grounds=1
+      - name: Consumer holdout report (not gated)
+        # The holdout split is measured on every build and never gated, so no
+        # parameter is tuned against it. Its results are uploaded below.
+        run: |
+          python -m app.evaluation.consumer_runner \
+            eval_data/consumer_legal_retrieval \
+            --split holdout \
+            --output consumer-legal-retrieval-holdout.json
+          python -m app.evaluation.consumer_runner \
+            eval_data/consumer_legal_retrieval \
+            --evaluate-notice \
+            --split holdout \
+            --output consumer-notice-holdout.json
       - name: Upload consumer evaluation evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -145,6 +172,8 @@ jobs:
           path: |
             consumer-legal-retrieval-results.json
             consumer-notice-results.json
+            consumer-legal-retrieval-holdout.json
+            consumer-notice-holdout.json
       - name: Security gate benchmark
         # Thresholds are asserted in tests/test_security_benchmark.py; this
         # step publishes the per-category numbers in the build log.
