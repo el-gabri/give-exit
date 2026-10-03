@@ -83,6 +83,7 @@ branch = true
 # repo-wide 100% would block on the ~787 statements already uncovered
 # across the codebase, most of which predate this gate.
 source = [
+    "app.consumer.aliases",
     "app.consumer.embedding_artifacts",
     "app.consumer.ground_selection",
     "app.consumer.statutes",
