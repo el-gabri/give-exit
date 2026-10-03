@@ -983,7 +983,8 @@ class LegalCorpus:
     ) -> LegalAuthorityCitation:
         retrieved_chunk = _as_chunk(item)
         score = item.score if isinstance(item, RetrievedChunk) else None
-        chunk = self._canonical_chunk_for_citation(retrieved_chunk)
+        matched = self._canonical_chunk_for_citation(retrieved_chunk)
+        chunk = self._quoted_chunk(matched)
         provision = self.provision_for_chunk(chunk)
         unit = self.unit_for_chunk(chunk)
         official_excerpt = self._canonical_chunk_body(chunk, provision, unit)
@@ -993,6 +994,7 @@ class LegalCorpus:
             official_excerpt=official_excerpt,
             official_excerpt_sha256=sha256_hex(official_excerpt),
             chunk_id=chunk.chunk_id,
+            matched_chunk_id=matched.chunk_id if matched.chunk_id != chunk.chunk_id else None,
             retrieval_rank=retrieval_rank,
             retrieval_score=score,
         )
@@ -1005,28 +1007,7 @@ class LegalCorpus:
         must match the canonical corpus in full.
         """
 
-        target_chars = DEFAULT_LEGAL_CHUNK_TARGET_CHARS
-        raw_chunking_version = chunk.metadata.get("chunking_version")
-        version_prefix = f"{LEGAL_CHUNKING_VERSION}:target="
-        if isinstance(raw_chunking_version, str) and raw_chunking_version.startswith(
-            version_prefix
-        ):
-            try:
-                target_chars = int(raw_chunking_version.removeprefix(version_prefix))
-            except ValueError as exc:
-                raise ValueError("legal chunk has an invalid chunking identity") from exc
-
-        canonical_chunks = self._canonical_chunk_maps.get(target_chars)
-        if canonical_chunks is None:
-            generated = self.as_chunks(target_chars=target_chars)
-            canonical_chunks = MappingProxyType(
-                {item.chunk_id: item for item in generated}
-            )
-            if len(canonical_chunks) != len(generated):  # pragma: no cover - corpus invariant
-                raise ValueError("canonical legal corpus contains duplicate chunk ids")
-            self._canonical_chunk_maps[target_chars] = canonical_chunks
-
-        canonical = canonical_chunks.get(chunk.chunk_id)
+        canonical = self._canonical_chunks(self._target_chars(chunk)).get(chunk.chunk_id)
         if canonical is None:
             raise ValueError("legal chunk id does not resolve to the canonical corpus")
         if chunk.model_dump(exclude={"metadata"}) != canonical.model_dump(
@@ -1036,6 +1017,38 @@ class LegalCorpus:
         if chunk.metadata and chunk.metadata != canonical.metadata:
             raise ValueError("legal chunk metadata does not match the canonical corpus")
         return canonical
+
+    def _quoted_chunk(self, chunk: Chunk) -> Chunk:
+        """The chunk a citation quotes: an alias resolves to its unit's first official part."""
+
+        if chunk.metadata.get("chunk_level") != "alias":
+            return chunk
+        key = chunk.metadata.get("unit_id") or chunk.metadata["provision_id"]
+        official_id = f"{chunk.doc_id}:legal:{key}:part-01"
+        return self._canonical_chunks(self._target_chars(chunk))[official_id]
+
+    @staticmethod
+    def _target_chars(chunk: Chunk) -> int:
+        raw_chunking_version = chunk.metadata.get("chunking_version")
+        version_prefix = f"{LEGAL_CHUNKING_VERSION}:target="
+        if isinstance(raw_chunking_version, str) and raw_chunking_version.startswith(
+            version_prefix
+        ):
+            try:
+                return int(raw_chunking_version.removeprefix(version_prefix))
+            except ValueError as exc:
+                raise ValueError("legal chunk has an invalid chunking identity") from exc
+        return DEFAULT_LEGAL_CHUNK_TARGET_CHARS
+
+    def _canonical_chunks(self, target_chars: int) -> Mapping[str, Chunk]:
+        canonical_chunks = self._canonical_chunk_maps.get(target_chars)
+        if canonical_chunks is None:
+            generated = self.as_chunks(target_chars=target_chars)
+            canonical_chunks = MappingProxyType({item.chunk_id: item for item in generated})
+            if len(canonical_chunks) != len(generated):  # pragma: no cover - corpus invariant
+                raise ValueError("canonical legal corpus contains duplicate chunk ids")
+            self._canonical_chunk_maps[target_chars] = canonical_chunks
+        return canonical_chunks
 
     def _canonical_chunk_body(
         self,

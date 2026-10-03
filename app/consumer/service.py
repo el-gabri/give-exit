@@ -433,11 +433,7 @@ class ConsumerCaseService:
         legal_traces = _annotate_composer_selection(
             legal_traces,
             _merge_results(legal_results),
-            {
-                ground.authority.chunk_id
-                for ground in legal_grounds
-                if ground.authority.chunk_id is not None
-            },
+            _cited_chunk_ids(legal_grounds),
         )
         evidence_traces = _annotate_composer_selection(
             evidence_traces,
@@ -1031,6 +1027,16 @@ def _require_grounding(
         "Tente novamente; se o problema persistir, revise o relato e os "
         "documentos enviados."
     )
+
+
+def _cited_chunk_ids(grounds: list[LegalGround]) -> set[str]:
+    """Chunks that became citations: the quoted one and the alias that matched it."""
+    return {
+        chunk_id
+        for ground in grounds
+        for chunk_id in (ground.authority.chunk_id, ground.authority.matched_chunk_id)
+        if chunk_id is not None
+    }
 
 
 def _annotate_composer_selection(

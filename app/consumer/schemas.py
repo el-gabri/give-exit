@@ -355,6 +355,9 @@ class LegalAuthorityCitation(BaseModel):
     official_excerpt: str | None = None
     official_excerpt_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     chunk_id: str | None = None
+    # The retrieved chunk when it is not the quoted one: a lay-language alias
+    # (ADR 0022) leads to a unit, whose official text is what gets quoted.
+    matched_chunk_id: str | None = None
     retrieval_rank: int | None = Field(default=None, ge=1)
     retrieval_score: float | None = None
 
@@ -386,6 +389,7 @@ class LegalAuthorityCitation(BaseModel):
         official_excerpt: str | None = None,
         official_excerpt_sha256: str | None = None,
         chunk_id: str | None = None,
+        matched_chunk_id: str | None = None,
         retrieval_rank: int | None = None,
         retrieval_score: float | None = None,
     ) -> LegalAuthorityCitation:
@@ -437,6 +441,7 @@ class LegalAuthorityCitation(BaseModel):
             official_excerpt=cited_excerpt,
             official_excerpt_sha256=cited_excerpt_sha256,
             chunk_id=chunk_id,
+            matched_chunk_id=matched_chunk_id,
             retrieval_rank=retrieval_rank,
             retrieval_score=retrieval_score,
         )

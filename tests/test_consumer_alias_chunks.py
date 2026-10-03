@@ -9,7 +9,8 @@ import pytest
 from app.consumer.aliases import AliasEntry, AliasSet
 from app.consumer.legal_corpus import LegalCorpus, get_default_legal_corpus
 from app.consumer.legal_policy import provision_is_eligible
-from app.consumer.schemas import ProvisionStatus
+from app.consumer.schemas import LegalGround, ProvisionStatus
+from app.consumer.service import _cited_chunk_ids
 from app.core.hashing import sha256_hex
 from app.evaluation import label_ranks
 from app.evaluation.consumer_runner import normalize_consumer_retrieval_hit
@@ -162,3 +163,55 @@ def test_evaluators_count_an_alias_hit_as_its_units_hit() -> None:
         "br-cdc-art-39-inciso-i",
     )
     assert label_ranks._matches(hit, label)
+
+
+def test_a_citation_found_through_an_alias_quotes_the_official_text() -> None:
+    corpus = _aliased(
+        _entry("br-cdc-art-39", "br-cdc-art-39-inciso-i"),
+        _entry("br-cf-art-5-xxxii", "br-cf-art-5-xxxii"),
+    )
+    by_key = {chunk.chunk_id.split(":legal:")[1]: chunk for chunk in _aliases_of(corpus)}
+    unit_alias = by_key["br-cdc-art-39-inciso-i:alias-01"]
+
+    authority = corpus.authority_for_chunk(RetrievedChunk(chunk=unit_alias, score=0.03))
+    provision_authority = corpus.authority_for_chunk(
+        RetrievedChunk(chunk=by_key["br-cf-art-5-xxxii:alias-01"], score=0.03)
+    )
+
+    unit = corpus.unit_for_chunk(unit_alias)
+    assert unit is not None
+    assert authority.chunk_id == unit_alias.chunk_id.replace(":alias-01", ":part-01")
+    assert authority.matched_chunk_id == unit_alias.chunk_id
+    assert authority.unit_id == "br-cdc-art-39-inciso-i"
+    assert authority.official_excerpt is not None
+    assert authority.official_excerpt in unit.text
+    assert FIRST not in authority.official_excerpt
+    assert provision_authority.chunk_id is not None
+    assert provision_authority.chunk_id.endswith(":legal:br-cf-art-5-xxxii:part-01")
+
+
+def test_an_official_hit_records_no_matched_alias() -> None:
+    corpus = _aliased(_entry("br-cdc-art-39", "br-cdc-art-39-inciso-i"))
+    official = next(
+        chunk
+        for chunk in corpus.as_chunks()
+        if chunk.chunk_id.endswith(":legal:br-cdc-art-39-inciso-i:part-01")
+    )
+
+    authority = corpus.authority_for_chunk(RetrievedChunk(chunk=official, score=0.03))
+
+    assert authority.matched_chunk_id is None
+
+
+def test_the_trace_marks_the_alias_that_led_to_a_citation() -> None:
+    corpus = _aliased(_entry("br-cdc-art-39", "br-cdc-art-39-inciso-i"))
+    [alias] = _aliases_of(corpus)
+    ground = LegalGround(
+        authority=corpus.authority_for_chunk(RetrievedChunk(chunk=alias, score=0.03)),
+        application_to_facts="fixture",
+    )
+
+    assert _cited_chunk_ids([ground]) == {
+        alias.chunk_id,
+        alias.chunk_id.replace(":alias-01", ":part-01"),
+    }
