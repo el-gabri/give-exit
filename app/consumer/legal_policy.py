@@ -114,6 +114,21 @@ CORROBORATION_RANK = 3
 
 _Candidate = TypeVar("_Candidate")
 
+# ADR 0022: units that state the supplier's or the controller's defense, or that
+# exclude the law's application, get no lay aliases. Written as complaints ("the
+# company says it was my fault"), such aliases match one of the most common
+# dispute patterns, and the consumer's notice would then quote the opponent's
+# argument ("a culpa exclusiva do consumidor ou de terceiro"). Matched on the unit
+# text and its lead-in, accents and case folded.
+_DEFENSE_OR_EXCLUSION_TEXT = re.compile(
+    r"so nao (?:sera|serao) responsabilizad|nao se aplica"
+    r"|nao (?:e|sera|serao) considerad[oa]s? (?:defeituos|dados pessoais)"
+    r"|dispensada a exigencia do consentimento|sem fornecimento de consentimento"
+)
+# LGPD art. 7: every lawful basis other than consent (inciso I) is the
+# controller's to invoke, so it is a defense too.
+_CONTROLLER_LAWFUL_BASES = re.compile(r"^br-lgpd-art-7-inciso-(?!i$)[ivx]+$")
+
 
 def provision_is_eligible(provision: LegalProvision) -> bool:
     """Whether this provision may be cited as a ground in a consumer notice.
@@ -193,6 +208,19 @@ def enforce_cdc_anchor(
         for provision, candidate in selected
         if provision.source not in CDC_ANCHORED_SOURCES
     ]
+
+
+def alias_exclusion_reason(unit_key: str, source_text: str) -> str | None:
+    """Why a unit may not carry lay aliases, or None when it may (ADR 0022)."""
+
+    decomposed = unicodedata.normalize("NFKD", source_text.casefold())
+    folded = "".join(char for char in decomposed if not unicodedata.combining(char))
+    if _DEFENSE_OR_EXCLUSION_TEXT.search(folded) or _CONTROLLER_LAWFUL_BASES.match(unit_key):
+        return (
+            "states a supplier or controller defense, or excludes the law's application; "
+            "a notice must not quote it on the consumer's behalf"
+        )
+    return None
 
 
 def _division_numeral(label: str | None, keyword: str) -> str:

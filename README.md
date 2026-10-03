@@ -397,9 +397,11 @@ python -m app.consumer.generate_aliases
 The committed file was generated with `--model gpt-5.6-terra --reasoning-effort low`;
 a reasoning model needs `--reasoning-effort`, because it rejects temperature 0.
 The run resumes after an interruption and never replaces an entry marked `reviewed`
-or `rejected` unless `--force` is given. Edit an entry's aliases by hand and set it to
+or `rejected` unless `--force` is given. A unit the model finds no consumer situation in
+is recorded as `declined`, so a rerun skips it. Units that state a supplier's defense
+or exclude the law are never sent. Edit an entry's aliases by hand and set it to
 `reviewed`, or set `rejected` to keep it out of the index. Corpus load refuses an entry
-generated from statute text that has since changed.
+written against statute text that has since changed, and says which fix applies.
 
 At query time, embedding calls have a timeout, concurrency bound, short-lived
 query-hash cache and circuit breaker. The concurrency bound is a queue, not a

@@ -251,6 +251,11 @@ async def test_offline_notice_baseline_on_the_seed_dataset() -> None:
     2 known-bad (0) — both CDC art. 42 sole paragraph, one in each split.
     Development precision 0.042 -> 0.3 and article recall 0.025 -> 0.267;
     holdout abstention 0.667 -> 0.833.
+
+    Re-measured the same day after the defense and exclusion units lost their
+    aliases (ADR 0022, Decision 3): 58 grounds, 14 labelled (LGPD art. 18 on
+    the holdout data-access case), 42 unlabelled, the same 2 known-bad.
+    Development precision 0.3 -> 0.289; holdout article recall 0.308 -> 0.333.
     """
 
     summary = await run_notice_evaluation(load_consumer_legal_dataset(DATASET_PATH))
@@ -258,10 +263,10 @@ async def test_offline_notice_baseline_on_the_seed_dataset() -> None:
     assert summary.failed_case_count == 0
     assert summary.totals == {
         "consumer_notice_complementary_grounds": 7,
-        "consumer_notice_grounds": 54,
+        "consumer_notice_grounds": 58,
         "consumer_notice_known_bad_citations": 2,
-        "consumer_notice_labelled_grounds": 13,
-        "consumer_notice_unlabelled_grounds": 39,
+        "consumer_notice_labelled_grounds": 14,
+        "consumer_notice_unlabelled_grounds": 42,
     }
     assert summary.averages["consumer_notice_exact_recall"] == 0.152
     assert summary.averages["consumer_notice_abstention"] == 0.9
@@ -269,11 +274,11 @@ async def test_offline_notice_baseline_on_the_seed_dataset() -> None:
     development = summary.by_split["development"].averages
     holdout = summary.by_split["holdout"].averages
     assert development["consumer_notice_abstention"] == 1.0
-    assert development["consumer_notice_precision"] == 0.3
+    assert development["consumer_notice_precision"] == 0.289
     assert development["consumer_notice_article_recall"] == 0.267
     assert holdout["consumer_notice_abstention"] == 0.833
-    assert holdout["consumer_notice_precision"] == 0.192
-    assert holdout["consumer_notice_article_recall"] == 0.308
+    assert holdout["consumer_notice_precision"] == 0.179
+    assert holdout["consumer_notice_article_recall"] == 0.333
     assert set(summary.intervals) == set(summary.averages)
     assert set(summary.by_split["holdout"].intervals) == set(holdout)
     assert summary.run is not None
@@ -431,9 +436,9 @@ async def test_an_agreement_sweep_retrieves_each_case_once(
     assert default.run is not None and default.run.agreement_max_rank == 13
     assert default.run.ground_verifier == "none"
     # A shallower gate can only drop grounds.
-    # Corpus v5 (ADR 0022): 14 -> 35 and 26 -> 54 with the lay alias chunks.
-    assert shallow.totals["consumer_notice_grounds"] == 35
-    assert default.totals["consumer_notice_grounds"] == 54
+    # Corpus v5 (ADR 0022): 14 -> 36 and 26 -> 58 with the lay alias chunks.
+    assert shallow.totals["consumer_notice_grounds"] == 36
+    assert default.totals["consumer_notice_grounds"] == 58
 
 
 class _RejectEveryGround:
@@ -455,7 +460,7 @@ async def test_verifier_removals_are_counted_per_case() -> None:
     summary = await evaluator.run(load_consumer_legal_dataset(DATASET_PATH))
 
     assert summary.totals["consumer_notice_grounds"] == 0
-    assert summary.totals["consumer_notice_verifier_removed"] == 54
+    assert summary.totals["consumer_notice_verifier_removed"] == 58
     assert summary.totals["consumer_notice_verifier_failures"] == 0
     assert summary.run is not None and summary.run.ground_verifier == "llm"
 
@@ -488,7 +493,7 @@ def test_cli_prints_an_agreement_sweep(
     table = printed[start : start + 3]
     assert table[0].split()[:4] == ["agreement_max_rank", "grounds", "complementary", "known_bad"]
     assert "labelled" in table[0].split()
-    assert [line.split()[:2] for line in table[1:]] == [["16", "68"], ["20", "87"]]
+    assert [line.split()[:2] for line in table[1:]] == [["16", "70"], ["20", "88"]]
     payload = json.loads(output.read_text(encoding="utf-8"))
     assert sorted(payload["agreement_sweep"]) == ["16", "20"]
     assert payload["agreement_sweep"]["20"]["run"]["agreement_max_rank"] == 20

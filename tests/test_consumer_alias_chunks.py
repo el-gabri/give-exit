@@ -127,6 +127,24 @@ def test_a_stale_entry_fails_corpus_load_naming_it_and_the_fix() -> None:
         _aliased(stale)
 
 
+def test_a_stale_reviewed_entry_names_the_fix_a_person_makes() -> None:
+    reviewed = _entry(
+        "br-cdc-art-39", "br-cdc-art-39-inciso-i", status="reviewed", source_sha256="0" * 64
+    )
+    generated = _entry("br-cdc-art-39", "br-cdc-art-39-inciso-ii", source_sha256="0" * 64)
+
+    with pytest.raises(ValueError) as excinfo:
+        _aliased(reviewed, generated)
+
+    # The generator never replaces a reviewed entry, so pointing at it alone
+    # would leave the corpus unloadable.
+    message = str(excinfo.value)
+    assert message.startswith("2 alias entries were written against statute text that has")
+    assert "generated (1): br-cdc-art-39-inciso-ii; regenerate them with" in message
+    assert "reviewed (1): br-cdc-art-39-inciso-i; set their status to generated" in message
+    assert "or to rejected" in message
+
+
 def test_the_corpus_hash_covers_aliases_but_an_empty_set_changes_nothing() -> None:
     base = _base()
     empty = LegalCorpus(base.provisions, aliases=AliasSet(prompt_version="test-prompt"))
@@ -215,3 +233,20 @@ def test_the_trace_marks_the_alias_that_led_to_a_citation() -> None:
         alias.chunk_id,
         alias.chunk_id.replace(":alias-01", ":part-01"),
     }
+
+
+def test_an_alias_on_a_defense_or_exclusion_unit_is_refused_until_rejected() -> None:
+    # Written as complaints ("the company blames me"), these aliases would lead a
+    # consumer's notice to quote the supplier's own defense.
+    for provision_id, unit_key in (
+        ("br-cdc-art-14", "br-cdc-art-14-paragrafo-3-inciso-ii"),
+        ("br-lgpd-art-43", "br-lgpd-art-43-inciso-iii"),
+        ("br-lgpd-art-4", "br-lgpd-art-4-inciso-i"),
+        ("br-lgpd-art-7", "br-lgpd-art-7-inciso-x"),
+    ):
+        defense = _entry(provision_id, unit_key)
+        with pytest.raises(ValueError, match=f"{unit_key}: states a supplier or controller"):
+            _aliased(defense)
+        assert _aliases_of(_aliased(defense.model_copy(update={"status": "rejected"}))) == []
+    assert _aliases_of(_aliased(_entry("br-lgpd-art-7", "br-lgpd-art-7-inciso-i")))
+

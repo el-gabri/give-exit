@@ -94,14 +94,14 @@ async def test_an_alias_gives_the_tie_in_sale_label_a_lexical_rank() -> None:
     The tie-in sale complaint never uses the statute's words for it ("condicionar o
     fornecimento"), so before corpus v5 the lexical channel could not rank CDC art.
     39 I at any depth. Its lay alias chunk (ADR 0022) shares the complaint's words
-    and now ranks first, within the gate.
+    and now ranks first lexically and fifth dense, within the gate.
     """
     pipeline = await prepare_evaluation_pipeline(offline_pipeline, get_default_legal_corpus())
     ranks = await rank_labels(pipeline, load_consumer_legal_dataset(DATASET_PATH))
 
     by_label = {(rank.case_id, rank.label): rank for rank in ranks}
     tie_in = by_label[("venda_casada_seguro", "br-cdc-art-39-inciso-i")]
-    assert (tie_in.dense, tie_in.lexical) == (7, 1)
+    assert (tie_in.dense, tie_in.lexical) == (5, 1)
     assert tie_in.verdict == "within the gate"
     assert by_label[("cobranca_indevida_ja_paga", "br-cdc-art-42-paragrafo-unico")].lexical == 1
 

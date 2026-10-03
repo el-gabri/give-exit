@@ -289,10 +289,13 @@ python -m app.consumer.generate_aliases
 O arquivo versionado foi gerado com `--model gpt-5.6-terra --reasoning-effort low`;
 um modelo de raciocínio precisa de `--reasoning-effort`, porque recusa temperatura 0.
 A execução continua de onde parou após uma interrupção e nunca substitui uma entrada
-marcada como `reviewed` ou `rejected`, a menos que se use `--force`. Edite os aliases
-de uma entrada à mão e marque-a como `reviewed`, ou marque `rejected` para tirá-la do
-índice. O carregamento do corpus recusa uma entrada gerada a partir de um texto legal
-que mudou depois.
+marcada como `reviewed` ou `rejected`, a menos que se use `--force`. Uma unidade em que
+o modelo não encontra situação de consumo fica registrada como `declined`, e uma nova
+execução a pula. Unidades que trazem a defesa do fornecedor ou afastam a aplicação da
+lei nunca são enviadas. Edite os aliases de uma entrada à mão e marque-a como
+`reviewed`, ou marque `rejected` para tirá-la do índice. O carregamento do corpus
+recusa uma entrada escrita sobre um texto legal que mudou depois e diz qual correção
+se aplica.
 
 Nas consultas, timeout, limite de concorrência, cache por hash e circuit breaker
 protegem o modelo local. Se ele falhar, o modo híbrido pode degradar para busca

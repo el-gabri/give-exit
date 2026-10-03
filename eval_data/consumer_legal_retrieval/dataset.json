@@ -6,7 +6,7 @@
   "authoring": "developer_authored_seed",
   "review_status": "requires_legal_review",
   "target_corpus_release_id": "br-consumer-law-2026-10-03-v5",
-  "target_corpus_sha256": "dc29bf8cea1ee296211e3062ee44523b5db30b73e69b4f945bbe4f218cebb777",
+  "target_corpus_sha256": "0080608e52af1ba75d664647b3aaa2dcad3bc0be0b63ccd54541a9e909ff4db4",
   "cases": [
     {
       "case_id": "produto_duravel_com_vicio",

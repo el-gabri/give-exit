@@ -26,8 +26,13 @@ ALIASES_PATH = Path(__file__).resolve().parent / "data" / "aliases" / "aliases.j
 # Laws whose units may carry aliases (ADR 0022). The Civil Code is
 # complementary, and its lay matches drifted off-topic before.
 ALIAS_LAW_IDS = frozenset({"br-cdc", "br-lgpd", "br-cf"})
-AliasStatus = Literal["generated", "reviewed", "rejected"]
+# "declined": the generator asked and the model found no concrete consumer
+# situation in the unit, so the entry holds no aliases and is not asked again
+# while the statute text and the prompt stay the same.
+AliasStatus = Literal["generated", "reviewed", "rejected", "declined"]
 INDEXED_ALIAS_STATUSES: frozenset[str] = frozenset({"generated", "reviewed"})
+MIN_ALIASES = 2
+MAX_ALIASES = 4
 MIN_ALIAS_CHARS = 12
 MAX_ALIAS_CHARS = 220
 _LEGAL_ID = r"^br-(?:cdc|cf|lgpd|cc)-art-[a-z0-9]+(?:-[a-z0-9]+)*$"
@@ -65,7 +70,7 @@ class AliasEntry(BaseModel):
     unit_key: str = Field(pattern=_LEGAL_ID)
     provision_id: str = Field(pattern=_LEGAL_ID)
     source_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
-    aliases: tuple[str, ...] = Field(min_length=2, max_length=4)
+    aliases: tuple[str, ...] = ()
     status: AliasStatus = "generated"
     # The generator prompt this entry came from; None for entries written before
     # entries recorded it. A generated entry from an older prompt is regenerated.
@@ -86,6 +91,13 @@ class AliasEntry(BaseModel):
         )
         if not own:
             raise ValueError(f"{self.unit_key}: not a unit of {self.provision_id}")
+        if self.status == "declined":
+            if self.aliases:
+                raise ValueError(f"{self.unit_key}: a declined entry has no aliases")
+        elif len(self.aliases) < MIN_ALIASES:
+            raise ValueError(f"{self.unit_key}: at least {MIN_ALIASES} aliases are required")
+        elif len(self.aliases) > MAX_ALIASES:
+            raise ValueError(f"{self.unit_key}: at most {MAX_ALIASES} aliases are allowed")
         for alias in self.aliases:
             problem = alias_problem(alias)
             if problem:

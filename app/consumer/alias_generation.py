@@ -5,16 +5,18 @@ each in-force unit with its lead-in, and asks for two to four sentences per
 unit in a lay consumer's words. The generator reads the corpus only: it never
 sees the golden set, so the holdout measures aliases written without it.
 
-The run is resumable. The alias file is rewritten after every article; a rerun
-skips units whose entry matches the current statute text and prompt version,
-and never replaces a reviewed or rejected entry unless forced.
+The run is resumable. The alias file is rewritten after every article that
+changed an entry; a rerun skips units whose entry matches the current statute
+text and prompt version, a declined one included, and never replaces a
+reviewed or rejected entry unless forced. Generated and declined entries are
+the generator's own: one whose unit it no longer requests is removed.
 """
 
 from __future__ import annotations
 
 import argparse
 import sys
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
@@ -25,6 +27,8 @@ from pydantic import BaseModel, Field
 from app.consumer.aliases import (
     ALIAS_LAW_IDS,
     ALIASES_PATH,
+    MAX_ALIASES,
+    MIN_ALIASES,
     AliasEntry,
     AliasSet,
     alias_problem,
@@ -33,11 +37,14 @@ from app.consumer.aliases import (
     write_alias_set,
 )
 from app.consumer.legal_corpus import LegalCorpus, default_legal_provisions
+from app.consumer.legal_policy import alias_exclusion_reason
+from app.consumer.schemas import LegalProvision
 from app.consumer.statutes import HIERARCHY_LEVELS
 from app.core.config import Settings
 from app.core.hashing import sha256_hex
 from app.llm.base import LLMClient
 from app.llm.factory import create_llm_client
+from app.llm.mock_client import MockLLMClient
 
 ALIAS_PROMPT_VERSION = "consumer-lay-aliases:v2"
 # v2 (ADR 0022): v1 aliases described outcomes many articles share ("money
@@ -67,7 +74,9 @@ SYSTEM_PROMPT = (
 )
 USER_TEMPLATE = "Dispositivo: {citation}\nHierarquia: {hierarchy}\n\nUnidades:\n\n{blocks}"
 PROMPT_SHA256 = sha256_hex(f"{SYSTEM_PROMPT}\n{USER_TEMPLATE}")
-MAX_ALIASES = 4
+# The statuses the generator writes and may replace or remove; reviewed and
+# rejected entries belong to a person.
+_GENERATOR_OWNED = frozenset({"generated", "declined"})
 # Reasoning tokens count against the output budget on the Responses path.
 ALIAS_MAX_OUTPUT_TOKENS = 8_000
 
@@ -93,10 +102,14 @@ class AliasRequest:
 @dataclass(slots=True)
 class GenerationReport:
     written: list[str] = field(default_factory=list)
+    declined: list[str] = field(default_factory=list)
     skipped: int = 0
     dropped: int = 0
     missing: list[str] = field(default_factory=list)
-    short: list[str] = field(default_factory=list)
+    # Articles whose answer named none of the requested units; nothing changed.
+    failed: list[str] = field(default_factory=list)
+    removed: list[str] = field(default_factory=list)
+    needs_review: list[str] = field(default_factory=list)
 
 
 def alias_requests(corpus: LegalCorpus, *, articles: Sequence[str] = ()) -> list[AliasRequest]:
@@ -104,16 +117,15 @@ def alias_requests(corpus: LegalCorpus, *, articles: Sequence[str] = ()) -> list
 
     wanted = set(articles)
     requests: list[AliasRequest] = []
-    for provision in corpus.retrievable_provisions():
-        if provision.law_id not in ALIAS_LAW_IDS:
-            continue
+    for provision in _covered(corpus):
         if wanted and provision.provision_id not in wanted:
             continue
+        # A defense or exclusion unit is never sent: its aliases would lead a
+        # notice to quote the supplier's argument (ADR 0022).
         sources = {
-            provision.provision_id if unit is None else unit.unit_id: corpus.alias_source_block(
-                provision, unit
-            )
-            for unit in corpus.aliasable_units(provision)
+            key: block
+            for key, block in _unit_blocks(corpus, provision).items()
+            if alias_exclusion_reason(key, block) is None
         }
         if not sources:  # every unit vetoed or revoked: nothing to alias
             continue
@@ -143,16 +155,35 @@ async def generate_aliases(
     force: bool = False,
     reasoning_effort: str | None = None,
 ) -> tuple[AliasSet, GenerationReport]:
-    """Generate the missing or stale entries, saving after each article.
+    """Generate the missing or stale entries, saving after each article that changed one.
 
     A reasoning model (gpt-5.6-terra) rejects temperature 0, so with
-    ``reasoning_effort`` the client uses its Responses path instead.
+    ``reasoning_effort`` the client uses its Responses path instead. A run that
+    changes no entry saves nothing, so the manifest, and with it the corpus
+    hash, stays as it was.
     """
 
     entries = {entry.unit_key: entry for entry in alias_set.entries}
-    order = {key: index for index, key in enumerate(_corpus_order(corpus))}
+    requestable = {
+        key: source for request in alias_requests(corpus) for key, source in request.sources.items()
+    }
+    aliasable = {key for provision in _covered(corpus) for key in _unit_blocks(corpus, provision)}
+    order = {key: index for index, key in enumerate(requestable)}
     report = GenerationReport()
+    dirty = _prune(entries, requestable, aliasable, report)
     current = alias_set
+
+    def snapshot() -> AliasSet:
+        return AliasSet(
+            prompt_version=ALIAS_PROMPT_VERSION,
+            prompt_sha256=PROMPT_SHA256,
+            model=model,
+            generated_on=today,
+            entries=tuple(
+                sorted(entries.values(), key=lambda entry: order.get(entry.unit_key, len(order)))
+            ),
+        )
+
     for request in alias_requests(corpus, articles=articles):
         pending = [
             key
@@ -171,16 +202,19 @@ async def generate_aliases(
             reasoning_effort=reasoning_effort,
             max_output_tokens=ALIAS_MAX_OUTPUT_TOKENS,
         )
-        _replace(entries, pending, _new_entries(request, pending, result.data, report))
-        current = AliasSet(
-            prompt_version=ALIAS_PROMPT_VERSION,
-            prompt_sha256=PROMPT_SHA256,
-            model=model,
-            generated_on=today,
-            entries=tuple(
-                sorted(entries.values(), key=lambda entry: order.get(entry.unit_key, len(order)))
-            ),
-        )
+        answers = _answers(pending, result.data)
+        if not answers:
+            # Nothing usable came back (a refusal, a mock client): keep every entry.
+            report.failed.append(request.provision_id)
+            continue
+        before = dict(entries)
+        _replace(entries, pending, _new_entries(request, pending, answers, report))
+        if dirty or entries != before:
+            current = snapshot()
+            save(current)
+            dirty = False
+    if dirty:
+        current = snapshot()
         save(current)
     return current, report
 
@@ -191,17 +225,24 @@ def render_report(report: GenerationReport) -> str:
         f"skipped (current or protected): {report.skipped}",
         f"dropped invalid aliases: {report.dropped}",
     ]
+    if report.declined:
+        lines.append("declined (fewer than two valid aliases): " + ", ".join(report.declined))
+    if report.removed:
+        lines.append("removed (unit no longer requested): " + ", ".join(report.removed))
     if report.missing:
         lines.append("no answer: " + ", ".join(report.missing))
-    if report.short:
-        lines.append("fewer than two valid aliases: " + ", ".join(report.short))
+    if report.failed:
+        lines.append("no requested unit answered: " + ", ".join(report.failed))
+    if report.needs_review:
+        lines.append("needs a person:")
+        lines.extend(f"  {item}" for item in report.needs_review)
     return "\n".join(lines)
 
 
 def _needs_generation(entry: AliasEntry | None, source: str, *, force: bool) -> bool:
     if entry is None or force:
         return True
-    if entry.status != "generated":
+    if entry.status not in _GENERATOR_OWNED:
         return False
     return entry.prompt_version != ALIAS_PROMPT_VERSION or entry.source_sha256 != sha256_hex(
         source
@@ -211,47 +252,96 @@ def _needs_generation(entry: AliasEntry | None, source: str, *, force: bool) -> 
 def _replace(
     entries: dict[str, AliasEntry], pending: list[str], new: dict[str, AliasEntry]
 ) -> None:
-    """Install the new entries; drop a pending generated entry that got none.
+    """Install the new entries; drop a pending entry of the generator's that got none.
 
     A stale entry must not outlive the run that was meant to replace it, or an
     older prompt's aliases would sit under the current manifest. Entries a
-    person reviewed or rejected are kept when a forced run brings nothing.
+    person reviewed or rejected are kept when a forced run brings nothing
+    better than a decline.
     """
     for key in pending:
-        if key in new:
-            entries[key] = new[key]
-        elif key in entries and entries[key].status == "generated":
+        existing = entries.get(key)
+        owned = existing is None or existing.status in _GENERATOR_OWNED
+        replacement = new.get(key)
+        if replacement is not None and (owned or replacement.status != "declined"):
+            entries[key] = replacement
+        elif replacement is None and existing is not None and owned:
             del entries[key]
+
+
+def _prune(
+    entries: dict[str, AliasEntry],
+    requestable: Mapping[str, str],
+    aliasable: set[str],
+    report: GenerationReport,
+) -> bool:
+    """Remove the generator's entries for units it no longer requests.
+
+    A unit can be gone from the statute, no longer in force, or now excluded as
+    a defense. Reviewed and rejected entries belong to a person, so they are
+    reported instead, as is a reviewed entry whose statute text changed (the
+    corpus refuses to load it). A rejected entry for an excluded unit is the
+    expected state and needs nothing. Returns whether an entry was removed.
+    """
+    removed = False
+    for key, entry in list(entries.items()):
+        if key in requestable:
+            if entry.status == "reviewed" and entry.source_sha256 != sha256_hex(requestable[key]):
+                report.needs_review.append(
+                    f"{key}: reviewed against statute text that has since changed; set its "
+                    "status to generated to regenerate it, or to rejected"
+                )
+        elif entry.status in _GENERATOR_OWNED:
+            del entries[key]
+            report.removed.append(key)
+            removed = True
+        elif key not in aliasable:
+            report.needs_review.append(
+                f"{key}: no longer a unit the generator requests (gone from the statute, "
+                "not in force or not citable); remove its entry"
+            )
+        elif entry.status == "reviewed":
+            report.needs_review.append(
+                f"{key}: states a supplier or controller defense, or excludes the law's "
+                "application; set its status to rejected"
+            )
+    return removed
+
+
+def _answers(pending: list[str], answer: _ArticleAliases) -> dict[str, list[str]]:
+    """The aliases answered for each pending unit; the first answer wins."""
+    answers: dict[str, list[str]] = {}
+    for unit in answer.units:
+        # Units nobody asked about are ignored.
+        if unit.unit_key in pending and unit.unit_key not in answers:
+            answers[unit.unit_key] = unit.aliases
+    return answers
 
 
 def _new_entries(
     request: AliasRequest,
     pending: list[str],
-    answer: _ArticleAliases,
+    answers: Mapping[str, list[str]],
     report: GenerationReport,
 ) -> dict[str, AliasEntry]:
-    answers: dict[str, list[str]] = {}
-    for unit in answer.units:
-        # Units nobody asked about are ignored, and the first answer wins.
-        if unit.unit_key in pending and unit.unit_key not in answers:
-            answers[unit.unit_key] = unit.aliases
     entries: dict[str, AliasEntry] = {}
     for key in pending:
         if key not in answers:
             report.missing.append(key)
             continue
         aliases = _valid_aliases(answers[key], report)
-        if len(aliases) < 2:
-            report.short.append(key)
-            continue
+        # Fewer than two usable sentences is recorded as a decline, so a rerun
+        # does not ask about the unit again (prompt v2 allows an empty answer).
+        declined = len(aliases) < MIN_ALIASES
         entries[key] = AliasEntry(
             unit_key=key,
             provision_id=request.provision_id,
             source_sha256=sha256_hex(request.sources[key]),
-            aliases=tuple(aliases[:MAX_ALIASES]),
+            aliases=() if declined else tuple(aliases[:MAX_ALIASES]),
+            status="declined" if declined else "generated",
             prompt_version=ALIAS_PROMPT_VERSION,
         )
-        report.written.append(key)
+        (report.declined if declined else report.written).append(key)
     return entries
 
 
@@ -265,8 +355,21 @@ def _valid_aliases(raw: list[str], report: GenerationReport) -> list[str]:
     return kept
 
 
-def _corpus_order(corpus: LegalCorpus) -> list[str]:
-    return [key for request in alias_requests(corpus) for key in request.sources]
+def _covered(corpus: LegalCorpus) -> Iterator[LegalProvision]:
+    return (
+        provision
+        for provision in corpus.retrievable_provisions()
+        if provision.law_id in ALIAS_LAW_IDS
+    )
+
+
+def _unit_blocks(corpus: LegalCorpus, provision: LegalProvision) -> dict[str, str]:
+    return {
+        provision.provision_id if unit is None else unit.unit_id: corpus.alias_source_block(
+            provision, unit
+        )
+        for unit in corpus.aliasable_units(provision)
+    }
 
 
 async def main(argv: Sequence[str] | None = None) -> int:
@@ -307,10 +410,22 @@ async def main(argv: Sequence[str] | None = None) -> int:
     settings = Settings(llm_model=args.model) if args.model else Settings()
     model = settings.llm_model or settings.llm_provider.value
     try:
+        client = create_llm_client(settings)
+    except ValueError as exc:  # a real provider without its credentials
+        parser.error(str(exc))
+    if isinstance(client, MockLLMClient):
+        # The mock client answers no unit; a real provider and model are needed.
+        print(
+            "generate_aliases: the mock provider writes no aliases; set "
+            "LITIGATION_LLM_PROVIDER and --model",
+            file=sys.stderr,
+        )
+        return 2
+    try:
         _, report = await generate_aliases(
             corpus,
             alias_set,
-            create_llm_client(settings),
+            client,
             model=model,
             today=date.today(),
             save=lambda current: write_alias_set(current, args.output),
@@ -325,4 +440,11 @@ async def main(argv: Sequence[str] | None = None) -> int:
         )
         return 1
     print(render_report(report))
+    if report.failed:
+        print(
+            f"generate_aliases: {len(report.failed)} articles came back without any requested "
+            "unit; rerun to retry",
+            file=sys.stderr,
+        )
+        return 1
     return 0

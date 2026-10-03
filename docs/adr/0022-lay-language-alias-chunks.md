@@ -25,17 +25,31 @@ the missing words belong on the document side, specific to each unit.
    official chunk and records the alias as `matched_chunk_id`; the notice trace marks it.
    The agreement gate, the eligibility policy and the CDC anchor are unchanged and apply
    to an alias chunk like any chunk.
-3. Aliases are generated offline by `python -m app.consumer.generate_aliases`, one LLM
+3. A unit that states the supplier's or the controller's defense, or excludes the law's
+   application, gets no aliases (`alias_exclusion_reason` in `legal_policy.py`): "só não
+   será responsabilizado quando", "não se aplica", "não será considerado defeituoso",
+   consent waivers, and the LGPD art. 7 lawful bases other than consent. Written as
+   complaints ("a loja diz que a culpa foi minha"), such aliases match the most common
+   disputes, and the consumer's own notice would then quote the opponent's argument. The
+   generator never sends these 44 units; an indexed entry for one fails corpus load until
+   it is `rejected`.
+4. Aliases are generated offline by `python -m app.consumer.generate_aliases`, one LLM
    call per article, from the statute text alone. The generator never reads the golden
    set; a test checks that no golden complaint or remedy reaches a request. Reasoning
-   models that reject temperature 0 are called through `--reasoning-effort`.
-4. Entries are `generated`, `reviewed` or `rejected`; the first two are indexed. An alias
-   naming an article, statute or code is refused. Each entry records the prompt version
-   it came from: a generated entry from an older prompt is regenerated, and one that the
-   new prompt answers with nothing usable is dropped rather than kept. Reviewed and
-   rejected entries are never replaced without `--force`. An entry generated from statute
-   text that has since changed fails corpus load.
-5. Aliases are part of the corpus identity: corpus release `br-consumer-law-2026-10-03-v5`,
+   models that reject temperature 0 are called through `--reasoning-effort`. It refuses
+   the mock provider, whose empty answers would otherwise erase entries.
+5. Entries are `generated`, `reviewed`, `rejected` or `declined`; the first two are
+   indexed. An alias naming an article, statute or code is refused. Each entry records the
+   prompt version it came from: a generated entry from an older prompt is regenerated. A
+   unit answered with fewer than two usable sentences is recorded as `declined`, without
+   aliases, so a rerun does not ask about it again; an answer that names none of an
+   article's units changes nothing and fails the run. Generated and declined entries for a
+   unit the generator no longer requests are removed. Reviewed and rejected entries are
+   never replaced without `--force`, and a run that changes no entry rewrites nothing, so
+   the corpus hash holds. An entry written against statute text that has since changed
+   fails corpus load, naming the fix: rerun the generator for a generated entry; for a
+   reviewed one, set it back to `generated` or to `rejected`.
+6. Aliases are part of the corpus identity: corpus release `br-consumer-law-2026-10-03-v5`,
    chunking `legal-hierarchy-v5`, golden dataset 2.3.0. An empty alias set keeps the
    identity of earlier releases. Vector reuse keys vectors by chunk text, so the 1,644
    official chunks keep their vectors and only alias chunks are embedded.
@@ -53,10 +67,13 @@ the product-defect article.
 each sentence to carry the condition that distinguishes its unit (product or service, the
 practice, the personal data, the situation), forbids shared outcomes on their own, and
 allows an empty answer for units that describe no concrete consumer situation
-(definitions, principles, public bodies, cross-references). It kept **364 entries**: CDC
-223 of 284 units, LGPD 138 of 271, Constitution 3 of 7. The 198 units without aliases are
-mostly v2's deliberate empty answers; LGPD art. 14 returned no answer twice and is the
-one gap to revisit. Eight sampled entries:
+(definitions, principles, public bodies, cross-references). It wrote 364 entries.
+
+**The release** then rejected the 35 of them that sit on defense or exclusion units
+(Decision 3), and recorded v2's 182 empty or short answers as `declined`. It indexes
+**329 entries** for the 518 units the generator requests: CDC 214 of 274, LGPD 112 of
+237, Constitution 3 of 7. LGPD art. 14 returned no answer twice; its 7 units stay
+unrecorded, so the next run asks again. Eight sampled entries:
 
 - `br-cdc-art-54-d-paragrafo-unico`: Se me ofereceram crédito sem explicar custos, consequências do atraso ou avaliar minha situação, posso pedir ao juiz redução de juros e cobranças extras. / Dependendo da falha da empresa e da minha renda, o juiz pode aumentar o prazo original para eu pagar a dívida.
 - `br-cdc-art-104-a-paragrafo-4-inciso-ii`: Meu plano de pagamento deve dizer o que acontecerá com os processos judiciais de cobrança que já estão em andamento. / O acordo pode prever a suspensão ou o encerramento dessas ações de cobrança.
@@ -72,30 +89,36 @@ one gap to revisit. Eight sampled entries:
 Averages are over the cases each metric applies to; intervals are 95% paired bootstrap
 intervals of the difference against v4 (`python -m app.evaluation.compare`).
 
-| Development (24 cases) | v4 | v5, prompt v1 | **v5, prompt v2** | v2 − v4, 95% interval |
-|---|---|---|---|---|
-| notice article recall | 0.025 | 0.125 | **0.267** | +0.242 [+0.058, +0.442] |
-| notice exact recall | 0.000 | 0.050 | **0.125** | +0.125 [+0.000, +0.275] |
-| notice precision | 0.042 | 0.135 | **0.300** | +0.313 [+0.000, +0.688] (8 paired cases) |
-| grounds / labelled / unlabelled | 17 / 1 / 16 | 32 / 3 / 27 | **29 / 8 / 20** | labelled +7 [+2, +13] |
-| known-bad citations | 0 | 2 | **1** | +1 [0, +3] |
-| retrieval article recall@5 | 0.225 | — | **0.550** | +0.325 [+0.108, +0.542] |
-| retrieval recall@5 | 0.142 | — | **0.242** | +0.100 [−0.117, +0.308] |
-| retrieval hard-negative rate@5 | 0.025 | — | **0.025** | unchanged |
+| Development (24 cases) | v4 | prompt v1 | prompt v2 | **release** | release − v4, 95% interval |
+|---|---|---|---|---|---|
+| notice article recall | 0.025 | 0.125 | 0.267 | **0.267** | +0.242 [+0.058, +0.442] |
+| notice exact recall | 0.000 | 0.050 | 0.125 | **0.125** | +0.125 [+0.000, +0.275] |
+| notice precision | 0.042 | 0.135 | 0.300 | **0.289** | +0.292 [−0.042, +0.646] (8 paired cases) |
+| grounds / labelled / unlabelled | 17 / 1 / 16 | 32 / 3 / 27 | 29 / 8 / 20 | **31 / 8 / 22** | labelled +7 [+2, +13] |
+| known-bad citations | 0 | 2 | 1 | **1** | +1 [0, +3] |
+| retrieval article recall@5 | 0.225 | — | 0.550 | **0.550** | +0.325 [+0.108, +0.542] |
+| retrieval recall@5 | 0.142 | — | 0.242 | **0.242** | +0.100 [−0.117, +0.308] |
+| retrieval hard-negative rate@5 | 0.025 | — | 0.025 | **0.025** | unchanged |
 
-| Holdout (19 cases, reported only) | v4 | v5, prompt v1 | **v5, prompt v2** |
-|---|---|---|---|
-| notice article recall | 0.077 | 0.269 | **0.308** |
-| notice exact recall | 0.000 | 0.231 | **0.192** |
-| notice precision | 0.167 | 0.161 | **0.192** |
-| notice abstention | 0.667 | 0.500 | **0.833** |
-| known-bad citations | 0 | 1 | **1** |
+| Holdout (19 cases, reported only) | v4 | prompt v1 | prompt v2 | **release** |
+|---|---|---|---|---|
+| notice article recall | 0.077 | 0.269 | 0.308 | **0.333** |
+| notice exact recall | 0.000 | 0.231 | 0.192 | **0.192** |
+| notice precision | 0.167 | 0.161 | 0.192 | **0.179** |
+| notice abstention | 0.667 | 0.500 | 0.833 | **0.833** |
+| known-bad citations | 0 | 1 | 1 | **1** |
+
+"Release" is prompt v2 with the defense and exclusion units rejected (Decision 3). Removing
+those aliases changed no labelled citation on the development split and let two unlabelled
+units in (CDC arts. 51 II and 23); on the holdout it replaced LGPD art. 41 with the
+labelled art. 18 on `pedido_de_acesso_aos_dados_ignorado`. No golden case had cited a
+defense unit; the branch review found the failure with complaints outside the golden set.
 
 On the motivating case, CDC art. 39 I for `venda_casada_seguro` now ranks first
-lexically and seventh dense, inside the gate; before v5 the lexical channel never ranked
+lexically and fifth dense, inside the gate; before v5 the lexical channel never ranked
 it. Labelled articles now cited include, on the development split, CDC arts. 39 I,
-20 II, 35 III, 43, 12 § 1 II, 51 II, 54-A § 1 and 104-C § 1, and on the holdout, arts.
-39 VI, 39 IX, 40 § 3, 52 § 2 and 51 XI.
+20 II, 35 III, 43, 12 § 1 II, 51 II, 54-A § 1 and 104-C § 1, and on the holdout, CDC
+arts. 39 VI, 39 IX, 40 § 3, 52 § 2 and 51 XI and LGPD art. 18.
 
 **The remaining known-bad citation** is CDC art. 42 sole paragraph (refund in double) on
 `cobranca_com_ameacas`, whose label is art. 42 caput (abusive debt collection). Art. 42
@@ -105,16 +128,37 @@ paragraph. The holdout's one known-bad citation is the same unit, on the B2B no-
 case. The development known-bad ceiling in CI is 1 by decision, until collapsing siblings
 before truncation (review step 4) is measured.
 
-**Limits of the offline stack.** Its dense channel is a hashed bag of words without IDF.
-The lay alias chunks share everyday words ("quero", "paguei") with every lay query, so
-they crowd that channel: a one-line undue-payment complaint that v4 grounded lost its
-dense rank in v5 (the prompt-notice API test fixture was re-chosen). JUÁ is a semantic
-model and is measured below.
+**Alias crowding.** Alias chunks now dominate both channels, the lexical one most:
+
+| Offline stack, release | Development | Holdout |
+|---|---|---|
+| alias share of lexical top-13 slots | 96% | 83% |
+| alias share of dense top-13 slots | 57% | 53% |
+| alias share of the fused results a notice reads (k = 8) | 83% | 78% |
+| grounds reached through an alias | 31 of 31 | 27 of 27 |
+
+An alias chunk is a few lay sentences, so BM25 length normalisation favours it over the
+longer official text it shares words with; the hashed bag-of-words dense channel has no
+IDF, so everyday words ("quero", "paguei") match it too. Every offline ground now comes
+through an alias, so the agreement gate mostly checks one alias against itself in two
+channels. Some aliases act as hubs, inside the top 13 of either channel for many unrelated
+cases: CDC art. 42 sole paragraph (refund in double) for 12 of the 20 in-scope development
+cases, CDC art. 35 III for 9, arts. 49, 19 IV and 51 II for 8 each; on the holdout, LGPD
+art. 18 caput for 9 and CDC art. 19 IV for 8. The water-outage case
+(`interrupcao_servico_essencial`, labelled CDC art. 22) cited nothing in v4 and now cites
+only CDC art. 54-G III, a card-fraud unit: wrong, unlabelled, and not counted as known-bad.
+A one-line undue-payment complaint that v4 grounded also lost its dense rank (the
+prompt-notice API test fixture was re-chosen). The offline gains above are real, but they
+come with this crowding. JUÁ is a semantic model and is measured below with the same
+counts; collapsing siblings and capping one alias per query (review step 4) is the lever
+if it crowds too.
 
 ## Configured stack
 
 Pending the protocol of the spec (§5.7): the golden query cache, a v4 baseline, the v5
-generation and a paired comparison. This section is completed when it runs.
+index and a paired comparison, plus the crowding counts above (per-channel alias share at
+depth 13, the fused share, grounds through an alias, the hub aliases and the water-outage
+case). This section is completed when it runs.
 
 ## Consequences
 
@@ -122,6 +166,11 @@ generation and a paired comparison. This section is completed when it runs.
   with recall on the development split.
 - (+) Citations, the gate and the eligibility policy are unchanged; an alias never reaches
   the notice text.
+- (+) A notice never quotes a supplier's or a controller's defense on the consumer's behalf.
 - (−) Up to one more same-article candidate per unit competes for the eight slots per
   query, and the one remaining known-bad citation is a sibling paragraph (review step 4).
-- (−) Aliases are model output marked `requires_legal_review`; 198 units have none.
+- (−) On the offline stack, alias chunks hold most top-13 slots in both channels and every
+  ground comes through one; hub aliases reach unrelated cases (the water-outage case cites a
+  card-fraud unit).
+- (−) Aliases are model output marked `requires_legal_review`; 189 requested units have
+  none (182 declined, 7 unanswered), and the 44 defense or exclusion units never will.

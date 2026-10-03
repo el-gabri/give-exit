@@ -23,7 +23,7 @@ from app.consumer.aliases import (
     AliasSet,
     load_alias_set,
 )
-from app.consumer.legal_policy import provision_is_eligible
+from app.consumer.legal_policy import alias_exclusion_reason, provision_is_eligible
 from app.consumer.schemas import (
     LegalAuthorityCitation,
     LegalProvision,
@@ -821,15 +821,9 @@ class LegalCorpus:
         if problems:
             raise ValueError("alias file does not match the corpus: " + "; ".join(problems[:10]))
         indexed = [entry for entry in aliases.entries if entry.status in INDEXED_ALIAS_STATUSES]
-        stale = [
-            entry.unit_key for entry in indexed if entry.source_sha256 != self._alias_sha256(entry)
-        ]
+        stale = [entry for entry in indexed if entry.source_sha256 != self._alias_sha256(entry)]
         if stale:
-            raise ValueError(
-                f"{len(stale)} alias entries were generated from statute text that has since "
-                f"changed ({', '.join(stale[:5])}); regenerate them with "
-                "`python -m app.consumer.generate_aliases`"
-            )
+            raise ValueError(_stale_alias_message(stale))
         return MappingProxyType({entry.unit_key: entry for entry in indexed})
 
     def _alias_problem(self, entry: AliasEntry) -> str | None:
@@ -838,9 +832,15 @@ class LegalCorpus:
             return f"{entry.unit_key}: unknown provision {entry.provision_id}"
         if provision.law_id not in ALIAS_LAW_IDS:
             return f"{entry.unit_key}: {provision.law_id} is outside alias coverage"
-        found, _ = self._alias_target(provision, entry.unit_key)
+        found, unit = self._alias_target(provision, entry.unit_key)
         if not found:
             return f"{entry.unit_key}: not a unit of {entry.provision_id}"
+        if entry.status in INDEXED_ALIAS_STATUSES:
+            reason = alias_exclusion_reason(
+                entry.unit_key, self.alias_source_block(provision, unit)
+            )
+            if reason is not None:
+                return f"{entry.unit_key}: {reason}; set its status to rejected"
         return None
 
     @staticmethod
@@ -1255,3 +1255,28 @@ def _split_text(text: str, max_chars: int) -> list[str]:
 @lru_cache(maxsize=1)
 def get_default_legal_corpus() -> LegalCorpus:
     return LegalCorpus(default_legal_provisions(), aliases=load_alias_set())
+
+
+def _stale_alias_message(stale: Sequence[AliasEntry]) -> str:
+    """Name each stale entry with the fix its owner makes (ADR 0022).
+
+    The generator replaces a generated entry but never a reviewed one, so a
+    reviewed entry needs a person: back to generated to regenerate it, or
+    rejected to drop its aliases.
+    """
+
+    def keys(status: str) -> list[str]:
+        return [entry.unit_key for entry in stale if entry.status == status]
+
+    parts = [f"{len(stale)} alias entries were written against statute text that has since changed"]
+    if generated := keys("generated"):
+        parts.append(
+            f"generated ({len(generated)}): {', '.join(generated[:5])}; regenerate them with "
+            "`python -m app.consumer.generate_aliases`"
+        )
+    if reviewed := keys("reviewed"):
+        parts.append(
+            f"reviewed ({len(reviewed)}): {', '.join(reviewed[:5])}; set their status to "
+            "generated to regenerate them, or to rejected"
+        )
+    return ". ".join(parts)

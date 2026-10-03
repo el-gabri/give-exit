@@ -7,6 +7,14 @@
   "generated_on": "2026-10-03",
   "entries": [
     {
+      "unit_key": "br-cf-art-1-iii",
+      "provision_id": "br-cf-art-1-iii",
+      "source_sha256": "5f861b7f59fda3a0a0d94a13eee6d459e4044d18d4d1de1f76ae891ab47982e1",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
       "unit_key": "br-cf-art-5-v",
       "provision_id": "br-cf-art-5-v",
       "source_sha256": "842d1425e4deeabce2859f48834a79a928149e0bc680e468e9d89364e1785ad3",
@@ -32,6 +40,22 @@
       "prompt_version": "consumer-lay-aliases:v2"
     },
     {
+      "unit_key": "br-cf-art-5-xxxii",
+      "provision_id": "br-cf-art-5-xxxii",
+      "source_sha256": "8402fe4bec0b13c4a3de59f4c79cd0381b746be2740c6397da5eeb4e3d8d44ce",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-cf-art-5-xxxv",
+      "provision_id": "br-cf-art-5-xxxv",
+      "source_sha256": "8f4a1f639fae15d76dcc57628ad8e98fbe4b5ff9258ce79ab55e14068fe8b40e",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
       "unit_key": "br-cf-art-5-lxxix",
       "provision_id": "br-cf-art-5-lxxix",
       "source_sha256": "77d3b5672a2b778072030e66ea5318d6a32d3c7a7c7b7f7962cd1ee1c273746d",
@@ -40,6 +64,22 @@
         "Quero proteção para informações como meu nome, CPF, endereço e dados de pagamento usados em serviços digitais."
       ],
       "status": "generated",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-cf-art-170-v",
+      "provision_id": "br-cf-art-170-v",
+      "source_sha256": "ffda4d42fdea879c06b28ec606063b70515bac028cc418e763bec2c76ce42d85",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-cdc-art-1-caput",
+      "provision_id": "br-cdc-art-1",
+      "source_sha256": "d83f72066123c8ad78e935986c48098f12ab1e6be629c2430e7926c87b57c9d6",
+      "aliases": [],
+      "status": "declined",
       "prompt_version": "consumer-lay-aliases:v2"
     },
     {
@@ -55,6 +95,166 @@
       "prompt_version": "consumer-lay-aliases:v2"
     },
     {
+      "unit_key": "br-cdc-art-2-paragrafo-unico",
+      "provision_id": "br-cdc-art-2",
+      "source_sha256": "bb271889affd50186d8eb71672d1802c5c2e207cbebc1546b77f3a6fc41fa344",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-cdc-art-3-caput",
+      "provision_id": "br-cdc-art-3",
+      "source_sha256": "1c88541244fa314e472f4b834dd355f17c101b457d1e27be35e3ba5e71cde978",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-cdc-art-3-paragrafo-1",
+      "provision_id": "br-cdc-art-3",
+      "source_sha256": "d9b09cbb83b47166f2c89a09a2af7ef5590585d99a5c345adac5bf8602075bcd",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-cdc-art-3-paragrafo-2",
+      "provision_id": "br-cdc-art-3",
+      "source_sha256": "a53f75bf8749b398001a205850a8197e2a105dca964ae79382c1d6ee945768dc",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-cdc-art-4-caput",
+      "provision_id": "br-cdc-art-4",
+      "source_sha256": "112777839f6f4963c49ce4f7f54f102fc3856870cdffa02136be5e99bf79c572",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-cdc-art-4-inciso-i",
+      "provision_id": "br-cdc-art-4",
+      "source_sha256": "5523a55cf2ab50d97feed2992b48af5fc9a7ceb509532eeeddafc8b614163898",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-cdc-art-4-inciso-ii",
+      "provision_id": "br-cdc-art-4",
+      "source_sha256": "277ca3c8f93d62a4d021d07365ed4dbf0ad19944fb74ebd64a73b1124e6fa6c1",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-cdc-art-4-inciso-ii-alinea-a",
+      "provision_id": "br-cdc-art-4",
+      "source_sha256": "b90aea3606c7abbbe832827a7df3d61ab9bf7d3553b09cf2d4f7d27ac33e09c3",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-cdc-art-4-inciso-ii-alinea-b",
+      "provision_id": "br-cdc-art-4",
+      "source_sha256": "e0d700788e9f78bfbbce7fc468e1833cfcabafee9f366970458bbc09e7f93082",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-cdc-art-4-inciso-ii-alinea-c",
+      "provision_id": "br-cdc-art-4",
+      "source_sha256": "af40722fb12217286422ae7be128301791699a003a1733adf36c0860d1157196",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-cdc-art-4-inciso-ii-alinea-d",
+      "provision_id": "br-cdc-art-4",
+      "source_sha256": "6f3dfaff4e9477a624fc4306a19d6d76f5efd8c0dc750c41a16321b0f6e3031c",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-cdc-art-4-inciso-iii",
+      "provision_id": "br-cdc-art-4",
+      "source_sha256": "16ed71328107548de302561a45a9aa601aaab0ccdd389902606e1f95590d9f71",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-cdc-art-4-inciso-iv",
+      "provision_id": "br-cdc-art-4",
+      "source_sha256": "8b27d555a6020e09a5ca284c061a2002e10b0e604fbb915513c27d13410b44aa",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-cdc-art-4-inciso-v",
+      "provision_id": "br-cdc-art-4",
+      "source_sha256": "18a83fb55383b220694b950e8a0e376ca89acfc58b9d9a9262f8e92edcbe92df",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-cdc-art-4-inciso-vi",
+      "provision_id": "br-cdc-art-4",
+      "source_sha256": "75b95992c4c0de9225ea2d01a7999794a0c34643e0c7ef18294e449337311b3b",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-cdc-art-4-inciso-vii",
+      "provision_id": "br-cdc-art-4",
+      "source_sha256": "5ef60a5801485cc8c219fec9c62ae15448e1afddaf32f04fa5e405adcdeee124",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-cdc-art-4-inciso-viii",
+      "provision_id": "br-cdc-art-4",
+      "source_sha256": "582dc47af675a4689d88d935845379056b931aadac395d65096acf00cf0e888d",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-cdc-art-4-inciso-ix",
+      "provision_id": "br-cdc-art-4",
+      "source_sha256": "1f35e5424957310930a2ec11debbede5b176204b05eff6a7ab2443bd0433ba83",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-cdc-art-4-inciso-x",
+      "provision_id": "br-cdc-art-4",
+      "source_sha256": "0d4644a3f3cb9d5fd9051c21bd8e26f26a539da449431407234c68af686a097a",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-cdc-art-5-caput",
+      "provision_id": "br-cdc-art-5",
+      "source_sha256": "ff7b9ebdac7358d4c3c3f544e54d82d85ddc6ea00885938c55191c0b7a909278",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
       "unit_key": "br-cdc-art-5-inciso-i",
       "provision_id": "br-cdc-art-5",
       "source_sha256": "63d4a3aa668cb1a3a99c5d9e2b811e52d424ea6ecbbf127f4e83136e1d3779d5",
@@ -63,6 +263,14 @@
         "Preciso de orientação jurídica gratuita porque minha renda é baixa e fui prejudicado como consumidor."
       ],
       "status": "generated",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-cdc-art-5-inciso-ii",
+      "provision_id": "br-cdc-art-5",
+      "source_sha256": "01167ce912397e93c565adf0ef28248939fc5c42d68240b69adaf962bd10707f",
+      "aliases": [],
+      "status": "declined",
       "prompt_version": "consumer-lay-aliases:v2"
     },
     {
@@ -88,6 +296,14 @@
       "prompt_version": "consumer-lay-aliases:v2"
     },
     {
+      "unit_key": "br-cdc-art-5-inciso-v",
+      "provision_id": "br-cdc-art-5",
+      "source_sha256": "644884d2d42a01bad5c17d1b47bea04e2e0dec397c8efa66b49a3cd25d37f4a9",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
       "unit_key": "br-cdc-art-5-inciso-vi",
       "provision_id": "br-cdc-art-5",
       "source_sha256": "fe75238e55f6a3626f38f66862509c10037914ecfc7962ecf7e4ecb6456621b1",
@@ -107,6 +323,14 @@
         "Preciso de mediação para conversar com os credores sobre dívidas que não consigo pagar."
       ],
       "status": "generated",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-cdc-art-6-caput",
+      "provision_id": "br-cdc-art-6",
+      "source_sha256": "7c542f01e1485033cbd101ee9a2009e362e8076208e2a74ab4a151ae2b36f3b9",
+      "aliases": [],
+      "status": "declined",
       "prompt_version": "consumer-lay-aliases:v2"
     },
     {
@@ -255,6 +479,14 @@
         "Quero entender, em formato acessível, as características e os riscos do serviço antes de contratar."
       ],
       "status": "generated",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-cdc-art-7-caput",
+      "provision_id": "br-cdc-art-7",
+      "source_sha256": "7541a92b6e12d8a761946f69b4d3aefde644a73d8bf1b92b557a85a2fc5df76f",
+      "aliases": [],
+      "status": "declined",
       "prompt_version": "consumer-lay-aliases:v2"
     },
     {
@@ -418,58 +650,11 @@
       "prompt_version": "consumer-lay-aliases:v2"
     },
     {
-      "unit_key": "br-cdc-art-12-paragrafo-2",
-      "provision_id": "br-cdc-art-12",
-      "source_sha256": "92f87a4c961b5cdc1e2b5f8ca6d9282843814b679d786d75eebcda457c5beca2",
-      "aliases": [
-        "Meu produto não vira inseguro só porque depois lançaram outro modelo melhor.",
-        "O simples lançamento de uma versão mais moderna não prova que o produto anterior tinha defeito."
-      ],
-      "status": "generated",
-      "prompt_version": "consumer-lay-aliases:v2"
-    },
-    {
-      "unit_key": "br-cdc-art-12-paragrafo-3",
-      "provision_id": "br-cdc-art-12",
-      "source_sha256": "e9e2e1c09aaf9aa38936c5f0259185a837403dd587157118717169f354959b38",
-      "aliases": [
-        "A empresa que fabricou ou importou o produto só pode se livrar da responsabilidade se provar uma situação específica.",
-        "Não basta a empresa negar o problema; ela precisa demonstrar um motivo previsto para não responder pelo dano do produto."
-      ],
-      "status": "generated",
-      "prompt_version": "consumer-lay-aliases:v2"
-    },
-    {
-      "unit_key": "br-cdc-art-12-paragrafo-3-inciso-i",
-      "provision_id": "br-cdc-art-12",
-      "source_sha256": "1e02bb21e3c23c7b7c1787bd0af851f6bec6445c84dcbe7ba431093df283c57b",
-      "aliases": [
-        "A empresa diz que não deve responder porque prova que nunca colocou esse produto à venda.",
-        "O fabricante pode mostrar que o produto que me causou dano não foi distribuído por ele no mercado."
-      ],
-      "status": "generated",
-      "prompt_version": "consumer-lay-aliases:v2"
-    },
-    {
-      "unit_key": "br-cdc-art-12-paragrafo-3-inciso-ii",
-      "provision_id": "br-cdc-art-12",
-      "source_sha256": "b4a56df10a17edaab04c12c7799065a4c0c5b01d9675289e0b34a797d4f94565",
-      "aliases": [
-        "A empresa pode contestar o caso se provar que o produto foi vendido sem o defeito apontado.",
-        "Mesmo tendo colocado o produto à venda, o fabricante pode demonstrar que não havia falha nele."
-      ],
-      "status": "generated",
-      "prompt_version": "consumer-lay-aliases:v2"
-    },
-    {
-      "unit_key": "br-cdc-art-12-paragrafo-3-inciso-iii",
-      "provision_id": "br-cdc-art-12",
-      "source_sha256": "4d2ddaf2929089ca28bddc2eb70b7da8a6155d272f3f9350f0f9cb634aee13b1",
-      "aliases": [
-        "A empresa pode alegar que o acidente aconteceu somente porque usei o produto de forma errada.",
-        "A empresa pode provar que o dano foi causado exclusivamente por outra pessoa, e não por defeito do produto."
-      ],
-      "status": "generated",
+      "unit_key": "br-cdc-art-13-caput",
+      "provision_id": "br-cdc-art-13",
+      "source_sha256": "7bdd43a3e677676c59bdb83a881e81e626d5eb879edb63a2002973a38adabbab",
+      "aliases": [],
+      "status": "declined",
       "prompt_version": "consumer-lay-aliases:v2"
     },
     {
@@ -506,6 +691,14 @@
       "prompt_version": "consumer-lay-aliases:v2"
     },
     {
+      "unit_key": "br-cdc-art-13-paragrafo-unico",
+      "provision_id": "br-cdc-art-13",
+      "source_sha256": "c304be634af2e5a124a92304aba7fbf7a6c9ed0f7014fcc3bb4ab8c67565af4c",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
       "unit_key": "br-cdc-art-14-caput",
       "provision_id": "br-cdc-art-14",
       "source_sha256": "c792c1e2aa911dea0f39d18b887ff8bb41d1326d33578dd78f9ac6a1eb15dee0",
@@ -514,6 +707,14 @@
         "Usei um serviço sem receber informações suficientes sobre como utilizá-lo ou sobre seus riscos, e isso me causou dano."
       ],
       "status": "generated",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-cdc-art-14-paragrafo-1",
+      "provision_id": "br-cdc-art-14",
+      "source_sha256": "50e04854142bcfb0b91f95c4f96d865761b8e30f7e7ba6b58e20556c0ec56f08",
+      "aliases": [],
+      "status": "declined",
       "prompt_version": "consumer-lay-aliases:v2"
     },
     {
@@ -545,39 +746,6 @@
       "aliases": [
         "Recebi um serviço antigo ou desatualizado, cuja segurança já não era a esperada naquela época.",
         "A segurança do serviço deve ser avaliada conforme o momento em que ele foi prestado."
-      ],
-      "status": "generated",
-      "prompt_version": "consumer-lay-aliases:v2"
-    },
-    {
-      "unit_key": "br-cdc-art-14-paragrafo-2",
-      "provision_id": "br-cdc-art-14",
-      "source_sha256": "6b4fcdfc974186d650413decfff57832d9876691d2b0d6106163f19966133247",
-      "aliases": [
-        "A empresa não pode dizer que o serviço era defeituoso só porque depois surgiu uma técnica mais moderna.",
-        "Usei um serviço seguro para a época, mas hoje existe um método melhor; isso sozinho não torna o serviço defeituoso."
-      ],
-      "status": "generated",
-      "prompt_version": "consumer-lay-aliases:v2"
-    },
-    {
-      "unit_key": "br-cdc-art-14-paragrafo-3-inciso-i",
-      "provision_id": "br-cdc-art-14",
-      "source_sha256": "a17d01ad318479996138c0530b9c764bc7c1848b590331d5c9190222c5013216",
-      "aliases": [
-        "A empresa diz que prestou o serviço corretamente e que o defeito apontado por mim não existia.",
-        "Mesmo tendo ocorrido um dano após o serviço, a empresa tenta provar que o serviço não tinha falha."
-      ],
-      "status": "generated",
-      "prompt_version": "consumer-lay-aliases:v2"
-    },
-    {
-      "unit_key": "br-cdc-art-14-paragrafo-3-inciso-ii",
-      "provision_id": "br-cdc-art-14",
-      "source_sha256": "8b2f7e8a8c94a37202da014a3c4981cd5a0ab35172a638c0cd092e1fd4fb849a",
-      "aliases": [
-        "A empresa diz que o problema aconteceu somente porque eu usei o serviço de modo inadequado.",
-        "A empresa afirma que outra pessoa, e não ela, foi a única responsável pelo problema no serviço."
       ],
       "status": "generated",
       "prompt_version": "consumer-lay-aliases:v2"
@@ -629,6 +797,30 @@
       "prompt_version": "consumer-lay-aliases:v2"
     },
     {
+      "unit_key": "br-cdc-art-18-paragrafo-1-inciso-i",
+      "provision_id": "br-cdc-art-18",
+      "source_sha256": "682c0fac440b846477c46399a34f043fb218012372c957b1871af5cc61f259c4",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-cdc-art-18-paragrafo-1-inciso-ii",
+      "provision_id": "br-cdc-art-18",
+      "source_sha256": "713f6626d7a91ce9139c132111fcd1ef8f72ce5956c65eb2a4c2d0c2d549cace",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-cdc-art-18-paragrafo-1-inciso-iii",
+      "provision_id": "br-cdc-art-18",
+      "source_sha256": "c685a89d506fb3646b19b4c8928ccd8fcbaec75ee867a24fd8c8f97ab62c018c",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
       "unit_key": "br-cdc-art-18-paragrafo-2",
       "provision_id": "br-cdc-art-18",
       "source_sha256": "1bd0b2d8532389b0ea28f9ed9857954e0cfd2338632d7459e0f4598e690dd77b",
@@ -673,6 +865,22 @@
       "prompt_version": "consumer-lay-aliases:v2"
     },
     {
+      "unit_key": "br-cdc-art-18-paragrafo-6",
+      "provision_id": "br-cdc-art-18",
+      "source_sha256": "4811cc95163e2c3d9696465a73d9d485cad3a708e308c315603dc44cf642034f",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-cdc-art-18-paragrafo-6-inciso-i",
+      "provision_id": "br-cdc-art-18",
+      "source_sha256": "c8a7224203a9a94c76bca927a24c70ca16fc672e3b9908abf1ee71929eff26de",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
       "unit_key": "br-cdc-art-18-paragrafo-6-inciso-ii",
       "provision_id": "br-cdc-art-18",
       "source_sha256": "c404c5801dd7b2ba80288a7ea41cd0a2ff72a019ddfe73a1d0289db23cb8f501",
@@ -681,6 +889,14 @@
         "O produto que comprei não segue as regras de fabricação, distribuição ou apresentação exigidas."
       ],
       "status": "generated",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-cdc-art-18-paragrafo-6-inciso-iii",
+      "provision_id": "br-cdc-art-18",
+      "source_sha256": "354464292b72d3e4aff0891e24a428dc5ea8871701a6c7fbaef09be45f16c6a2",
+      "aliases": [],
+      "status": "declined",
       "prompt_version": "consumer-lay-aliases:v2"
     },
     {
@@ -736,6 +952,14 @@
         "Comprei um item com quantidade menor que a anunciada e prefiro a devolução imediata do pagamento, com atualização do valor."
       ],
       "status": "generated",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-cdc-art-19-paragrafo-1",
+      "provision_id": "br-cdc-art-19",
+      "source_sha256": "0b4d30adca6ff23aa69b3f808e3e0b8f80e368e84d7a8e0cd1b7d75e7c16125f",
+      "aliases": [],
+      "status": "declined",
       "prompt_version": "consumer-lay-aliases:v2"
     },
     {
@@ -950,6 +1174,14 @@
         "O serviço terminou com um problema fácil de perceber, e o prazo começou quando a execução foi concluída."
       ],
       "status": "generated",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-cdc-art-26-paragrafo-2",
+      "provision_id": "br-cdc-art-26",
+      "source_sha256": "9fb05b218a453f2f78cc2c07a1d285f77420cabecd3869399941c91e95857876",
+      "aliases": [],
+      "status": "declined",
       "prompt_version": "consumer-lay-aliases:v2"
     },
     {
@@ -1286,6 +1518,14 @@
       "prompt_version": "consumer-lay-aliases:v2"
     },
     {
+      "unit_key": "br-cdc-art-39-caput",
+      "provision_id": "br-cdc-art-39",
+      "source_sha256": "f9b4cbcdb7a47cba886e2af7db5c9176d07b352856bbb7018729aec533e1e3b4",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
       "unit_key": "br-cdc-art-39-inciso-i",
       "provision_id": "br-cdc-art-39",
       "source_sha256": "eb1659bd0ad130f82954775d936dc1b2b19ff869b4719fbd6d324dea1d31be88",
@@ -1393,6 +1633,14 @@
         "O prestador elevou o valor do serviço sem motivo."
       ],
       "status": "generated",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-cdc-art-39-inciso-xi",
+      "provision_id": "br-cdc-art-39",
+      "source_sha256": "7e5c03c82e16dbbd4e24f4808bdd990b48c506cbd8ed5aad477b4066a83a0319",
+      "aliases": [],
+      "status": "declined",
       "prompt_version": "consumer-lay-aliases:v2"
     },
     {
@@ -1556,6 +1804,14 @@
       "prompt_version": "consumer-lay-aliases:v2"
     },
     {
+      "unit_key": "br-cdc-art-43-paragrafo-2",
+      "provision_id": "br-cdc-art-43",
+      "source_sha256": "8d785e605af1caf2cbc167b5b9d5cd0e9af9379eefd941769f0bb4c6a60da52a",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
       "unit_key": "br-cdc-art-43-paragrafo-3",
       "provision_id": "br-cdc-art-43",
       "source_sha256": "a8d3b966289508dbf4e2b1259837c889376f931b57c2dc3fc8de7c39ff266717",
@@ -1564,6 +1820,30 @@
         "Depois de corrigirem meu dado errado, quero que avisem em até cinco dias úteis quem recebeu aquela informação."
       ],
       "status": "generated",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-cdc-art-43-paragrafo-4",
+      "provision_id": "br-cdc-art-43",
+      "source_sha256": "565dd02ab83d01cd23a4361be4bcbf882d0207780cdf640fd84c4a71a8b924c4",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-cdc-art-43-paragrafo-5",
+      "provision_id": "br-cdc-art-43",
+      "source_sha256": "7b9c5810083f5d6e3b6fe0baa07c743cd00fd7eaf355b9801542aac160d6ab93",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-cdc-art-43-paragrafo-6",
+      "provision_id": "br-cdc-art-43",
+      "source_sha256": "bdd90c369a6fb6f8001f75f6d2705088371eb0c4133e70485263eb518953d594",
+      "aliases": [],
+      "status": "declined",
       "prompt_version": "consumer-lay-aliases:v2"
     },
     {
@@ -1587,6 +1867,14 @@
         "Mesmo sem ter reclamado, quero consultar os dados públicos sobre reclamações contra um fornecedor."
       ],
       "status": "generated",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-cdc-art-44-paragrafo-2",
+      "provision_id": "br-cdc-art-44",
+      "source_sha256": "ad269882fcd5b843ef224bc58dac366c5c790e6894be73cc17d02cd15431ce63",
+      "aliases": [],
+      "status": "declined",
       "prompt_version": "consumer-lay-aliases:v2"
     },
     {
@@ -1649,6 +1937,14 @@
       "prompt_version": "consumer-lay-aliases:v2"
     },
     {
+      "unit_key": "br-cdc-art-50-caput",
+      "provision_id": "br-cdc-art-50",
+      "source_sha256": "a0f431016da53e75fc81e3a298cc53cea7612c111caed86bff49dfffbed1f834",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
       "unit_key": "br-cdc-art-50-paragrafo-unico",
       "provision_id": "br-cdc-art-50",
       "source_sha256": "615b504a06b063b733d4c7ab484f87a02ce0b06d43c4ad22254337a5aa915943",
@@ -1659,6 +1955,14 @@
         "A garantia não informou os custos que eu teria para usar o conserto oferecido."
       ],
       "status": "generated",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-cdc-art-51-caput",
+      "provision_id": "br-cdc-art-51",
+      "source_sha256": "ddeba0cfd3922ef735c1d552fefc0183e6989d77e7cf7acfbd73a8dc50705292",
+      "aliases": [],
+      "status": "declined",
       "prompt_version": "consumer-lay-aliases:v2"
     },
     {
@@ -1805,6 +2109,14 @@
       "prompt_version": "consumer-lay-aliases:v2"
     },
     {
+      "unit_key": "br-cdc-art-51-inciso-xv",
+      "provision_id": "br-cdc-art-51",
+      "source_sha256": "0d5c980c3a130c63e9999850766327d33969860350ed550c0ee3f50fd23080cb",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
       "unit_key": "br-cdc-art-51-inciso-xvi",
       "provision_id": "br-cdc-art-51",
       "source_sha256": "f34558fe5e060e62ee9ba94e82670cb9b8a4255c83b189d6fe2f0c03fa38126c",
@@ -1835,6 +2147,46 @@
         "Fiz acordo com meus credores, mas querem impedir o restabelecimento integral dos meus pagamentos e direitos."
       ],
       "status": "generated",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-cdc-art-51-paragrafo-1",
+      "provision_id": "br-cdc-art-51",
+      "source_sha256": "e0b8beb87ef3a725e96a4a6e3ec8d6cbb014402b7078ec204edd6e677f91f657",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-cdc-art-51-paragrafo-1-inciso-i",
+      "provision_id": "br-cdc-art-51",
+      "source_sha256": "ed47c898550cee20707cc22db5e786107a7c95d582148da9258d6bcbeb9e2343",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-cdc-art-51-paragrafo-1-inciso-ii",
+      "provision_id": "br-cdc-art-51",
+      "source_sha256": "468bc9405636d436c1302acab296fb379aa095ea002e4580c11aa697d25e095d",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-cdc-art-51-paragrafo-1-inciso-iii",
+      "provision_id": "br-cdc-art-51",
+      "source_sha256": "f566bca4dc6d31779e9d52c6d931ac773e81e7b21ecf05af6a81e8d34636f727",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-cdc-art-51-paragrafo-2",
+      "provision_id": "br-cdc-art-51",
+      "source_sha256": "57047631f32db8429fae59b6d1898b676b9d33919af1aeb3401e8ea248782d8c",
+      "aliases": [],
+      "status": "declined",
       "prompt_version": "consumer-lay-aliases:v2"
     },
     {
@@ -2029,6 +2381,14 @@
       "prompt_version": "consumer-lay-aliases:v2"
     },
     {
+      "unit_key": "br-cdc-art-54-a-caput",
+      "provision_id": "br-cdc-art-54-a",
+      "source_sha256": "03d7f80b1e3aed2e3ad3b27d56efe913c4f7e47f829bdb70e3d26818ec6448f5",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
       "unit_key": "br-cdc-art-54-a-paragrafo-1",
       "provision_id": "br-cdc-art-54-a",
       "source_sha256": "b4562c704f175a703245c0e9c889016f74ce51a96c3583df98e6e3d01c46559b",
@@ -2046,17 +2406,6 @@
       "aliases": [
         "Minhas dívidas incluem empréstimos, compras parceladas e serviços contínuos, como telefone, internet ou plano mensal.",
         "Tenho vários compromissos feitos como consumidor, incluindo crédito contratado e contas mensais que continuam chegando."
-      ],
-      "status": "generated",
-      "prompt_version": "consumer-lay-aliases:v2"
-    },
-    {
-      "unit_key": "br-cdc-art-54-a-paragrafo-3",
-      "provision_id": "br-cdc-art-54-a",
-      "source_sha256": "ef2b721d9fbe202b428b76b3f3702a2d3ef175a7acda5766b3702913c94b1878",
-      "aliases": [
-        "Não posso tratar minhas dívidas como superendividamento se fiz contratos já planejando não pagar.",
-        "Minha situação não entra nessa proteção se as dívidas vieram de fraude ou de compras de luxo muito caras."
       ],
       "status": "generated",
       "prompt_version": "consumer-lay-aliases:v2"
@@ -2139,6 +2488,14 @@
       "prompt_version": "consumer-lay-aliases:v2"
     },
     {
+      "unit_key": "br-cdc-art-54-b-paragrafo-2",
+      "provision_id": "br-cdc-art-54-b",
+      "source_sha256": "af802ee40a20c6858506db2fe9e5f019ae5235b674ac067b77c6f696cde7053f",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
       "unit_key": "br-cdc-art-54-b-paragrafo-3",
       "provision_id": "br-cdc-art-54-b",
       "source_sha256": "0a3af586414d3b8c6b6ca5bda38305720db7c8cfb341be9e4c34586a1b166a64",
@@ -2148,6 +2505,14 @@
         "Minha fatura mensal deve mostrar o custo total do crédito, a financeira responsável e a soma que ainda pagarei."
       ],
       "status": "generated",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-cdc-art-54-c-caput",
+      "provision_id": "br-cdc-art-54-c",
+      "source_sha256": "ef9664e8dd118fafc84df6a8f6af04088749e42cb8280c874be142edb39f8934",
+      "aliases": [],
+      "status": "declined",
       "prompt_version": "consumer-lay-aliases:v2"
     },
     {
@@ -2197,6 +2562,14 @@
       "prompt_version": "consumer-lay-aliases:v2"
     },
     {
+      "unit_key": "br-cdc-art-54-d-caput",
+      "provision_id": "br-cdc-art-54-d",
+      "source_sha256": "c24ddff67482cc9f76bb15e7ff12da95701aa2f24e54df58a6fb901b2d56b7f5",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
       "unit_key": "br-cdc-art-54-d-inciso-i",
       "provision_id": "br-cdc-art-54-d",
       "source_sha256": "971217f50f0158345fa5251ad09932d3d12798dd637063b958be56af38dd59c5",
@@ -2238,6 +2611,14 @@
         "Dependendo da falha da empresa e da minha renda, o juiz pode aumentar o prazo original para eu pagar a dívida."
       ],
       "status": "generated",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-cdc-art-54-f-caput",
+      "provision_id": "br-cdc-art-54-f",
+      "source_sha256": "6e2a668a850a6e35cc799d04095e0b7c9f0c11e3b3c6dac6dfbcd0521d9c67e5",
+      "aliases": [],
+      "status": "declined",
       "prompt_version": "consumer-lay-aliases:v2"
     },
     {
@@ -2285,6 +2666,14 @@
       "prompt_version": "consumer-lay-aliases:v2"
     },
     {
+      "unit_key": "br-cdc-art-54-f-paragrafo-3",
+      "provision_id": "br-cdc-art-54-f",
+      "source_sha256": "63853262c9a9e5cae7644edc076387fbb85aa05a573346ea9227fe4a6616d689",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
       "unit_key": "br-cdc-art-54-f-paragrafo-3-inciso-i",
       "provision_id": "br-cdc-art-54-f",
       "source_sha256": "b22eba910f39d330bc58e6b9e5156a31f22939d0e5f156d9bb53061e6832e721",
@@ -2315,6 +2704,14 @@
         "O contrato do produto ou serviço não produz efeito, então o crédito conectado àquela compra também não produz efeito."
       ],
       "status": "generated",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-cdc-art-54-g-caput",
+      "provision_id": "br-cdc-art-54-g",
+      "source_sha256": "ec1d96ba7a56bb360b6ebcc9ff845db6cddefc73412c737b65baf147d8813ba8",
+      "aliases": [],
+      "status": "declined",
       "prompt_version": "consumer-lay-aliases:v2"
     },
     {
@@ -2419,6 +2816,14 @@
         "Depois de aprovado pelo juiz, esse acordo pode ser cobrado como uma decisão judicial definitiva."
       ],
       "status": "generated",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-cdc-art-104-a-paragrafo-4",
+      "provision_id": "br-cdc-art-104-a",
+      "source_sha256": "62bdc1a228f4c774aaa9988cd85bac8be8d182d6ae56947e81c1802c9ec65379",
+      "aliases": [],
+      "status": "declined",
       "prompt_version": "consumer-lay-aliases:v2"
     },
     {
@@ -2536,6 +2941,14 @@
       "prompt_version": "consumer-lay-aliases:v2"
     },
     {
+      "unit_key": "br-cdc-art-104-c-caput",
+      "provision_id": "br-cdc-art-104-c",
+      "source_sha256": "9b06f9cbd407c970ea365def4da4f6d99ff838d3f6f96c118b079f5b065cd073",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
       "unit_key": "br-cdc-art-104-c-paragrafo-1",
       "provision_id": "br-cdc-art-104-c",
       "source_sha256": "0b4287085a804d0d7130324de8b2de948b8879751bd48ad4c211ebb2a79e2130",
@@ -2556,6 +2969,94 @@
         "Para o acordo sobre meu superendividamento valer, não posso piorar minha situação fazendo novas dívidas."
       ],
       "status": "generated",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-1-caput",
+      "provision_id": "br-lgpd-art-1",
+      "source_sha256": "0fc66a015ba69756a39ad2bf8cbf2017eb384bf5df124bccc7b58665ffe45f63",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-1-paragrafo-unico",
+      "provision_id": "br-lgpd-art-1",
+      "source_sha256": "c49945f39be1fa25c99a975fe1604a5b26972d7b3c71a7458814214292e7e1f7",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-2-caput",
+      "provision_id": "br-lgpd-art-2",
+      "source_sha256": "9a6df39061baf6851a133cdc3304ff067328a17d3805f8e6c55eced587522f4c",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-2-inciso-i",
+      "provision_id": "br-lgpd-art-2",
+      "source_sha256": "5d80e83ffa2350980f302f344b41ebcb7d82970277d483348e195a7772c43aac",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-2-inciso-ii",
+      "provision_id": "br-lgpd-art-2",
+      "source_sha256": "d76091531ff51bb4bfb40e45e83744833bc15a1260b5406f7756c98d7dd93974",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-2-inciso-iii",
+      "provision_id": "br-lgpd-art-2",
+      "source_sha256": "41e5fa84b5a59e17f189c4eea9dbadef25f128410c0678f845e44a7e2594cd94",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-2-inciso-iv",
+      "provision_id": "br-lgpd-art-2",
+      "source_sha256": "eec7dd18dbb18f8136fbb532263cffd074e791bf2c4dd4ae52cf6af670b3f143",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-2-inciso-v",
+      "provision_id": "br-lgpd-art-2",
+      "source_sha256": "4bda1693a9940595ed906dc25dae137024413ea3f62943011f73ca5d3f377c7b",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-2-inciso-vi",
+      "provision_id": "br-lgpd-art-2",
+      "source_sha256": "db935fc7d0d9678e0db4aadb4e961f9614f428ba3577ddd437aa186c19155043",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-2-inciso-vii",
+      "provision_id": "br-lgpd-art-2",
+      "source_sha256": "aba9a333965458c7321d7053be0ff20653e7313c3ea3aeead2dde42888bc0f8c",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-3-caput",
+      "provision_id": "br-lgpd-art-3",
+      "source_sha256": "5f4c342f29271876e25c5f58193dff528677f6597b4c55e22ba1f4025b0d28e3",
+      "aliases": [],
+      "status": "declined",
       "prompt_version": "consumer-lay-aliases:v2"
     },
     {
@@ -2603,58 +3104,11 @@
       "prompt_version": "consumer-lay-aliases:v2"
     },
     {
-      "unit_key": "br-lgpd-art-4-inciso-i",
-      "provision_id": "br-lgpd-art-4",
-      "source_sha256": "ffc10cb4d16b6c3bb99c45dc12ebe6a83e095a7ba6c7887e57f21fd87451c9d9",
-      "aliases": [
-        "Anotei os contatos dos meus amigos na minha agenda pessoal, sem vender nada nem usar isso no trabalho.",
-        "Guardei fotos e telefones de familiares apenas para uso particular, sem finalidade de ganhar dinheiro."
-      ],
-      "status": "generated",
-      "prompt_version": "consumer-lay-aliases:v2"
-    },
-    {
-      "unit_key": "br-lgpd-art-4-inciso-ii-alinea-a",
-      "provision_id": "br-lgpd-art-4",
-      "source_sha256": "7356a2f9d2ac51a1398042536676459e4d3cf6d23468979873e026f7a4632f77",
-      "aliases": [
-        "Um jornal usou meu nome e minha imagem exclusivamente em uma reportagem.",
-        "Um artista usou dados sobre mim somente para produzir uma obra artística."
-      ],
-      "status": "generated",
-      "prompt_version": "consumer-lay-aliases:v2"
-    },
-    {
-      "unit_key": "br-lgpd-art-4-inciso-ii-alinea-b",
-      "provision_id": "br-lgpd-art-4",
-      "source_sha256": "1e39ac6a9c3289bff298b8900a3b1ad12edb11668fa8bb65b13e7ad4b3af488a",
-      "aliases": [
-        "Uma universidade usou meus dados exclusivamente em uma pesquisa acadêmica.",
-        "Participei de um estudo acadêmico que coletou informações sensíveis sobre minha saúde."
-      ],
-      "status": "generated",
-      "prompt_version": "consumer-lay-aliases:v2"
-    },
-    {
-      "unit_key": "br-lgpd-art-4-inciso-iii-alinea-d",
-      "provision_id": "br-lgpd-art-4",
-      "source_sha256": "dfa6c63f94fc502b4f83c07bbeb3a9a398f41a97c032a11c894a43c68380d83c",
-      "aliases": [
-        "Meus dados foram usados por autoridades para investigar um crime.",
-        "Informações sobre mim foram usadas exclusivamente para identificar ou responsabilizar alguém por uma infração penal."
-      ],
-      "status": "generated",
-      "prompt_version": "consumer-lay-aliases:v2"
-    },
-    {
-      "unit_key": "br-lgpd-art-4-inciso-iv",
-      "provision_id": "br-lgpd-art-4",
-      "source_sha256": "9250500d6ee5084f3357ee5aea44f135c98a1e898409f117cb2c9e5b2fbd8ff4",
-      "aliases": [
-        "Meus dados vieram de outro país, ficaram sem compartilhamento com empresas brasileiras e não foram enviados a terceiros países.",
-        "Uma empresa estrangeira manteve meus dados no país de origem, que oferece proteção adequada, sem repassá-los ao Brasil."
-      ],
-      "status": "generated",
+      "unit_key": "br-lgpd-art-3-paragrafo-2",
+      "provision_id": "br-lgpd-art-3",
+      "source_sha256": "bc50fc9af805a326c0166666432d920cd9c516fc22715e68e64983a30da0fdea",
+      "aliases": [],
+      "status": "declined",
       "prompt_version": "consumer-lay-aliases:v2"
     },
     {
@@ -2680,6 +3134,14 @@
       "prompt_version": "consumer-lay-aliases:v2"
     },
     {
+      "unit_key": "br-lgpd-art-4-paragrafo-3",
+      "provision_id": "br-lgpd-art-4",
+      "source_sha256": "eaaefbd1d29ebd29147ada59b0e54c816b1490cd3aff885147370cc99ac78c7e",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
       "unit_key": "br-lgpd-art-4-paragrafo-4",
       "provision_id": "br-lgpd-art-4",
       "source_sha256": "c754ac8ee253dcf7b9a2e5c5873a76c139ca386e1826280a8b8e7b707548ef2b",
@@ -2688,6 +3150,174 @@
         "Todo o banco de dados de uma investigação criminal não pode ser entregue a uma empresa privada comum."
       ],
       "status": "generated",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-5-caput",
+      "provision_id": "br-lgpd-art-5",
+      "source_sha256": "69a7a6ba9a19732b6c759d5fc2b192ae2f1bbe24ad1d3ddd6bafc5f7cb5d5d85",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-5-inciso-i",
+      "provision_id": "br-lgpd-art-5",
+      "source_sha256": "7cd627a9862995043af1e3601aaa4172f668e616b1ef4be4640a9b8c931f2a1b",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-5-inciso-ii",
+      "provision_id": "br-lgpd-art-5",
+      "source_sha256": "3360b3b89a922f75ca573157e4c834e03de506cf07189ba7c34be10c4f8c3644",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-5-inciso-iii",
+      "provision_id": "br-lgpd-art-5",
+      "source_sha256": "d3c30e65045b080c405a297dde63b0f7a00e2bc76bfe6ad59a2771178aef503f",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-5-inciso-iv",
+      "provision_id": "br-lgpd-art-5",
+      "source_sha256": "325f6b4f7b469fda4ca1f63d84eadfca56a8495632c4e8f4e9d5afedf3da923f",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-5-inciso-v",
+      "provision_id": "br-lgpd-art-5",
+      "source_sha256": "8f9973ef2745a68e998e8a7b2c1b413365fc230d8453ea4aa7af2e0cd9ef2076",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-5-inciso-vi",
+      "provision_id": "br-lgpd-art-5",
+      "source_sha256": "d2f6b558a0cef150911d61b0556c27272375581742901bb432af44ec9c2a4be3",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-5-inciso-vii",
+      "provision_id": "br-lgpd-art-5",
+      "source_sha256": "a1a6e143a7a44bfb316c8e7c2cf92204675b9d9f66ae54c705b781b741be8924",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-5-inciso-viii",
+      "provision_id": "br-lgpd-art-5",
+      "source_sha256": "87c31270846bcfa6180005d1245cb89afeff50c1dfd373f3b35edff58feb3cea",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-5-inciso-ix",
+      "provision_id": "br-lgpd-art-5",
+      "source_sha256": "ddcee1c017b214135b1b84da7b6f4eec5921604b8de25950ca4960de19b20f9f",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-5-inciso-x",
+      "provision_id": "br-lgpd-art-5",
+      "source_sha256": "c09f76a561151002c682517b8c7af109c72517193867a58f12024404b118875e",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-5-inciso-xi",
+      "provision_id": "br-lgpd-art-5",
+      "source_sha256": "4944d5bc6b809bb0fbe3e3ff3bb946e0aa80a555e3fb2e055cefa041f3098073",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-5-inciso-xii",
+      "provision_id": "br-lgpd-art-5",
+      "source_sha256": "e8f3c0aa778ddca49540a86aa64dfb79f8aba8d4215ea924196628db6b466538",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-5-inciso-xiii",
+      "provision_id": "br-lgpd-art-5",
+      "source_sha256": "102aed3e0a5342e4d290d1496fb62aea24c1176bd4d6fe57995b1a83247951fb",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-5-inciso-xiv",
+      "provision_id": "br-lgpd-art-5",
+      "source_sha256": "e029d18cba931139b4b6f5fe264ebd01f4fd5439ed05283e64fa70cc15725f9a",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-5-inciso-xv",
+      "provision_id": "br-lgpd-art-5",
+      "source_sha256": "bd34c2577cd52c47d12aa0d3d01a2e947dda2afbb83da5a1fb25b66453fbe13a",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-5-inciso-xvi",
+      "provision_id": "br-lgpd-art-5",
+      "source_sha256": "c8cca95e26a92f0ac78c6fb5a7f35c06a6a27c80218d7c506854b2f084920395",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-5-inciso-xvii",
+      "provision_id": "br-lgpd-art-5",
+      "source_sha256": "8b66022c1dc2f418ee8fd2dede77b98c75a93046c44428f2f2786177fdecd458",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-5-inciso-xviii",
+      "provision_id": "br-lgpd-art-5",
+      "source_sha256": "411c03ea6be56c5aa33d97297b936e2068242a0b6487de4f8fa121e1ec7e5c18",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-5-inciso-xix",
+      "provision_id": "br-lgpd-art-5",
+      "source_sha256": "f6a1747f73531c55282dacd617bdd4bba95432e5da7b6592ce96b79ba91b10ea",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-6-caput",
+      "provision_id": "br-lgpd-art-6",
+      "source_sha256": "028e27e726095c84d5fcb7f178fed4511759b330b96bca02cc675190d30aaeaf",
+      "aliases": [],
+      "status": "declined",
       "prompt_version": "consumer-lay-aliases:v2"
     },
     {
@@ -2801,6 +3431,14 @@
       "prompt_version": "consumer-lay-aliases:v2"
     },
     {
+      "unit_key": "br-lgpd-art-7-caput",
+      "provision_id": "br-lgpd-art-7",
+      "source_sha256": "28d7a18aed46dcd2d1e1b34ad7d02aa7420aad6c4e9b414c80c4a4300d126815",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
       "unit_key": "br-lgpd-art-7-inciso-i",
       "provision_id": "br-lgpd-art-7",
       "source_sha256": "bbf6827ae41a5bab2ad3ffab994fbeeabd910ba606189a5973b98bc37f2dd404",
@@ -2812,122 +3450,12 @@
       "prompt_version": "consumer-lay-aliases:v2"
     },
     {
-      "unit_key": "br-lgpd-art-7-inciso-ii",
-      "provision_id": "br-lgpd-art-7",
-      "source_sha256": "71eabfa558c734f0f7bcd4fb69d836f2ac37e21cbafa80ba70887badc035b507",
-      "aliases": [
-        "Meu banco usa meus dados cadastrais para cumprir uma obrigação exigida por regra oficial.",
-        "A empresa guarda informações da minha compra porque precisa atender a uma exigência do governo."
-      ],
-      "status": "generated",
-      "prompt_version": "consumer-lay-aliases:v2"
-    },
-    {
-      "unit_key": "br-lgpd-art-7-inciso-iii",
-      "provision_id": "br-lgpd-art-7",
-      "source_sha256": "c60a0e3156e6d842a260c150b5a28eaf2b57a866b620db689284e6d8979a1c19",
-      "aliases": [
-        "Um órgão público usa meus dados para incluir minha família em um programa público previsto nas regras.",
-        "A prefeitura compartilha dados necessários para executar um serviço público contratado ou conveniado."
-      ],
-      "status": "generated",
-      "prompt_version": "consumer-lay-aliases:v2"
-    },
-    {
-      "unit_key": "br-lgpd-art-7-inciso-iv",
-      "provision_id": "br-lgpd-art-7",
-      "source_sha256": "75ba1eb9668f82d00e77db313038b3a8dca3799186f71aac88efcdb91dfa4dd9",
-      "aliases": [
-        "Uma instituição de pesquisa usa dados sobre meus hábitos para fazer um estudo, sem me identificar quando isso for possível.",
-        "Meus dados podem entrar em uma pesquisa estatística, de preferência sem meu nome ou outros identificadores."
-      ],
-      "status": "generated",
-      "prompt_version": "consumer-lay-aliases:v2"
-    },
-    {
-      "unit_key": "br-lgpd-art-7-inciso-v",
-      "provision_id": "br-lgpd-art-7",
-      "source_sha256": "a0bf91074d9d66a5bb1262a982dc86f872453ce76e34b1fa39ee9cac860ee957",
-      "aliases": [
-        "A operadora usa meus dados para instalar a internet que contratei.",
-        "Eu pedi uma cotação de seguro, e a empresa usa meus dados para preparar a proposta antes do contrato."
-      ],
-      "status": "generated",
-      "prompt_version": "consumer-lay-aliases:v2"
-    },
-    {
-      "unit_key": "br-lgpd-art-7-inciso-vi",
-      "provision_id": "br-lgpd-art-7",
-      "source_sha256": "9679e692556d9e0ff21cd5e0b96fca0150e5b888f858d7d3f33a8876af7d6dfb",
-      "aliases": [
-        "A empresa usa meus dados e comprovantes em uma disputa no Judiciário sobre uma compra.",
-        "Meus dados podem ser usados para defender uma reclamação em processo administrativo ou em arbitragem."
-      ],
-      "status": "generated",
-      "prompt_version": "consumer-lay-aliases:v2"
-    },
-    {
-      "unit_key": "br-lgpd-art-7-inciso-vii",
-      "provision_id": "br-lgpd-art-7",
-      "source_sha256": "a76f8335a4b973b7b1a5ac4f8adcea8c6666f50e0be855a1d6625584c4de00b6",
-      "aliases": [
-        "Em uma emergência médica, usam meus dados para socorrer a mim ou outra pessoa.",
-        "A empresa informa dados necessários para evitar um risco físico grave à minha vida ou à de alguém."
-      ],
-      "status": "generated",
-      "prompt_version": "consumer-lay-aliases:v2"
-    },
-    {
-      "unit_key": "br-lgpd-art-7-inciso-viii",
-      "provision_id": "br-lgpd-art-7",
-      "source_sha256": "d6b6135c9d3112abb184b0a76c8bf7983e8c1ca225f6cd00806670d3b4f7604f",
-      "aliases": [
-        "O hospital usa meu histórico e meus exames durante meu atendimento de saúde.",
-        "Um profissional de saúde consulta meus dados para realizar um procedimento médico."
-      ],
-      "status": "generated",
-      "prompt_version": "consumer-lay-aliases:v2"
-    },
-    {
-      "unit_key": "br-lgpd-art-7-inciso-ix",
-      "provision_id": "br-lgpd-art-7",
-      "source_sha256": "175f0a42398c714eca7fef64f34c72857f16020872786c86e9a5682f1e55d026",
-      "aliases": [
-        "Uma empresa usa dados mínimos para prevenir fraude em uma compra, desde que isso não pese mais que minha privacidade.",
-        "A loja analisa meu cadastro para melhorar a segurança do serviço, sem atropelar meus direitos mais importantes."
-      ],
-      "status": "generated",
-      "prompt_version": "consumer-lay-aliases:v2"
-    },
-    {
-      "unit_key": "br-lgpd-art-7-inciso-x",
-      "provision_id": "br-lgpd-art-7",
-      "source_sha256": "5dd253207b9be85cc3dbee3081290ee5b80bef0b22942994830de1c4013f1bd7",
-      "aliases": [
-        "Uma empresa consulta meus dados para avaliar crédito antes de vender parcelado.",
-        "Meus dados são usados para verificar risco de inadimplência em um financiamento."
-      ],
-      "status": "generated",
-      "prompt_version": "consumer-lay-aliases:v2"
-    },
-    {
       "unit_key": "br-lgpd-art-7-paragrafo-3",
       "provision_id": "br-lgpd-art-7",
       "source_sha256": "a3d691e0a93ddf06589773fdc9ba835ac9bcb6a28cb349a15ff4e6a6c563d586",
       "aliases": [
         "Mesmo que meu dado esteja em um cadastro público, quem o usa deve respeitar o motivo pelo qual ele foi publicado.",
         "Meus dados públicos não podem ser reaproveitados de má-fé para uma finalidade sem interesse público compatível."
-      ],
-      "status": "generated",
-      "prompt_version": "consumer-lay-aliases:v2"
-    },
-    {
-      "unit_key": "br-lgpd-art-7-paragrafo-4",
-      "provision_id": "br-lgpd-art-7",
-      "source_sha256": "354ccd1d8a6252ba4c5b70b9c6867a4a6c317947b075d358c331c051e918ccee",
-      "aliases": [
-        "Eu mesmo publiquei meu telefone abertamente, então podem usar esse dado sem pedir minha autorização novamente.",
-        "Mesmo tendo deixado meu dado visível ao público, a empresa não pode ignorar minhas proteções sobre esse uso."
       ],
       "status": "generated",
       "prompt_version": "consumer-lay-aliases:v2"
@@ -3222,6 +3750,14 @@
       "prompt_version": "consumer-lay-aliases:v2"
     },
     {
+      "unit_key": "br-lgpd-art-10-paragrafo-3",
+      "provision_id": "br-lgpd-art-10",
+      "source_sha256": "1b93f6c9315b05c1887370c2e940fa2095eab4095fc7419873eed7708b309919",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
       "unit_key": "br-lgpd-art-11-caput",
       "provision_id": "br-lgpd-art-11",
       "source_sha256": "716b41971192afbe3beaa1983acb4aa3a3bec0746d5b12527e53b0449797497d",
@@ -3239,83 +3775,6 @@
       "aliases": [
         "Autorizei separadamente a clínica a usar meu dado de saúde para marcar consultas. A autorização dizia exatamente para qual finalidade seria usada.",
         "Como responsável pelo meu filho, aceitei de forma destacada o uso de seu dado biométrico para uma finalidade informada."
-      ],
-      "status": "generated",
-      "prompt_version": "consumer-lay-aliases:v2"
-    },
-    {
-      "unit_key": "br-lgpd-art-11-inciso-ii-alinea-a",
-      "provision_id": "br-lgpd-art-11",
-      "source_sha256": "f7e8b0a657e6b168347a596bb1e143a892af2f7ed2e58e5b30ad808ac8c15cea",
-      "aliases": [
-        "Uma empresa precisa registrar meu dado de saúde porque uma regra obrigatória exige esse registro. Ela pode usar o dado sem eu autorizar quando isso for indispensável.",
-        "Um laboratório informou meu resultado a uma autoridade porque uma obrigação oficial exige a comunicação. Não foi um uso baseado na minha autorização."
-      ],
-      "status": "generated",
-      "prompt_version": "consumer-lay-aliases:v2"
-    },
-    {
-      "unit_key": "br-lgpd-art-11-inciso-ii-alinea-b",
-      "provision_id": "br-lgpd-art-11",
-      "source_sha256": "c5ec543d0167dbe7c92c41c1ad0ed7832202fba89df7db7681afe2e39c18b8d9",
-      "aliases": [
-        "Um órgão público compartilha meu dado sensível para executar um programa público previsto em regra. Esse compartilhamento pode ocorrer sem minha autorização quando for necessário.",
-        "Meu dado sobre deficiência é usado por órgãos públicos para colocar em prática uma política pública prevista oficialmente."
-      ],
-      "status": "generated",
-      "prompt_version": "consumer-lay-aliases:v2"
-    },
-    {
-      "unit_key": "br-lgpd-art-11-inciso-ii-alinea-c",
-      "provision_id": "br-lgpd-art-11",
-      "source_sha256": "2afc1e2b3d4a3d1a32349e780694f7b241698f05787de527e05f4d55c950d5d9",
-      "aliases": [
-        "Um instituto de pesquisa usa dados sobre minha saúde em um estudo. Sempre que puder, deve tirar os elementos que permitem saber que os dados são meus.",
-        "Meus dados sobre origem racial entram em uma pesquisa realizada por órgão de pesquisa. O estudo pode usar esses dados sem minha autorização quando forem necessários."
-      ],
-      "status": "generated",
-      "prompt_version": "consumer-lay-aliases:v2"
-    },
-    {
-      "unit_key": "br-lgpd-art-11-inciso-ii-alinea-d",
-      "provision_id": "br-lgpd-art-11",
-      "source_sha256": "32f1172b6b929f80f64684765470e4a038a39d9ee50c79b800d10597023f5d5e",
-      "aliases": [
-        "Uma empresa usa meu dado de saúde como prova em uma disputa sobre um contrato. Esse uso pode ser necessário mesmo sem minha autorização.",
-        "Meu dado biométrico é apresentado em um processo para confirmar quem assinou um contrato. A empresa pode usá-lo para defender seu direito no caso."
-      ],
-      "status": "generated",
-      "prompt_version": "consumer-lay-aliases:v2"
-    },
-    {
-      "unit_key": "br-lgpd-art-11-inciso-ii-alinea-e",
-      "provision_id": "br-lgpd-art-11",
-      "source_sha256": "822be7cd5509153ea309bc18f3bc1fd71538520e1a414817787dbb19bd67dc7e",
-      "aliases": [
-        "Estou desacordado após um acidente, e a equipe acessa meu dado de saúde para me atender. O uso pode ocorrer para proteger minha vida.",
-        "A equipe de resgate usa minha alergia registrada para evitar um medicamento perigoso. Isso pode ser feito para proteger minha integridade física."
-      ],
-      "status": "generated",
-      "prompt_version": "consumer-lay-aliases:v2"
-    },
-    {
-      "unit_key": "br-lgpd-art-11-inciso-ii-alinea-f",
-      "provision_id": "br-lgpd-art-11",
-      "source_sha256": "5de108019e7cec0723a42836e5385115ceeba84c2c49ffa27a2adb01b5944914",
-      "aliases": [
-        "O hospital consulta meu histórico de saúde durante meu atendimento. Profissionais e serviços de saúde podem usar esse dado para cuidar da minha saúde.",
-        "A vigilância sanitária usa informações sobre uma doença para tomar medida de saúde. Esse uso é restrito à atuação de saúde."
-      ],
-      "status": "generated",
-      "prompt_version": "consumer-lay-aliases:v2"
-    },
-    {
-      "unit_key": "br-lgpd-art-11-inciso-ii-alinea-g",
-      "provision_id": "br-lgpd-art-11",
-      "source_sha256": "ca3e38b52af6a6454cb810befe07a9f5ef0428c6d107a515749ce7923781a5a5",
-      "aliases": [
-        "O banco compara minha biometria ao liberar acesso à conta no aplicativo. Pode usar esse dado para evitar fraude e confirmar minha identidade.",
-        "Uma loja verifica meu reconhecimento facial no cadastro eletrônico para impedir que alguém se passe por mim. O uso deve ser necessário para segurança."
       ],
       "status": "generated",
       "prompt_version": "consumer-lay-aliases:v2"
@@ -3398,14 +3857,11 @@
       "prompt_version": "consumer-lay-aliases:v2"
     },
     {
-      "unit_key": "br-lgpd-art-12-caput",
+      "unit_key": "br-lgpd-art-12-paragrafo-1",
       "provision_id": "br-lgpd-art-12",
-      "source_sha256": "25eb62fa4d81269867a38510cc52eeb182568ac604e3c757450983ae16c97c24",
-      "aliases": [
-        "Uma empresa diz que meus dados foram anonimizados, mas consegue me identificar de novo usando seus próprios recursos.",
-        "Meus dados supostamente sem identificação podem ser ligados a mim novamente com custo e tempo razoáveis, usando a tecnologia disponível."
-      ],
-      "status": "generated",
+      "source_sha256": "308bd7b04e48958953542694ce16a0b160eaf9632fd4e8208c15fecca366fd1d",
+      "aliases": [],
+      "status": "declined",
       "prompt_version": "consumer-lay-aliases:v2"
     },
     {
@@ -3417,6 +3873,14 @@
         "Um aplicativo identifica meu perfil e analisa meu comportamento, como horários de uso, interesses e escolhas."
       ],
       "status": "generated",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-12-paragrafo-3",
+      "provision_id": "br-lgpd-art-12",
+      "source_sha256": "9ab96f38b78c3b084c898b87ec9966f7826a4cc39013e964111e60bc80e3ba38",
+      "aliases": [],
+      "status": "declined",
       "prompt_version": "consumer-lay-aliases:v2"
     },
     {
@@ -3451,6 +3915,30 @@
         "Esse órgão não pode repassar meus dados da pesquisa para outra empresa, pessoa ou instituição."
       ],
       "status": "generated",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-13-paragrafo-3",
+      "provision_id": "br-lgpd-art-13",
+      "source_sha256": "84dd0832375dc8bf4dbccf2a061bc72917652cd451c66c18738f2f60b78d46a4",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-13-paragrafo-4",
+      "provision_id": "br-lgpd-art-13",
+      "source_sha256": "381a15959b6c6d74d5cd7fec3d4bdf9e1bed669d3e424da52652584c15983e7c",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-15-caput",
+      "provision_id": "br-lgpd-art-15",
+      "source_sha256": "55987cc016ddd20cd12440d839cc6aa35aea620738df1f8b72eed1db8d05aa5b",
+      "aliases": [],
+      "status": "declined",
       "prompt_version": "consumer-lay-aliases:v2"
     },
     {
@@ -3495,6 +3983,54 @@
         "O aplicativo descumpriu regras sobre meus dados pessoais, e a autoridade determinou o fim do tratamento."
       ],
       "status": "generated",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-16-caput",
+      "provision_id": "br-lgpd-art-16",
+      "source_sha256": "cdbc833850d5d6f43fc8c0ecebda7a7c82a5755ee778f9c4b0441ca7a492bf5f",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-16-inciso-i",
+      "provision_id": "br-lgpd-art-16",
+      "source_sha256": "29b20d3da55681f616fcd9399f67f3ae0b5ca6008b8fc648a58a73ce421ca417",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-16-inciso-ii",
+      "provision_id": "br-lgpd-art-16",
+      "source_sha256": "281fe10ab9e4fce443f213f7bd82c33c040ac355e004d36155db731082c0c6b4",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-16-inciso-iii",
+      "provision_id": "br-lgpd-art-16",
+      "source_sha256": "d553aca3c6fd86a82e204d1f95602f8e5531824b4228a2cc87b895b38c91ce65",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-16-inciso-iv",
+      "provision_id": "br-lgpd-art-16",
+      "source_sha256": "55c4e0fb95f27fa0612dcef988855504b0038184f313d30e5e7ba26b32c82514",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-17-caput",
+      "provision_id": "br-lgpd-art-17",
+      "source_sha256": "2957cecf8a5c431e85fe16e3352ee16f6c0591964e26f1ddd52e61ce83eacd73",
+      "aliases": [],
+      "status": "declined",
       "prompt_version": "consumer-lay-aliases:v2"
     },
     {
@@ -3638,6 +4174,14 @@
         "Meu representante pode fazer, em meu nome, um pedido expresso à empresa sobre meus dados."
       ],
       "status": "generated",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-18-paragrafo-4",
+      "provision_id": "br-lgpd-art-18",
+      "source_sha256": "68dfe196802d25637fa9ce74e62f6e878e5060ad2efd20fdf595337e7683958b",
+      "aliases": [],
+      "status": "declined",
       "prompt_version": "consumer-lay-aliases:v2"
     },
     {
@@ -3797,6 +4341,14 @@
       "prompt_version": "consumer-lay-aliases:v2"
     },
     {
+      "unit_key": "br-lgpd-art-19-paragrafo-4",
+      "provision_id": "br-lgpd-art-19",
+      "source_sha256": "daec14e80df288878cc08853461606cef11d41ae1e301d738219028b30112ed8",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
       "unit_key": "br-lgpd-art-20-caput",
       "provision_id": "br-lgpd-art-20",
       "source_sha256": "ab2157037374e52d1eeaabe160900c2a5d686f3e3279bc0e8dfb97d02d526f43",
@@ -3820,6 +4372,14 @@
       "prompt_version": "consumer-lay-aliases:v2"
     },
     {
+      "unit_key": "br-lgpd-art-20-paragrafo-2",
+      "provision_id": "br-lgpd-art-20",
+      "source_sha256": "d4fc3506651918c0df55ca7587896d4f3ed02925c3cc36617610100b40993a2a",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
       "unit_key": "br-lgpd-art-21-caput",
       "provision_id": "br-lgpd-art-21",
       "source_sha256": "2c3a4b1cc437311584aa7dd9131bfd945aab2b01266fb7182f43194de24ae93a",
@@ -3829,6 +4389,22 @@
         "A empresa não pode me tratar pior porque meus dados mostram que exerci um direito regularmente."
       ],
       "status": "generated",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-22-caput",
+      "provision_id": "br-lgpd-art-22",
+      "source_sha256": "55329ad0913f29ed0ed1287f2e0763f916f49b7a5313146957324dd9bf31b51e",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-33-caput",
+      "provision_id": "br-lgpd-art-33",
+      "source_sha256": "3bb75368c426dc62592025b985a7b93e59c8f2977a8e2acff3a74cc0d2199dff",
+      "aliases": [],
+      "status": "declined",
       "prompt_version": "consumer-lay-aliases:v2"
     },
     {
@@ -3887,6 +4463,14 @@
       "prompt_version": "consumer-lay-aliases:v2"
     },
     {
+      "unit_key": "br-lgpd-art-33-inciso-ii-alinea-d",
+      "provision_id": "br-lgpd-art-33",
+      "source_sha256": "ba8d386aa8242d6b2347533436199a67b5cec9953866b6be78ec2cffa3e33e13",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
       "unit_key": "br-lgpd-art-33-inciso-iii",
       "provision_id": "br-lgpd-art-33",
       "source_sha256": "96e6efe427ef3407a96facbde9e83de69561d19dcdd548fd2d3ebfed90465001",
@@ -3906,6 +4490,22 @@
         "Informações de uma pessoa podem seguir ao exterior para proteger a vida ou a integridade física de outra pessoa."
       ],
       "status": "generated",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-33-inciso-v",
+      "provision_id": "br-lgpd-art-33",
+      "source_sha256": "cddbed5719c38a44661e81bb5080e43f32b1fdf3c6a94535a61136fc86503fd7",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-33-inciso-vi",
+      "provision_id": "br-lgpd-art-33",
+      "source_sha256": "9752d030066d70c7c82dedff5f1a0d47a0600c9a01aa26c4d356bf1790ec0bf3",
+      "aliases": [],
+      "status": "declined",
       "prompt_version": "consumer-lay-aliases:v2"
     },
     {
@@ -3943,6 +4543,126 @@
       "prompt_version": "consumer-lay-aliases:v2"
     },
     {
+      "unit_key": "br-lgpd-art-33-paragrafo-unico",
+      "provision_id": "br-lgpd-art-33",
+      "source_sha256": "db0525a6cf2da69c2a9cc38fb7012689759aac8e9a1df521baeb07ee9281bca4",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-34-caput",
+      "provision_id": "br-lgpd-art-34",
+      "source_sha256": "6299f6786b42a2059e0bce247a946ab78b229f3db65adfc3984d1537597ce44f",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-34-inciso-i",
+      "provision_id": "br-lgpd-art-34",
+      "source_sha256": "3faf0aeb855a6c11491db4c0332dd34a4d4bff1d0a923bc1c5a7b9df255fdb63",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-34-inciso-ii",
+      "provision_id": "br-lgpd-art-34",
+      "source_sha256": "ee46a11eef4f2423e19af5b35c01c0d45e9411c5767329747249a9bfc9031918",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-34-inciso-iii",
+      "provision_id": "br-lgpd-art-34",
+      "source_sha256": "9e2ecb20a3b45a61e67352490d82bf3ed452e078e2ffefe5acf7c49fb9f1921e",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-34-inciso-iv",
+      "provision_id": "br-lgpd-art-34",
+      "source_sha256": "3a31ed897b6a4f05a99a6d9284a5d31732d9b523a5973814dd67c4856d41486f",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-34-inciso-v",
+      "provision_id": "br-lgpd-art-34",
+      "source_sha256": "60b8ed289383a0f28ddc2b41d7e9a1c53a75287eed42d7a76675896e89ccf5e2",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-34-inciso-vi",
+      "provision_id": "br-lgpd-art-34",
+      "source_sha256": "65ad3be0451fc982bc67473887f2aef7f804a470edd6b0511b1bcfbe8fb7f9be",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-35-caput",
+      "provision_id": "br-lgpd-art-35",
+      "source_sha256": "af4e9222e4eaf5959c86d3004f772240411531c98ae53c55a9594c454bda9288",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-35-paragrafo-1",
+      "provision_id": "br-lgpd-art-35",
+      "source_sha256": "9b1e267d3be2c0745fd2a41072cff747dbac6c0fd82f558b4f0ecf4b5607a081",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-35-paragrafo-2",
+      "provision_id": "br-lgpd-art-35",
+      "source_sha256": "d551cadc535d6317b656b2476d44334ff820e3bd7c4085a20f27ac1fbf6d1c0f",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-35-paragrafo-3",
+      "provision_id": "br-lgpd-art-35",
+      "source_sha256": "2ffeb2a135af5dfd6f21dc53d3ed59301513bc932f56e53f04dc29232d6b1f91",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-35-paragrafo-4",
+      "provision_id": "br-lgpd-art-35",
+      "source_sha256": "d003dfb9bc3ab83ccfee062c42ed96a755b2d43beeb1128dfb38cb7e4ec99b06",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-35-paragrafo-5",
+      "provision_id": "br-lgpd-art-35",
+      "source_sha256": "61ff09647c70899dd33c1247d31aad0afe85deb1a6fdc0ea3a9af26043eae81e",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-36-caput",
+      "provision_id": "br-lgpd-art-36",
+      "source_sha256": "0b60d69f4f64af5cbb8a617d0890ef1ac2b724be40916513f3af328ff130bb3b",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
       "unit_key": "br-lgpd-art-37-caput",
       "provision_id": "br-lgpd-art-37",
       "source_sha256": "c8ddc53ff2f7da543052b2389288c8a15177e609a3442b1eed3fcdd8cec864f4",
@@ -3952,6 +4672,38 @@
         "Meus dados foram coletados, consultados ou compartilhados, e quero que haja registro dessas atividades."
       ],
       "status": "generated",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-38-caput",
+      "provision_id": "br-lgpd-art-38",
+      "source_sha256": "a3135caabedf071d50758253cc19fb5c26c1b8a7ac4aa1dafe9b69cf3b4b9593",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-38-paragrafo-unico",
+      "provision_id": "br-lgpd-art-38",
+      "source_sha256": "ccc86db03bd44bf106b6af0aefdd864d5c1414d3ab27388d3ad6de8704b61956",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-39-caput",
+      "provision_id": "br-lgpd-art-39",
+      "source_sha256": "605bed3acda0bde451d07c42c6b7558c358529fa59226ef78d12288c1cacd73d",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-40-caput",
+      "provision_id": "br-lgpd-art-40",
+      "source_sha256": "858f5e2ac37f2ae308afe8748e7f5894d68057b8b07ccb8910fd1816ab2469cc",
+      "aliases": [],
+      "status": "declined",
       "prompt_version": "consumer-lay-aliases:v2"
     },
     {
@@ -3977,6 +4729,14 @@
       "prompt_version": "consumer-lay-aliases:v2"
     },
     {
+      "unit_key": "br-lgpd-art-41-paragrafo-2",
+      "provision_id": "br-lgpd-art-41",
+      "source_sha256": "d2ca52c0ff74748a8c6f40a5f4062be5f8143a5bc050ccfcb717db347a79ab3b",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
       "unit_key": "br-lgpd-art-41-paragrafo-2-inciso-i",
       "provision_id": "br-lgpd-art-41",
       "source_sha256": "ea7f328c2a9609faf184c13f93772e0c0632ff79efa468e3a0a825138852fc4c",
@@ -3989,6 +4749,38 @@
       "prompt_version": "consumer-lay-aliases:v2"
     },
     {
+      "unit_key": "br-lgpd-art-41-paragrafo-2-inciso-ii",
+      "provision_id": "br-lgpd-art-41",
+      "source_sha256": "a011f388a7d4e32baba42b2fd138df2089be4a62bb7b6977f62d72a88674e8f8",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-41-paragrafo-2-inciso-iii",
+      "provision_id": "br-lgpd-art-41",
+      "source_sha256": "73884bbfaabd502bcb5313d431a909d65e50468341d4adbc8d8b76b454d1f711",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-41-paragrafo-2-inciso-iv",
+      "provision_id": "br-lgpd-art-41",
+      "source_sha256": "b94f4cd9f0916c61c7e1216e432d2adf58692804b7850f4a4eb073393c99b10b",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-41-paragrafo-3",
+      "provision_id": "br-lgpd-art-41",
+      "source_sha256": "4576c50b7416073ae1e43e22abf52b6bb4ad8bc2c87cf845005b771b25a17df2",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
       "unit_key": "br-lgpd-art-42-caput",
       "provision_id": "br-lgpd-art-42",
       "source_sha256": "d328dd298eae40c3039cf3c9f8b95294cdafe8581f7382b4116ec5a597824bdf",
@@ -3997,6 +4789,14 @@
         "A empresa ou a prestadora que tratou meus dados fora das regras me causou um dano e deve repará-lo."
       ],
       "status": "generated",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-42-paragrafo-1",
+      "provision_id": "br-lgpd-art-42",
+      "source_sha256": "a4d7e374bc9f6e29f91a7aa943385b40de89ee802d54de5d2a77ab9ca690644e",
+      "aliases": [],
+      "status": "declined",
       "prompt_version": "consumer-lay-aliases:v2"
     },
     {
@@ -4044,36 +4844,83 @@
       "prompt_version": "consumer-lay-aliases:v2"
     },
     {
-      "unit_key": "br-lgpd-art-43-inciso-i",
-      "provision_id": "br-lgpd-art-43",
-      "source_sha256": "1268037cd48101350fb38cf5023a0f309518b7b471f0821e44f4dce5d899d22b",
-      "aliases": [
-        "A empresa foi acusada de usar meus dados, mas diz que nunca fez esse uso.",
-        "Meus dados foram tratados por alguém, mas a empresa apontada afirma que não participou disso."
-      ],
-      "status": "generated",
+      "unit_key": "br-lgpd-art-42-paragrafo-4",
+      "provision_id": "br-lgpd-art-42",
+      "source_sha256": "d85be29c8a15e837420d0f294276ba493ccf3d2c34e02f3a56809cbc95ef28aa",
+      "aliases": [],
+      "status": "declined",
       "prompt_version": "consumer-lay-aliases:v2"
     },
     {
-      "unit_key": "br-lgpd-art-43-inciso-ii",
-      "provision_id": "br-lgpd-art-43",
-      "source_sha256": "7c69ac632496fe51f40c78473223a0a2da01af2c0255c7584103b1998ae18140",
-      "aliases": [
-        "A empresa usou meus dados pessoais, mas afirma que seguiu todas as regras de proteção desses dados.",
-        "Mesmo tendo tratado meus dados, a empresa diz que não houve uso irregular nem quebra das regras de privacidade."
-      ],
-      "status": "generated",
+      "unit_key": "br-lgpd-art-44-caput",
+      "provision_id": "br-lgpd-art-44",
+      "source_sha256": "4d494215c36240f71e46bafdddf234d1a263f0d35d0564debf7caa8a3b1a7348",
+      "aliases": [],
+      "status": "declined",
       "prompt_version": "consumer-lay-aliases:v2"
     },
     {
-      "unit_key": "br-lgpd-art-43-inciso-iii",
-      "provision_id": "br-lgpd-art-43",
-      "source_sha256": "573ecdf4cda310d4b907a8aad020b259f8c34309197d216de30aa2b883c0b32b",
-      "aliases": [
-        "Meus dados causaram um problema porque eu mesmo forneci informações erradas ou expus minha senha.",
-        "O prejuízo com meus dados foi causado somente por outra pessoa, e não pela empresa que os usava."
-      ],
-      "status": "generated",
+      "unit_key": "br-lgpd-art-44-inciso-i",
+      "provision_id": "br-lgpd-art-44",
+      "source_sha256": "d7a544739da0526cb4e54e8383d2628b7b515e9c4c77f11426eed8710ca78267",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-44-inciso-ii",
+      "provision_id": "br-lgpd-art-44",
+      "source_sha256": "0abb9c4f6e4e71efb651d71def80ebad99133a2a9989e8ff5aefb5f0929e41e6",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-44-inciso-iii",
+      "provision_id": "br-lgpd-art-44",
+      "source_sha256": "ae756e46a0c13644515179b29fdf0b88f72f7efe9457d2b0b213fdb94ef159bc",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-44-paragrafo-unico",
+      "provision_id": "br-lgpd-art-44",
+      "source_sha256": "36b3bcc45b4e1f07d549ebf58e6437b9841ccc53525603c9a3c184aee68f1c20",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-45-caput",
+      "provision_id": "br-lgpd-art-45",
+      "source_sha256": "923be4dbdd101cd1da958c6b57cc61cf59b12e0f24ba2cb2058729e09d60c7fc",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-46-caput",
+      "provision_id": "br-lgpd-art-46",
+      "source_sha256": "566bf1bc11d4a20473c81f8cf0cab6f53ca7ad388cd390beeb381a3f1fbf4a83",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-46-paragrafo-1",
+      "provision_id": "br-lgpd-art-46",
+      "source_sha256": "c4b70722a2f619e43ed9eec2319c2177f90b48f7049f0f91375078bcc70881c0",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-46-paragrafo-2",
+      "provision_id": "br-lgpd-art-46",
+      "source_sha256": "c99cfd3cc52dfe1d55856fe781982e67c4ba7901609373d4db745bd40332ec88",
+      "aliases": [],
+      "status": "declined",
       "prompt_version": "consumer-lay-aliases:v2"
     },
     {
@@ -4085,6 +4932,615 @@
         "A pessoa terceirizada que teve acesso aos meus dados durante um cadastro também precisa preservar o sigilo após o serviço acabar."
       ],
       "status": "generated",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-48-caput",
+      "provision_id": "br-lgpd-art-48",
+      "source_sha256": "5e9b89f52a4c0c64970d842fadc3cee0de37a93f8837d1d8ab62e2cfcfe597c3",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-48-paragrafo-1",
+      "provision_id": "br-lgpd-art-48",
+      "source_sha256": "dba6a35f4a162a11a7f5cb456211e900f3c33f3e3035546bbf76a3205c26393a",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-48-paragrafo-1-inciso-i",
+      "provision_id": "br-lgpd-art-48",
+      "source_sha256": "19e5cd654db9858d04397608253a3c714ab1a08af4184fe6d930e4c1957069e6",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-48-paragrafo-1-inciso-ii",
+      "provision_id": "br-lgpd-art-48",
+      "source_sha256": "999423c8ecc6dae1bd616f6be93bec50785aea25625595d8305947ee1982116d",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-48-paragrafo-1-inciso-iii",
+      "provision_id": "br-lgpd-art-48",
+      "source_sha256": "0a2003921fd968c3854647bc6602c1e338f0a59afd6874d842f4422f07427d7c",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-48-paragrafo-1-inciso-iv",
+      "provision_id": "br-lgpd-art-48",
+      "source_sha256": "b074de25f0478a75b8a5d21c592027ced802d873cc2a2ac93e936e7805baad38",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-48-paragrafo-1-inciso-v",
+      "provision_id": "br-lgpd-art-48",
+      "source_sha256": "c657e8824af1fe455e0f5965f97d205b357e68ba7af18435e12c2f97197d8e52",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-48-paragrafo-1-inciso-vi",
+      "provision_id": "br-lgpd-art-48",
+      "source_sha256": "45ac74fec784143f5fa8cfdd162001f58d0c1e58986dc81de45115ae5df30996",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-48-paragrafo-2",
+      "provision_id": "br-lgpd-art-48",
+      "source_sha256": "864e41a4ee2d96d01cf7312a8cdba621285e9c8caf913323f2ce2a542f8bc618",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-48-paragrafo-2-inciso-i",
+      "provision_id": "br-lgpd-art-48",
+      "source_sha256": "59a6c559fd7f15e0b71589e8f4f429c006d433f2488f9cd6bf24983aa380f562",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-48-paragrafo-2-inciso-ii",
+      "provision_id": "br-lgpd-art-48",
+      "source_sha256": "0d5aad2adbf678bd1867ff1890f94a27922b6be7ad69ac53083a40efb65f5cab",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-48-paragrafo-3",
+      "provision_id": "br-lgpd-art-48",
+      "source_sha256": "c4d244c73c1a681357cb88283527a084f80d7f37b5782a01def22acc17d3e55b",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-49-caput",
+      "provision_id": "br-lgpd-art-49",
+      "source_sha256": "ebfb421072e34fec5d32c743101361d640ba2240e673e0d8030544d2c89f343d",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-50-caput",
+      "provision_id": "br-lgpd-art-50",
+      "source_sha256": "944cfc47a6011dbf578376ec75e227f04b3ab70311dd086a0bff76a815a07af3",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-50-paragrafo-1",
+      "provision_id": "br-lgpd-art-50",
+      "source_sha256": "af172b26fafb8af30e2761297ef008964585e12df37e40f400f37fd505bd2c24",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-50-paragrafo-2",
+      "provision_id": "br-lgpd-art-50",
+      "source_sha256": "fdfc6f419d83f9e0089dc0a26a7592fa37086f8eafe12a87e7b33549881ba551",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-50-paragrafo-2-inciso-i",
+      "provision_id": "br-lgpd-art-50",
+      "source_sha256": "c3fb45cadbfb375a842b4594f5591c11fff773d815a9ad6dc9c80092d32b1e74",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-50-paragrafo-2-inciso-i-alinea-a",
+      "provision_id": "br-lgpd-art-50",
+      "source_sha256": "0ab4fa53a9604414538ebeec88cb3a7dc619d28f191ae6e40d395f60e34db64d",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-50-paragrafo-2-inciso-i-alinea-b",
+      "provision_id": "br-lgpd-art-50",
+      "source_sha256": "166efcbb1c1bbdb62c2c9e02bb7f555084df1ab4e5674622974adb1f72f7a356",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-50-paragrafo-2-inciso-i-alinea-c",
+      "provision_id": "br-lgpd-art-50",
+      "source_sha256": "2af5eceadacdbea450878d4d4999bcb59aaf710ee09dc9dd092164b726e0f704",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-50-paragrafo-2-inciso-i-alinea-d",
+      "provision_id": "br-lgpd-art-50",
+      "source_sha256": "bdc459f13f34ebc1f05b73338d30aeb574b7e51a630a086c0d773839566ee674",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-50-paragrafo-2-inciso-i-alinea-e",
+      "provision_id": "br-lgpd-art-50",
+      "source_sha256": "984b30c33d23d48973f72f1b811619fb98aaa1243d5e6e0d4ef89190a5319780",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-50-paragrafo-2-inciso-i-alinea-f",
+      "provision_id": "br-lgpd-art-50",
+      "source_sha256": "6c97441796d00ad852cd08cc192f508ab1f598de26e2015fa4326b922f4afe93",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-50-paragrafo-2-inciso-i-alinea-g",
+      "provision_id": "br-lgpd-art-50",
+      "source_sha256": "261ef075604bb55359e86bcf6d18fcc04a5e68f99661a628955d6f29384d6868",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-50-paragrafo-2-inciso-i-alinea-h",
+      "provision_id": "br-lgpd-art-50",
+      "source_sha256": "e36062aedcd7089f97e8f738f28fd4948e721be7b803b7fd37c525cb974f450a",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-50-paragrafo-2-inciso-ii",
+      "provision_id": "br-lgpd-art-50",
+      "source_sha256": "73ad54d5eb335541a0282ad7ca3b7e718f66d1ac29c890b40b8ab399d4ab86fc",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-50-paragrafo-3",
+      "provision_id": "br-lgpd-art-50",
+      "source_sha256": "539ac90f762876ff52c76a3367c67ecf1c9368412caa7c17467f65a974364e6e",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-51-caput",
+      "provision_id": "br-lgpd-art-51",
+      "source_sha256": "5ea387dc07f324367f0ba6225a77ad5764e777628796fa671110323d7fa2b872",
+      "aliases": [],
+      "status": "declined",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-cdc-art-12-paragrafo-2",
+      "provision_id": "br-cdc-art-12",
+      "source_sha256": "92f87a4c961b5cdc1e2b5f8ca6d9282843814b679d786d75eebcda457c5beca2",
+      "aliases": [
+        "Meu produto não vira inseguro só porque depois lançaram outro modelo melhor.",
+        "O simples lançamento de uma versão mais moderna não prova que o produto anterior tinha defeito."
+      ],
+      "status": "rejected",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-cdc-art-12-paragrafo-3",
+      "provision_id": "br-cdc-art-12",
+      "source_sha256": "e9e2e1c09aaf9aa38936c5f0259185a837403dd587157118717169f354959b38",
+      "aliases": [
+        "A empresa que fabricou ou importou o produto só pode se livrar da responsabilidade se provar uma situação específica.",
+        "Não basta a empresa negar o problema; ela precisa demonstrar um motivo previsto para não responder pelo dano do produto."
+      ],
+      "status": "rejected",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-cdc-art-12-paragrafo-3-inciso-i",
+      "provision_id": "br-cdc-art-12",
+      "source_sha256": "1e02bb21e3c23c7b7c1787bd0af851f6bec6445c84dcbe7ba431093df283c57b",
+      "aliases": [
+        "A empresa diz que não deve responder porque prova que nunca colocou esse produto à venda.",
+        "O fabricante pode mostrar que o produto que me causou dano não foi distribuído por ele no mercado."
+      ],
+      "status": "rejected",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-cdc-art-12-paragrafo-3-inciso-ii",
+      "provision_id": "br-cdc-art-12",
+      "source_sha256": "b4a56df10a17edaab04c12c7799065a4c0c5b01d9675289e0b34a797d4f94565",
+      "aliases": [
+        "A empresa pode contestar o caso se provar que o produto foi vendido sem o defeito apontado.",
+        "Mesmo tendo colocado o produto à venda, o fabricante pode demonstrar que não havia falha nele."
+      ],
+      "status": "rejected",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-cdc-art-12-paragrafo-3-inciso-iii",
+      "provision_id": "br-cdc-art-12",
+      "source_sha256": "4d2ddaf2929089ca28bddc2eb70b7da8a6155d272f3f9350f0f9cb634aee13b1",
+      "aliases": [
+        "A empresa pode alegar que o acidente aconteceu somente porque usei o produto de forma errada.",
+        "A empresa pode provar que o dano foi causado exclusivamente por outra pessoa, e não por defeito do produto."
+      ],
+      "status": "rejected",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-cdc-art-14-paragrafo-2",
+      "provision_id": "br-cdc-art-14",
+      "source_sha256": "6b4fcdfc974186d650413decfff57832d9876691d2b0d6106163f19966133247",
+      "aliases": [
+        "A empresa não pode dizer que o serviço era defeituoso só porque depois surgiu uma técnica mais moderna.",
+        "Usei um serviço seguro para a época, mas hoje existe um método melhor; isso sozinho não torna o serviço defeituoso."
+      ],
+      "status": "rejected",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-cdc-art-14-paragrafo-3-inciso-i",
+      "provision_id": "br-cdc-art-14",
+      "source_sha256": "a17d01ad318479996138c0530b9c764bc7c1848b590331d5c9190222c5013216",
+      "aliases": [
+        "A empresa diz que prestou o serviço corretamente e que o defeito apontado por mim não existia.",
+        "Mesmo tendo ocorrido um dano após o serviço, a empresa tenta provar que o serviço não tinha falha."
+      ],
+      "status": "rejected",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-cdc-art-14-paragrafo-3-inciso-ii",
+      "provision_id": "br-cdc-art-14",
+      "source_sha256": "8b2f7e8a8c94a37202da014a3c4981cd5a0ab35172a638c0cd092e1fd4fb849a",
+      "aliases": [
+        "A empresa diz que o problema aconteceu somente porque eu usei o serviço de modo inadequado.",
+        "A empresa afirma que outra pessoa, e não ela, foi a única responsável pelo problema no serviço."
+      ],
+      "status": "rejected",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-cdc-art-54-a-paragrafo-3",
+      "provision_id": "br-cdc-art-54-a",
+      "source_sha256": "ef2b721d9fbe202b428b76b3f3702a2d3ef175a7acda5766b3702913c94b1878",
+      "aliases": [
+        "Não posso tratar minhas dívidas como superendividamento se fiz contratos já planejando não pagar.",
+        "Minha situação não entra nessa proteção se as dívidas vieram de fraude ou de compras de luxo muito caras."
+      ],
+      "status": "rejected",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-4-inciso-i",
+      "provision_id": "br-lgpd-art-4",
+      "source_sha256": "ffc10cb4d16b6c3bb99c45dc12ebe6a83e095a7ba6c7887e57f21fd87451c9d9",
+      "aliases": [
+        "Anotei os contatos dos meus amigos na minha agenda pessoal, sem vender nada nem usar isso no trabalho.",
+        "Guardei fotos e telefones de familiares apenas para uso particular, sem finalidade de ganhar dinheiro."
+      ],
+      "status": "rejected",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-4-inciso-ii-alinea-a",
+      "provision_id": "br-lgpd-art-4",
+      "source_sha256": "7356a2f9d2ac51a1398042536676459e4d3cf6d23468979873e026f7a4632f77",
+      "aliases": [
+        "Um jornal usou meu nome e minha imagem exclusivamente em uma reportagem.",
+        "Um artista usou dados sobre mim somente para produzir uma obra artística."
+      ],
+      "status": "rejected",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-4-inciso-ii-alinea-b",
+      "provision_id": "br-lgpd-art-4",
+      "source_sha256": "1e39ac6a9c3289bff298b8900a3b1ad12edb11668fa8bb65b13e7ad4b3af488a",
+      "aliases": [
+        "Uma universidade usou meus dados exclusivamente em uma pesquisa acadêmica.",
+        "Participei de um estudo acadêmico que coletou informações sensíveis sobre minha saúde."
+      ],
+      "status": "rejected",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-4-inciso-iii-alinea-d",
+      "provision_id": "br-lgpd-art-4",
+      "source_sha256": "dfa6c63f94fc502b4f83c07bbeb3a9a398f41a97c032a11c894a43c68380d83c",
+      "aliases": [
+        "Meus dados foram usados por autoridades para investigar um crime.",
+        "Informações sobre mim foram usadas exclusivamente para identificar ou responsabilizar alguém por uma infração penal."
+      ],
+      "status": "rejected",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-4-inciso-iv",
+      "provision_id": "br-lgpd-art-4",
+      "source_sha256": "9250500d6ee5084f3357ee5aea44f135c98a1e898409f117cb2c9e5b2fbd8ff4",
+      "aliases": [
+        "Meus dados vieram de outro país, ficaram sem compartilhamento com empresas brasileiras e não foram enviados a terceiros países.",
+        "Uma empresa estrangeira manteve meus dados no país de origem, que oferece proteção adequada, sem repassá-los ao Brasil."
+      ],
+      "status": "rejected",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-7-inciso-ii",
+      "provision_id": "br-lgpd-art-7",
+      "source_sha256": "71eabfa558c734f0f7bcd4fb69d836f2ac37e21cbafa80ba70887badc035b507",
+      "aliases": [
+        "Meu banco usa meus dados cadastrais para cumprir uma obrigação exigida por regra oficial.",
+        "A empresa guarda informações da minha compra porque precisa atender a uma exigência do governo."
+      ],
+      "status": "rejected",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-7-inciso-iii",
+      "provision_id": "br-lgpd-art-7",
+      "source_sha256": "c60a0e3156e6d842a260c150b5a28eaf2b57a866b620db689284e6d8979a1c19",
+      "aliases": [
+        "Um órgão público usa meus dados para incluir minha família em um programa público previsto nas regras.",
+        "A prefeitura compartilha dados necessários para executar um serviço público contratado ou conveniado."
+      ],
+      "status": "rejected",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-7-inciso-iv",
+      "provision_id": "br-lgpd-art-7",
+      "source_sha256": "75ba1eb9668f82d00e77db313038b3a8dca3799186f71aac88efcdb91dfa4dd9",
+      "aliases": [
+        "Uma instituição de pesquisa usa dados sobre meus hábitos para fazer um estudo, sem me identificar quando isso for possível.",
+        "Meus dados podem entrar em uma pesquisa estatística, de preferência sem meu nome ou outros identificadores."
+      ],
+      "status": "rejected",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-7-inciso-v",
+      "provision_id": "br-lgpd-art-7",
+      "source_sha256": "a0bf91074d9d66a5bb1262a982dc86f872453ce76e34b1fa39ee9cac860ee957",
+      "aliases": [
+        "A operadora usa meus dados para instalar a internet que contratei.",
+        "Eu pedi uma cotação de seguro, e a empresa usa meus dados para preparar a proposta antes do contrato."
+      ],
+      "status": "rejected",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-7-inciso-vi",
+      "provision_id": "br-lgpd-art-7",
+      "source_sha256": "9679e692556d9e0ff21cd5e0b96fca0150e5b888f858d7d3f33a8876af7d6dfb",
+      "aliases": [
+        "A empresa usa meus dados e comprovantes em uma disputa no Judiciário sobre uma compra.",
+        "Meus dados podem ser usados para defender uma reclamação em processo administrativo ou em arbitragem."
+      ],
+      "status": "rejected",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-7-inciso-vii",
+      "provision_id": "br-lgpd-art-7",
+      "source_sha256": "a76f8335a4b973b7b1a5ac4f8adcea8c6666f50e0be855a1d6625584c4de00b6",
+      "aliases": [
+        "Em uma emergência médica, usam meus dados para socorrer a mim ou outra pessoa.",
+        "A empresa informa dados necessários para evitar um risco físico grave à minha vida ou à de alguém."
+      ],
+      "status": "rejected",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-7-inciso-viii",
+      "provision_id": "br-lgpd-art-7",
+      "source_sha256": "d6b6135c9d3112abb184b0a76c8bf7983e8c1ca225f6cd00806670d3b4f7604f",
+      "aliases": [
+        "O hospital usa meu histórico e meus exames durante meu atendimento de saúde.",
+        "Um profissional de saúde consulta meus dados para realizar um procedimento médico."
+      ],
+      "status": "rejected",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-7-inciso-ix",
+      "provision_id": "br-lgpd-art-7",
+      "source_sha256": "175f0a42398c714eca7fef64f34c72857f16020872786c86e9a5682f1e55d026",
+      "aliases": [
+        "Uma empresa usa dados mínimos para prevenir fraude em uma compra, desde que isso não pese mais que minha privacidade.",
+        "A loja analisa meu cadastro para melhorar a segurança do serviço, sem atropelar meus direitos mais importantes."
+      ],
+      "status": "rejected",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-7-inciso-x",
+      "provision_id": "br-lgpd-art-7",
+      "source_sha256": "5dd253207b9be85cc3dbee3081290ee5b80bef0b22942994830de1c4013f1bd7",
+      "aliases": [
+        "Uma empresa consulta meus dados para avaliar crédito antes de vender parcelado.",
+        "Meus dados são usados para verificar risco de inadimplência em um financiamento."
+      ],
+      "status": "rejected",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-7-paragrafo-4",
+      "provision_id": "br-lgpd-art-7",
+      "source_sha256": "354ccd1d8a6252ba4c5b70b9c6867a4a6c317947b075d358c331c051e918ccee",
+      "aliases": [
+        "Eu mesmo publiquei meu telefone abertamente, então podem usar esse dado sem pedir minha autorização novamente.",
+        "Mesmo tendo deixado meu dado visível ao público, a empresa não pode ignorar minhas proteções sobre esse uso."
+      ],
+      "status": "rejected",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-11-inciso-ii-alinea-a",
+      "provision_id": "br-lgpd-art-11",
+      "source_sha256": "f7e8b0a657e6b168347a596bb1e143a892af2f7ed2e58e5b30ad808ac8c15cea",
+      "aliases": [
+        "Uma empresa precisa registrar meu dado de saúde porque uma regra obrigatória exige esse registro. Ela pode usar o dado sem eu autorizar quando isso for indispensável.",
+        "Um laboratório informou meu resultado a uma autoridade porque uma obrigação oficial exige a comunicação. Não foi um uso baseado na minha autorização."
+      ],
+      "status": "rejected",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-11-inciso-ii-alinea-b",
+      "provision_id": "br-lgpd-art-11",
+      "source_sha256": "c5ec543d0167dbe7c92c41c1ad0ed7832202fba89df7db7681afe2e39c18b8d9",
+      "aliases": [
+        "Um órgão público compartilha meu dado sensível para executar um programa público previsto em regra. Esse compartilhamento pode ocorrer sem minha autorização quando for necessário.",
+        "Meu dado sobre deficiência é usado por órgãos públicos para colocar em prática uma política pública prevista oficialmente."
+      ],
+      "status": "rejected",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-11-inciso-ii-alinea-c",
+      "provision_id": "br-lgpd-art-11",
+      "source_sha256": "2afc1e2b3d4a3d1a32349e780694f7b241698f05787de527e05f4d55c950d5d9",
+      "aliases": [
+        "Um instituto de pesquisa usa dados sobre minha saúde em um estudo. Sempre que puder, deve tirar os elementos que permitem saber que os dados são meus.",
+        "Meus dados sobre origem racial entram em uma pesquisa realizada por órgão de pesquisa. O estudo pode usar esses dados sem minha autorização quando forem necessários."
+      ],
+      "status": "rejected",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-11-inciso-ii-alinea-d",
+      "provision_id": "br-lgpd-art-11",
+      "source_sha256": "32f1172b6b929f80f64684765470e4a038a39d9ee50c79b800d10597023f5d5e",
+      "aliases": [
+        "Uma empresa usa meu dado de saúde como prova em uma disputa sobre um contrato. Esse uso pode ser necessário mesmo sem minha autorização.",
+        "Meu dado biométrico é apresentado em um processo para confirmar quem assinou um contrato. A empresa pode usá-lo para defender seu direito no caso."
+      ],
+      "status": "rejected",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-11-inciso-ii-alinea-e",
+      "provision_id": "br-lgpd-art-11",
+      "source_sha256": "822be7cd5509153ea309bc18f3bc1fd71538520e1a414817787dbb19bd67dc7e",
+      "aliases": [
+        "Estou desacordado após um acidente, e a equipe acessa meu dado de saúde para me atender. O uso pode ocorrer para proteger minha vida.",
+        "A equipe de resgate usa minha alergia registrada para evitar um medicamento perigoso. Isso pode ser feito para proteger minha integridade física."
+      ],
+      "status": "rejected",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-11-inciso-ii-alinea-f",
+      "provision_id": "br-lgpd-art-11",
+      "source_sha256": "5de108019e7cec0723a42836e5385115ceeba84c2c49ffa27a2adb01b5944914",
+      "aliases": [
+        "O hospital consulta meu histórico de saúde durante meu atendimento. Profissionais e serviços de saúde podem usar esse dado para cuidar da minha saúde.",
+        "A vigilância sanitária usa informações sobre uma doença para tomar medida de saúde. Esse uso é restrito à atuação de saúde."
+      ],
+      "status": "rejected",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-11-inciso-ii-alinea-g",
+      "provision_id": "br-lgpd-art-11",
+      "source_sha256": "ca3e38b52af6a6454cb810befe07a9f5ef0428c6d107a515749ce7923781a5a5",
+      "aliases": [
+        "O banco compara minha biometria ao liberar acesso à conta no aplicativo. Pode usar esse dado para evitar fraude e confirmar minha identidade.",
+        "Uma loja verifica meu reconhecimento facial no cadastro eletrônico para impedir que alguém se passe por mim. O uso deve ser necessário para segurança."
+      ],
+      "status": "rejected",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-12-caput",
+      "provision_id": "br-lgpd-art-12",
+      "source_sha256": "25eb62fa4d81269867a38510cc52eeb182568ac604e3c757450983ae16c97c24",
+      "aliases": [
+        "Uma empresa diz que meus dados foram anonimizados, mas consegue me identificar de novo usando seus próprios recursos.",
+        "Meus dados supostamente sem identificação podem ser ligados a mim novamente com custo e tempo razoáveis, usando a tecnologia disponível."
+      ],
+      "status": "rejected",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-43-inciso-i",
+      "provision_id": "br-lgpd-art-43",
+      "source_sha256": "1268037cd48101350fb38cf5023a0f309518b7b471f0821e44f4dce5d899d22b",
+      "aliases": [
+        "A empresa foi acusada de usar meus dados, mas diz que nunca fez esse uso.",
+        "Meus dados foram tratados por alguém, mas a empresa apontada afirma que não participou disso."
+      ],
+      "status": "rejected",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-43-inciso-ii",
+      "provision_id": "br-lgpd-art-43",
+      "source_sha256": "7c69ac632496fe51f40c78473223a0a2da01af2c0255c7584103b1998ae18140",
+      "aliases": [
+        "A empresa usou meus dados pessoais, mas afirma que seguiu todas as regras de proteção desses dados.",
+        "Mesmo tendo tratado meus dados, a empresa diz que não houve uso irregular nem quebra das regras de privacidade."
+      ],
+      "status": "rejected",
+      "prompt_version": "consumer-lay-aliases:v2"
+    },
+    {
+      "unit_key": "br-lgpd-art-43-inciso-iii",
+      "provision_id": "br-lgpd-art-43",
+      "source_sha256": "573ecdf4cda310d4b907a8aad020b259f8c34309197d216de30aa2b883c0b32b",
+      "aliases": [
+        "Meus dados causaram um problema porque eu mesmo forneci informações erradas ou expus minha senha.",
+        "O prejuízo com meus dados foi causado somente por outra pessoa, e não pela empresa que os usava."
+      ],
+      "status": "rejected",
       "prompt_version": "consumer-lay-aliases:v2"
     }
   ]

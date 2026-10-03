@@ -149,7 +149,8 @@ jobs:
         # nothing, which the known-bad and abstention gates alone would pass.
         #
         # Re-measured on 2026-10-03 for corpus v5 (ADR 0022), development split:
-        # 29 grounds, 8 labelled, 20 unlabelled, 1 known-bad. The known-bad
+        # 31 grounds, 8 labelled, 22 unlabelled, 1 known-bad (after the defense
+        # and exclusion units lost their aliases, ADR 0022 Decision 3). The known-bad
         # ceiling is 1 by decision: the single citation is CDC art. 42 sole
         # paragraph beside a label on art. 42 caput (a sibling paragraph), which
         # collapsing siblings before truncation (review step 4) addresses.

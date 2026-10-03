@@ -154,3 +154,17 @@ def test_an_entry_records_the_prompt_version_it_came_from() -> None:
         != AliasSet(prompt_version="p", entries=(current,)).identity()
     )
 
+
+def test_a_declined_entry_records_a_unit_without_aliases_and_is_not_indexed() -> None:
+    declined = _entry(status="declined", aliases=[])
+    other = AliasSet(prompt_version="p", entries=(_entry(unit_key="br-cdc-art-39-inciso-ii"),))
+
+    assert declined.aliases == ()
+    assert AliasSet(
+        prompt_version="p", entries=(*other.entries, declined)
+    ).identity() == other.identity()
+    with pytest.raises(ValidationError, match="br-cdc-art-39-inciso-i: a declined entry has no"):
+        _entry(status="declined")
+    with pytest.raises(ValidationError, match="br-cdc-art-39-inciso-i: at least 2"):
+        _entry(aliases=[])
+
