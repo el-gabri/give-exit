@@ -39,15 +39,25 @@ from app.core.hashing import sha256_hex
 from app.llm.base import LLMClient
 from app.llm.factory import create_llm_client
 
-ALIAS_PROMPT_VERSION = "consumer-lay-aliases:v1"
+ALIAS_PROMPT_VERSION = "consumer-lay-aliases:v2"
+# v2 (ADR 0022): v1 aliases described outcomes many articles share ("money
+# back after a defect"), so a service complaint reached the product-defect
+# article. Each alias now has to carry what distinguishes its unit.
 SYSTEM_PROMPT = (
     "Você escreve paráfrases leigas para um índice de busca de direitos do consumidor no "
     "Brasil. Para cada unidade de um dispositivo legal, indicada pela chave entre colchetes, "
     "escreva de 2 a 4 frases curtas, em primeira pessoa, como um consumidor comum descreveria "
     "uma situação concreta coberta por aquela unidade.\n"
     "Regras:\n"
-    "- Cada frase é específica da sua unidade e diferente das frases das outras unidades do "
-    "mesmo dispositivo.\n"
+    "- Cada frase traz a condição que distingue esta unidade das demais: se é produto ou "
+    "serviço, qual prática, qual dado pessoal ou qual situação específica o texto descreve. "
+    "Uma frase que serviria igualmente para outra unidade está errada.\n"
+    "- Não use desfechos que muitos dispositivos compartilham, como querer o dinheiro de "
+    "volta, ser indenizado ou ter os direitos de consumidor respeitados, a não ser junto da "
+    "condição específica da unidade.\n"
+    "- Se a unidade não descreve uma situação concreta de consumo (por exemplo, define "
+    "termos, organiza órgãos públicos, fixa princípios gerais ou apenas remete a outra "
+    "norma), responda com lista vazia para ela.\n"
     "- Não cite artigos, incisos, parágrafos, alíneas, leis, códigos ou siglas como CDC ou "
     "LGPD.\n"
     "- Prefira palavras do dia a dia a termos jurídicos.\n"

@@ -313,3 +313,36 @@ async def test_a_reasoning_model_is_called_through_its_effort_not_a_temperature(
     assert llm.options[0]["max_output_tokens"] == alias_generation.ALIAS_MAX_OUTPUT_TOKENS
     assert plain.options[0]["reasoning_effort"] is None
     assert plain.options[0]["temperature"] == 0.0
+
+
+async def test_a_new_prompt_version_regenerates_only_generated_entries() -> None:
+    first, _, _ = await _run(_FakeLLM(), _empty(), "br-cdc-art-39")
+    key = "br-cdc-art-39-inciso-i"
+    older = first.model_copy(
+        update={
+            "prompt_version": "consumer-lay-aliases:v0",
+            "entries": tuple(
+                entry.model_copy(update={"status": "reviewed"}) if entry.unit_key == key else entry
+                for entry in first.entries
+            ),
+        }
+    )
+
+    llm = _FakeLLM()
+    second, report, _ = await _run(llm, older, "br-cdc-art-39")
+
+    assert len(llm.calls) == 1
+    assert report.skipped == 1
+    assert len(report.written) == len(first.entries) - 1
+    kept = next(entry for entry in second.entries if entry.unit_key == key)
+    assert kept == next(entry for entry in older.entries if entry.unit_key == key)
+    assert second.prompt_version == ALIAS_PROMPT_VERSION
+
+
+def test_the_prompt_asks_for_the_units_distinguishing_condition() -> None:
+    prompt = alias_generation.SYSTEM_PROMPT.casefold()
+
+    assert "distingue" in prompt
+    assert "lista vazia" in prompt
+    assert ALIAS_PROMPT_VERSION == "consumer-lay-aliases:v2"
+
