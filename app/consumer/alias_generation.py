@@ -58,6 +58,8 @@ SYSTEM_PROMPT = (
 USER_TEMPLATE = "Dispositivo: {citation}\nHierarquia: {hierarchy}\n\nUnidades:\n\n{blocks}"
 PROMPT_SHA256 = sha256_hex(f"{SYSTEM_PROMPT}\n{USER_TEMPLATE}")
 MAX_ALIASES = 4
+# Reasoning tokens count against the output budget on the Responses path.
+ALIAS_MAX_OUTPUT_TOKENS = 8_000
 
 
 class _UnitAliases(BaseModel):
@@ -129,8 +131,13 @@ async def generate_aliases(
     save: Callable[[AliasSet], None],
     articles: Sequence[str] = (),
     force: bool = False,
+    reasoning_effort: str | None = None,
 ) -> tuple[AliasSet, GenerationReport]:
-    """Generate the missing or stale entries, saving after each article."""
+    """Generate the missing or stale entries, saving after each article.
+
+    A reasoning model (gpt-5.6-terra) rejects temperature 0, so with
+    ``reasoning_effort`` the client uses its Responses path instead.
+    """
 
     entries = {entry.unit_key: entry for entry in alias_set.entries}
     order = {key: index for index, key in enumerate(_corpus_order(corpus))}
@@ -152,6 +159,8 @@ async def generate_aliases(
             schema=_ArticleAliases,
             temperature=0.0,
             prompt_version=ALIAS_PROMPT_VERSION,
+            reasoning_effort=reasoning_effort,
+            max_output_tokens=ALIAS_MAX_OUTPUT_TOKENS,
         )
         entries.update(_new_entries(request, pending, result.data, report))
         current = AliasSet(
@@ -248,6 +257,11 @@ async def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument(
         "--dry-run", action="store_true", help="print the requests; call no model, write nothing"
     )
+    parser.add_argument(
+        "--reasoning-effort",
+        choices=("low", "medium", "high"),
+        help="for reasoning models that reject temperature 0, such as gpt-5.6-terra",
+    )
     parser.add_argument("--output", type=Path, default=ALIASES_PATH)
     args = parser.parse_args(argv)
     corpus = LegalCorpus(default_legal_provisions())
@@ -276,6 +290,7 @@ async def main(argv: Sequence[str] | None = None) -> int:
             save=lambda current: write_alias_set(current, args.output),
             articles=args.article,
             force=args.force,
+            reasoning_effort=args.reasoning_effort,
         )
     except Exception as exc:  # the file already holds every finished article
         print(

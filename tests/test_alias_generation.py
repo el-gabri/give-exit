@@ -46,6 +46,7 @@ class _FakeLLM:
         fail_on: str | None = None,
     ) -> None:
         self.calls: list[str] = []
+        self.options: list[dict[str, Any]] = []
         self._overrides = overrides or {}
         self._extra = extra or []
         self._fail_on = fail_on
@@ -54,8 +55,11 @@ class _FakeLLM:
     async def complete(self, **_: Any) -> Any:  # pragma: no cover - never called
         raise AssertionError("the generator must use parse")
 
-    async def parse(self, *, user: str, schema: type[BaseModel], **_: Any) -> ParsedResult[Any]:
+    async def parse(
+        self, *, user: str, schema: type[BaseModel], **options: Any
+    ) -> ParsedResult[Any]:
         self.calls.append(user)
+        self.options.append(options)
         if self._fail_on is not None and self._fail_on in user:
             raise RuntimeError("provider down")
         units = [
@@ -289,3 +293,23 @@ async def test_cli_reports_and_writes_the_file(
     assert code == 0
     assert load_alias_set(output).model == "test-model"
     assert "written: 1" in capsys.readouterr().out
+
+
+async def test_a_reasoning_model_is_called_through_its_effort_not_a_temperature(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # gpt-5.6-terra rejects temperature 0; the Responses path takes an effort instead.
+    llm = _FakeLLM()
+    output = tmp_path / "aliases.json"
+
+    code = await _cli(
+        monkeypatch, llm, output, "--article", "br-cf-art-5-xxxii", "--reasoning-effort", "low"
+    )
+    plain = _FakeLLM()
+    await _run(plain, _empty(), "br-cf-art-5-xxxii")
+
+    assert code == 0
+    assert llm.options[0]["reasoning_effort"] == "low"
+    assert llm.options[0]["max_output_tokens"] == alias_generation.ALIAS_MAX_OUTPUT_TOKENS
+    assert plain.options[0]["reasoning_effort"] is None
+    assert plain.options[0]["temperature"] == 0.0
