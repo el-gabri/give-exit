@@ -689,7 +689,11 @@ async def _run_agreement_sweep(
 def _prepare(
     parser: argparse.ArgumentParser, args: argparse.Namespace
 ) -> ConsumerLegalGoldenDataset:
-    """Load the dataset and keep the split the flags select."""
+    """Load the dataset split the flags select and set the query-vector policy."""
+    if args.require_cached_queries:
+        from app.evaluation.consumer_retrievers import configure_query_vectors
+
+        configure_query_vectors(require_cached=True)
     dataset = load_consumer_legal_dataset(Path(args.dataset))
     try:
         return dataset_split(dataset, args.split)
@@ -802,6 +806,14 @@ async def _cli() -> None:
         choices=("all", *CASE_SPLITS),
         default="all",
         help="evaluate only the development or the holdout cases (default: all)",
+    )
+    parser.add_argument(
+        "--require-cached-queries",
+        action="store_true",
+        help=(
+            "configured stacks only: fail on a golden query whose vector is not cached "
+            "instead of loading the embedding model"
+        ),
     )
     args = parser.parse_args()
     _check_arguments(parser, args)

@@ -8,8 +8,14 @@ from collections.abc import Callable
 from app.consumer.legal_corpus import LegalCorpus, get_default_legal_corpus
 from app.consumer.legal_index import legal_corpus_is_indexed
 from app.core.config import RetrievalMode, Settings
+from app.evaluation.query_vectors import (
+    CachedQueryEmbedder,
+    QueryVectorCache,
+    cache_contract,
+    query_vector_root,
+)
 from app.rag.embeddings import MockEmbeddingClient
-from app.rag.factory import create_rag_pipeline
+from app.rag.factory import create_embedding_client, create_rag_pipeline
 from app.rag.pipeline import RagPipeline
 from app.rag.vector_store import InMemoryVectorStore
 from app.schemas.rag import RetrievedChunk
@@ -89,14 +95,51 @@ def offline_pipeline(corpus: LegalCorpus) -> RagPipeline:
     )
 
 
-def configured_pipeline(corpus: LegalCorpus) -> RagPipeline:
+_require_cached_queries = False
+
+
+def configure_query_vectors(*, require_cached: bool) -> None:
+    """Whether configured evaluations may load the model for uncached queries.
+
+    The default reads through the golden query-vector cache and embeds what is
+    missing. ``require_cached`` turns a miss into an error, so a run is
+    guaranteed never to load the embedding model.
+    """
+    global _require_cached_queries
+    _require_cached_queries = require_cached
+
+
+def cached_configured_pipeline(
+    corpus: LegalCorpus, settings: Settings | None = None
+) -> tuple[RagPipeline, CachedQueryEmbedder]:
+    """The configured stack, its query embedder reading the golden cache."""
+
+    effective = settings or Settings()
+    embedder = CachedQueryEmbedder(
+        create_embedding_client(effective), require_cached=_require_cached_queries
+    )
+    pipeline = create_rag_pipeline(
+        effective,
+        corpus_version=f"{corpus.release_id}-{corpus.corpus_sha256[:12]}",
+        embedder=embedder,
+    )
+    contract = cache_contract(pipeline.embedding_contract_configuration())
+    if contract is not None:
+        embedder.bind(QueryVectorCache.open(query_vector_root(effective), contract))
+    elif _require_cached_queries:
+        pipeline.close()
+        raise ValueError(
+            "golden query vectors are cached only for a pinned model revision; "
+            "set LITIGATION_EMBEDDING_MODEL_REVISION"
+        )
+    return pipeline, embedder
+
+
+def configured_pipeline(corpus: LegalCorpus, settings: Settings | None = None) -> RagPipeline:
     """Build the provider selected by LITIGATION_EMBEDDING_* settings."""
 
-    return create_rag_pipeline(
-        Settings(),
-        corpus_version=f"{corpus.release_id}-{corpus.corpus_sha256[:12]}",
-    )
-
+    pipeline, _ = cached_configured_pipeline(corpus, settings)
+    return pipeline
 
 async def prepare_evaluation_pipeline(
     factory: PipelineFactory,

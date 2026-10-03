@@ -35,6 +35,7 @@ from app.evaluation.consumer_golden import (
     validate_consumer_legal_labels,
 )
 from app.evaluation.consumer_retrievers import (
+    configure_query_vectors,
     configured_pipeline,
     offline_pipeline,
     prepare_evaluation_pipeline,
@@ -173,7 +174,17 @@ async def _cli(argv: Sequence[str] | None = None) -> None:
         default="all",
         help="rank only the development or the holdout labels (default: all)",
     )
+    parser.add_argument(
+        "--require-cached-queries",
+        action="store_true",
+        help=(
+            "configured stack only: fail on a golden query whose vector is not cached "
+            "instead of loading the embedding model"
+        ),
+    )
     args = parser.parse_args(argv)
+    if args.require_cached_queries:
+        configure_query_vectors(require_cached=True)
     try:
         dataset = dataset_split(load_consumer_legal_dataset(Path(args.dataset)), args.split)
     except ValueError as exc:

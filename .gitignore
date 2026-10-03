@@ -11,6 +11,7 @@ dist/
 build/
 data/chroma/
 data/embedding_generations/
+data/evaluation/
 data/uploads/
 data/reports/
 data/runs.jsonl

@@ -4,17 +4,25 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
+from app.consumer.legal_corpus import get_default_legal_corpus
+from app.core.config import Settings
+from app.evaluation import consumer_retrievers, query_vectors
+from app.evaluation.consumer_golden import load_consumer_legal_dataset
 from app.evaluation.query_vectors import (
     CONTRACT_FILENAME,
     VECTORS_FILENAME,
     CachedQueryEmbedder,
+    CaseCoverage,
     QueryVectorCache,
     QueryVectorCacheMiss,
     cache_contract,
     contract_id,
+    fill_query_vectors,
+    golden_queries,
 )
 from app.rag.embeddings import MockEmbeddingClient
 from app.rag.pipeline import RagPipeline
@@ -212,3 +220,158 @@ async def test_a_pipeline_on_the_wrapper_records_the_real_embedder(tmp_path: Pat
     assert configuration["query_formatter_version"] == inner.query_format_version
     with pytest.raises(AttributeError):
         _ = embedder.__missing_dunder__
+
+
+DATASET_PATH = Path("eval_data/consumer_legal_retrieval")
+
+
+class _PinnedEmbedder(MockEmbeddingClient):
+    model_revision = "rev-1"
+
+
+class _UnpinnedEmbedder(MockEmbeddingClient):
+    """The mock pins its own revision; a real unpinned model declares none."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._model_revision = None  # type: ignore[assignment]
+
+
+def _settings(tmp_path: Path) -> Settings:
+    return Settings(
+        _env_file=None,
+        llm_provider="mock",
+        embedding_provider="mock",
+        embedding_model_revision=None,
+        embedding_expected_dimensions=None,
+        embedding_require_model_revision=False,
+        vector_store="memory",
+        data_dir=tmp_path,
+    )
+
+
+def test_golden_queries_are_the_production_queries_of_in_scope_cases() -> None:
+    queries = golden_queries(load_consumer_legal_dataset(DATASET_PATH))
+
+    assert len(queries) == 39
+    assert "salario_atrasado" not in queries
+    assert sum(len(texts) for texts in queries.values()) == 78
+
+
+async def test_filling_resumes_and_reports_coverage(tmp_path: Path) -> None:
+    inner = _CountingEmbedder()
+    embedder = CachedQueryEmbedder(inner)
+    embedder.bind(QueryVectorCache.open(tmp_path, CONTRACT))
+    queries = {"um": ["q1", "q2"], "dois": ["q2", "q3"]}
+
+    checked = await fill_query_vectors(embedder, queries, embed=False)
+    first = await fill_query_vectors(embedder, queries)
+    second = await fill_query_vectors(embedder, queries)
+
+    assert checked == [CaseCoverage("um", 0, 0), CaseCoverage("dois", 0, 0)]
+    assert first == [CaseCoverage("um", 0, 2), CaseCoverage("dois", 1, 1)]
+    assert second == [CaseCoverage("um", 2, 0), CaseCoverage("dois", 2, 0)]
+    assert inner.query_batches == [["q1", "q2"], ["q3"]]
+    with pytest.raises(ValueError, match="no pinned revision"):
+        await fill_query_vectors(CachedQueryEmbedder(inner), queries)
+
+
+def test_a_pinned_configured_stack_reads_the_golden_cache(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(consumer_retrievers, "_require_cached_queries", False)
+    monkeypatch.setattr(
+        consumer_retrievers, "create_embedding_client", lambda _settings: _PinnedEmbedder()
+    )
+
+    pipeline, embedder = consumer_retrievers.cached_configured_pipeline(
+        get_default_legal_corpus(), _settings(tmp_path)
+    )
+    try:
+        assert embedder.cache is not None
+        assert embedder.cache.directory.parent == tmp_path / "evaluation" / "query_vectors"
+        configuration = pipeline.retrieval_configuration(requested_k=8)
+        assert configuration["embedding_model_revision"] == "rev-1"
+    finally:
+        pipeline.close()
+
+
+def test_an_unpinned_configured_stack_is_not_cached_unless_required(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(consumer_retrievers, "_require_cached_queries", False)
+    monkeypatch.setattr(
+        consumer_retrievers, "create_embedding_client", lambda _settings: _UnpinnedEmbedder()
+    )
+    corpus = get_default_legal_corpus()
+
+    pipeline, embedder = consumer_retrievers.cached_configured_pipeline(
+        corpus, _settings(tmp_path)
+    )
+    pipeline.close()
+    plain = consumer_retrievers.configured_pipeline(corpus, _settings(tmp_path))
+    plain.close()
+    consumer_retrievers.configure_query_vectors(require_cached=True)
+
+    assert embedder.cache is None
+    with pytest.raises(ValueError, match="pinned model revision"):
+        consumer_retrievers.cached_configured_pipeline(corpus, _settings(tmp_path))
+
+
+def _patch_configured(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> _CountingEmbedder:
+    inner = _CountingEmbedder()
+    embedder = CachedQueryEmbedder(inner)
+    embedder.bind(QueryVectorCache.open(tmp_path, CONTRACT))
+    monkeypatch.setattr(
+        query_vectors,
+        "_configured_embedder",
+        lambda: (embedder, SimpleNamespace(close=lambda: None)),
+    )
+    return inner
+
+
+def _report(printed: str) -> list[str]:
+    return [line for line in printed.splitlines() if "embedded" in line or "coverage:" in line]
+
+
+async def test_cli_fills_one_case_then_checks_coverage(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    inner = _patch_configured(monkeypatch, tmp_path)
+    case = ["--case", "produto_duravel_com_vicio"]
+
+    assert await query_vectors._cli([str(DATASET_PATH), *case]) == 0
+    assert await query_vectors._cli([str(DATASET_PATH), "--check", *case]) == 0
+    assert await query_vectors._cli([str(DATASET_PATH), "--check"]) == 1
+
+    lines = _report(capsys.readouterr().out)
+    assert lines[0] == "produto_duravel_com_vicio: 0 cached, 2 embedded"
+    assert lines[2] == "produto_duravel_com_vicio: 2 cached, 0 embedded"
+    assert lines[-1].startswith("coverage: 2/78 golden queries cached in ")
+    assert len(inner.query_batches) == 1
+
+
+async def test_cli_rejects_an_unknown_case_and_an_unpinned_model(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _patch_configured(monkeypatch, tmp_path)
+    with pytest.raises(SystemExit) as excinfo:
+        await query_vectors._cli([str(DATASET_PATH), "--case", "salario_atrasado"])
+    assert excinfo.value.code == 2
+
+    monkeypatch.setattr(
+        query_vectors,
+        "_configured_embedder",
+        lambda: (CachedQueryEmbedder(_CountingEmbedder()), SimpleNamespace(close=lambda: None)),
+    )
+    assert await query_vectors._cli([str(DATASET_PATH)]) == 2
+    assert "no pinned revision" in capsys.readouterr().err
+
+
+def test_the_cli_builds_the_configured_stack(monkeypatch: pytest.MonkeyPatch) -> None:
+    pipeline, embedder = object(), object()
+    monkeypatch.setattr(
+        consumer_retrievers, "cached_configured_pipeline", lambda _corpus: (pipeline, embedder)
+    )
+
+    assert query_vectors._configured_embedder() == (embedder, pipeline)

@@ -13,7 +13,7 @@ from pydantic import ValidationError
 
 from app.consumer.legal_corpus import get_default_legal_corpus
 from app.consumer.schemas import ProvisionStatus
-from app.evaluation import consumer_runner
+from app.evaluation import consumer_retrievers, consumer_runner
 from app.evaluation.consumer_golden import dataset_split, load_consumer_legal_dataset
 from app.evaluation.consumer_retrievers import _LazyConsumerRetriever, offline_hybrid_retriever
 from app.evaluation.consumer_runner import (
@@ -616,3 +616,19 @@ async def test_a_degraded_retrieval_fails_the_case_instead_of_scoring_lexical_on
 
     assert summary.failed_case_count == 1
     assert "retrieval degraded: lexical_only" in summary.cases[0].errors[0]
+
+
+def test_cli_can_forbid_loading_the_embedding_model(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(consumer_retrievers, "_require_cached_queries", False)
+    dataset_path = _write_dataset(tmp_path / "dataset.json", _split_dataset())
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["consumer_runner", str(dataset_path), "--empty-baseline", "--require-cached-queries"],
+    )
+
+    asyncio.run(consumer_runner._cli())
+
+    assert consumer_retrievers._require_cached_queries is True

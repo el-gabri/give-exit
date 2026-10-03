@@ -16,6 +16,21 @@ stored. A crash can leave a partial last line; the next load drops it.
 
 from __future__ import annotations
 
+import argparse
+import asyncio
+import sys
+from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+from app.consumer.legal_corpus import get_default_legal_corpus
+from app.consumer.retrieval import build_legal_queries, is_consumer_scope
+from app.consumer.schemas import ConsumerCaseFacts
+from app.core.config import Settings
+from app.evaluation.consumer_golden import load_consumer_legal_dataset
+from app.schemas.evaluation import ConsumerLegalGoldenDataset
+
+if TYPE_CHECKING:
+    from app.rag.pipeline import RagPipeline
 import json
 import os
 from collections.abc import Mapping, Sequence
@@ -36,6 +51,12 @@ VECTORS_FILENAME = "vectors.jsonl"
 # Recorded in a pipeline's contract but irrelevant to the vectors themselves.
 _NON_VECTOR_FIELDS = frozenset({"require_model_revision"})
 _SHA256_HEX_LENGTH = 64
+QUERY_VECTOR_DIRECTORY = Path("evaluation") / "query_vectors"
+
+
+def query_vector_root(settings: Settings) -> Path:
+    """Where the configured evaluation keeps its query-vector caches."""
+    return settings.data_dir / QUERY_VECTOR_DIRECTORY
 
 
 class QueryVectorCacheMiss(RuntimeError):
@@ -214,6 +235,108 @@ class CachedQueryEmbedder:
             cache.add(missing, await embed_query_texts(self._inner, missing))
         vectors = [cache.get(text) for text in texts]
         return [vector for vector in vectors if vector is not None]
+
+
+@dataclass(frozen=True, slots=True)
+class CaseCoverage:
+    """How many of one case's queries were already cached and how many were embedded."""
+
+    case_id: str
+    cached: int
+    embedded: int
+
+
+def golden_queries(dataset: ConsumerLegalGoldenDataset) -> dict[str, list[str]]:
+    """The production ranking queries of every case the scope gate lets through."""
+
+    return {
+        case.case_id: build_legal_queries(
+            ConsumerCaseFacts(
+                complaint_summary=case.complaint, desired_resolution=case.desired_resolution
+            )
+        )
+        for case in dataset.cases
+        if is_consumer_scope(complaint=case.complaint)
+    }
+
+
+async def fill_query_vectors(
+    embedder: CachedQueryEmbedder,
+    queries_by_case: Mapping[str, list[str]],
+    *,
+    embed: bool = True,
+) -> list[CaseCoverage]:
+    """Embed each case's missing queries in one call, persisting before the next case.
+
+    The embedder is called directly, not through the pipeline's query guard, so
+    a slow CPU model cannot time out into a lexical fallback. With
+    ``embed=False`` nothing is embedded and the result only reports coverage.
+    """
+
+    cache = embedder.cache
+    if cache is None:
+        raise ValueError("the configured embedding model has no pinned revision; nothing is cached")
+    coverage: list[CaseCoverage] = []
+    for case_id, queries in queries_by_case.items():
+        cached = sum(cache.get(query) is not None for query in queries)
+        embedded = len(queries) - cached if embed else 0
+        if embedded:
+            await embedder.embed_queries(queries)
+        coverage.append(CaseCoverage(case_id, cached, embedded))
+    return coverage
+
+
+def _configured_embedder() -> tuple[CachedQueryEmbedder, RagPipeline]:
+    from app.evaluation.consumer_retrievers import cached_configured_pipeline
+
+    pipeline, embedder = cached_configured_pipeline(get_default_legal_corpus())
+    return embedder, pipeline
+
+
+async def _cli(argv: Sequence[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        description=(
+            "Fill the golden query-vector cache for the configured embedding model, "
+            "one case at a time."
+        )
+    )
+    parser.add_argument("dataset", nargs="?", default="eval_data/consumer_legal_retrieval")
+    parser.add_argument(
+        "--case", action="append", default=[], metavar="CASE_ID", help="only this case (repeatable)"
+    )
+    parser.add_argument(
+        "--check", action="store_true", help="embed nothing; exit 1 if any query is missing"
+    )
+    args = parser.parse_args(argv)
+    queries = golden_queries(load_consumer_legal_dataset(Path(args.dataset)))
+    if args.case:
+        unknown = sorted(set(args.case) - queries.keys())
+        if unknown:
+            parser.error("not an in-scope golden case: " + ", ".join(unknown))
+        queries = {case_id: queries[case_id] for case_id in args.case}
+    embedder, pipeline = _configured_embedder()
+    try:
+        cache = embedder.cache
+        if cache is None:
+            print(
+                "query_vectors: the configured embedding model has no pinned revision; "
+                "nothing is cached",
+                file=sys.stderr,
+            )
+            return 2
+        coverage = await fill_query_vectors(embedder, queries, embed=not args.check)
+    finally:
+        pipeline.close()
+    for item in coverage:
+        print(f"{item.case_id}: {item.cached} cached, {item.embedded} embedded")
+    total = sum(len(texts) for texts in queries.values())
+    covered = sum(item.cached + item.embedded for item in coverage)
+    print(f"coverage: {covered}/{total} golden queries cached in {cache.directory}")
+    return 1 if covered < total else 0
+
+
+if __name__ == "__main__":  # pragma: no cover
+    raise SystemExit(asyncio.run(_cli()))
 
 
 def _record(key: str, vector: list[float]) -> str:
