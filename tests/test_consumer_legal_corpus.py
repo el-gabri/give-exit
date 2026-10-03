@@ -55,7 +55,7 @@ def test_default_corpus_combines_full_cdc_with_reviewed_constitution() -> None:
     civil = [item for item in corpus.provisions if item.source is LegalSource.CIVIL_CODE]
 
     assert corpus.release_id == CONSUMER_LAW_CORPUS_RELEASE_ID
-    assert corpus.release_id.endswith("-v4")
+    assert corpus.release_id.endswith("-v5")
     assert len(corpus.provisions) == 2300
     assert (len(constitution), len(cdc), len(lgpd), len(civil)) == (7, 130, 80, 2083)
     assert len({item.provision_id for item in corpus.provisions}) == 2300
@@ -193,7 +193,7 @@ def test_legal_aware_chunks_never_cross_articles_and_expose_metadata() -> None:
         "alinea": None,
         "status": "active",
         "content_kind": "official",
-        "chunking_version": "legal-hierarchy-v4:target=1200",
+        "chunking_version": "legal-hierarchy-v5:target=1200",
         "chunk_level": "unit",
         "lead_in_unit_ids": None,
         "official_url": CDC.source_url,
@@ -555,12 +555,16 @@ def test_cdc_and_cf_chunk_texts_are_unchanged() -> None:
     the sentence-boundary fix in ``_split_text`` moved the split of CDC art.
     54-G, I, which previously cut inside "Lei nº | 14.181", so both of its
     parts are embedded again on rebuild.
+
+    Corpus v5 (ADR 0022) adds lay alias chunks beside these; the official
+    chunk texts are unchanged, which is what lets v5 reuse their vectors.
     """
 
     texts = sorted(
         chunk.text
         for chunk in get_default_legal_corpus().as_chunks()
         if chunk.metadata["law_id"] in {"br-cf", "br-cdc"}
+        and chunk.metadata["chunk_level"] != "alias"
     )
 
     assert len(texts) == 317

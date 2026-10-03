@@ -88,20 +88,22 @@ def test_a_chunk_only_one_channel_ranks_can_never_clear_the_gate() -> None:
     assert rank.verdict == "one channel never ranks it"
 
 
-async def test_the_lexical_channel_shares_no_word_with_the_tie_in_sale_label() -> None:
+async def test_an_alias_gives_the_tie_in_sale_label_a_lexical_rank() -> None:
     """Offline lexical ranks are exact: they are the BM25 PostgreSQL computes.
 
     The tie-in sale complaint never uses the statute's words for it ("condicionar o
-    fornecimento"), so the lexical channel cannot rank CDC art. 39 I at any depth.
+    fornecimento"), so before corpus v5 the lexical channel could not rank CDC art.
+    39 I at any depth. Its lay alias chunk (ADR 0022) shares the complaint's words
+    and now ranks first, within the gate.
     """
     pipeline = await prepare_evaluation_pipeline(offline_pipeline, get_default_legal_corpus())
     ranks = await rank_labels(pipeline, load_consumer_legal_dataset(DATASET_PATH))
 
     by_label = {(rank.case_id, rank.label): rank for rank in ranks}
     tie_in = by_label[("venda_casada_seguro", "br-cdc-art-39-inciso-i")]
-    assert tie_in.lexical is None
-    assert tie_in.verdict == "one channel never ranks it"
-    assert by_label[("cobranca_indevida_ja_paga", "br-cdc-art-42-paragrafo-unico")].lexical == 2
+    assert (tie_in.dense, tie_in.lexical) == (7, 1)
+    assert tie_in.verdict == "within the gate"
+    assert by_label[("cobranca_indevida_ja_paga", "br-cdc-art-42-paragrafo-unico")].lexical == 1
 
 
 async def test_cli_prints_the_table_and_writes_json(

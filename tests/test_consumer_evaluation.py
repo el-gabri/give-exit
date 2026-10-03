@@ -162,7 +162,7 @@ def test_seed_dataset_is_separate_versioned_and_explicitly_unreviewed() -> None:
     dataset = load_consumer_legal_dataset(DATASET_PATH)
 
     assert dataset.dataset_id == "consumer-legal-retrieval-seed"
-    assert dataset.version == "2.2.0"
+    assert dataset.version == "2.3.0"
     assert dataset.authoring == "developer_authored_seed"
     assert dataset.review_status == "requires_legal_review"
     assert dataset.source_url.endswith("/l8078compilado.htm")
@@ -374,16 +374,16 @@ def test_golden_case_rejects_an_unknown_field() -> None:
         ConsumerLegalGoldenCase.model_validate(payload)
 
 
-def test_dataset_version_is_two_two_zero_with_an_explicit_holdout() -> None:
+def test_dataset_version_keeps_the_explicit_holdout() -> None:
     """2.2.0 states every case's split. The holdout is the 13 in-scope cases
     2.1.0 added, on which no parameter was tuned, and six new disputes with no
     consumer relationship written without consulting the scope gate's keywords.
     The traffic-fine and private-loan cases stay in development: the scope
-    keywords were written against them."""
+    keywords were written against them. 2.3.0 only moves the target corpus to v5."""
     dataset = load_consumer_legal_dataset(DATASET_PATH)
     raw = json.loads((DATASET_PATH / "dataset.json").read_text(encoding="utf-8"))
 
-    assert dataset.version == "2.2.0"
+    assert dataset.version == "2.3.0"
     assert all("split" in case for case in raw["cases"])
     assert {case.case_id for case in dataset.cases if case.split == "holdout"} == HOLDOUT_CASES
     new_no_ground = [

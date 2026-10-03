@@ -52,13 +52,13 @@ from app.rag.chunking import split_at_boundaries
 from app.schemas.document import DocumentPage, ExtractionMethod, ParsedDocument
 from app.schemas.rag import Chunk, MetadataValue, RetrievedChunk
 
-CONSUMER_LAW_CORPUS_RELEASE_ID = "br-consumer-law-2026-09-12-v4"
+CONSUMER_LAW_CORPUS_RELEASE_ID = "br-consumer-law-2026-10-03-v5"
 CORPUS_VERIFIED_ON = date(2026, 8, 4)
 CONSTITUTION_URL = "https://www.planalto.gov.br/ccivil_03/constituicao/constituicaocompilado.htm"
 
 _SOURCE_NAME_CF = "Constituição da República Federativa do Brasil de 1988"
 _LEGACY_ID_ALIASES = {"br-cdc-art-3-p2": "br-cdc-art-3"}
-LEGAL_CHUNKING_VERSION = "legal-hierarchy-v4"
+LEGAL_CHUNKING_VERSION = "legal-hierarchy-v5"
 DEFAULT_LEGAL_CHUNK_TARGET_CHARS = 1_200
 
 

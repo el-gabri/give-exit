@@ -49,8 +49,9 @@ from app.schemas.evaluation import (
 from app.schemas.rag import DENSE_CHANNEL, LEXICAL_CHANNEL, RetrievedChunk
 
 # Fused results returned per query. It must exceed the number of indexed legal
-# chunks (1,644 in legal-hierarchy-v4): a shorter fused list drops chunks that
-# only one channel ranked, and their ranks would read as missing.
+# chunks (2,008 in legal-hierarchy-v5: 1,644 official plus 364 alias chunks): a
+# shorter fused list drops chunks that only one channel ranked, and their ranks
+# would read as missing.
 DEFAULT_DEPTH = 2_500
 
 

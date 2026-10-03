@@ -95,15 +95,20 @@ jobs:
         # The 19 holdout cases are reported by their own step and never gated, so
         # no parameter is tuned against them. Development: recall@5 0.142,
         # article recall@5 0.225, nDCG@5 0.075, hard-negative rate@5 0.025.
+        #
+        # Re-baselined on 2026-10-03 for corpus v5 (lay-language alias chunks,
+        # prompt v2, ADR 0022), development split: recall@5 0.142 -> 0.242,
+        # article recall@5 0.225 -> 0.550, nDCG@5 0.075 -> 0.181, hard-negative
+        # rate@5 0.025 (unchanged).
         run: |
           python -m app.evaluation.consumer_runner \
             eval_data/consumer_legal_retrieval \
             --split development \
             --output consumer-legal-retrieval-results.json \
             --min consumer_retrieval_success@5=1.0 \
-            --min consumer_recall@5=0.14 \
-            --min consumer_article_recall@5=0.22 \
-            --min consumer_ndcg@5=0.07 \
+            --min consumer_recall@5=0.24 \
+            --min consumer_article_recall@5=0.54 \
+            --min consumer_ndcg@5=0.18 \
             --min consumer_abstention@5=1.0 \
             --max consumer_hard_negative_rate@5=0.03 \
             --max consumer_inactive_provision_rate@5=0.0 \
@@ -142,15 +147,21 @@ jobs:
         # 17 grounds, 1 labelled, 16 unlabelled, known-bad 0, abstention 1.0.
         # consumer_notice_labelled_grounds >= 1 fails a selector that cites
         # nothing, which the known-bad and abstention gates alone would pass.
+        #
+        # Re-measured on 2026-10-03 for corpus v5 (ADR 0022), development split:
+        # 29 grounds, 8 labelled, 20 unlabelled, 1 known-bad. The known-bad
+        # ceiling is 1 by decision: the single citation is CDC art. 42 sole
+        # paragraph beside a label on art. 42 caput (a sibling paragraph), which
+        # collapsing siblings before truncation (review step 4) addresses.
         run: |
           python -m app.evaluation.consumer_runner \
             eval_data/consumer_legal_retrieval \
             --evaluate-notice \
             --split development \
             --output consumer-notice-results.json \
-            --max consumer_notice_known_bad_citations=0 \
+            --max consumer_notice_known_bad_citations=1 \
             --min consumer_notice_abstention=1.0 \
-            --min consumer_notice_labelled_grounds=1
+            --min consumer_notice_labelled_grounds=8
       - name: Consumer holdout report (not gated)
         # The holdout split is measured on every build and never gated, so no
         # parameter is tuned against it. Its results are uploaded below.

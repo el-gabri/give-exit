@@ -1,12 +1,12 @@
 {
   "dataset_id": "consumer-legal-retrieval-seed",
-  "version": "2.2.0",
-  "description": "Developer-authored seed for offline retrieval evaluation from lay Brazilian consumer complaints to CDC provisions, with LGPD and Civil Code complements. It is not a production legal golden until specialist review. Development cases may inform parameter choices; holdout cases are only reported, and a holdout case whose result informed a decision moves to development in the next version.",
+  "version": "2.3.0",
+  "description": "Developer-authored seed for offline retrieval evaluation from lay Brazilian consumer complaints to CDC provisions, with LGPD and Civil Code complements. It is not a production legal golden until specialist review. Development cases may inform parameter choices; holdout cases are only reported, and a holdout case whose result informed a decision moves to development in the next version. Version 2.3.0 targets corpus release v5 (lay-language alias chunks, ADR 0022); labels and splits are unchanged.",
   "source_url": "https://www.planalto.gov.br/ccivil_03/leis/l8078compilado.htm",
   "authoring": "developer_authored_seed",
   "review_status": "requires_legal_review",
-  "target_corpus_release_id": "br-consumer-law-2026-09-12-v4",
-  "target_corpus_sha256": "6b18d3db4b0edb744f69fec3ff865206e22070c74ba14ba24540fcff4a68a1c3",
+  "target_corpus_release_id": "br-consumer-law-2026-10-03-v5",
+  "target_corpus_sha256": "dc29bf8cea1ee296211e3062ee44523b5db30b73e69b4f945bbe4f218cebb777",
   "cases": [
     {
       "case_id": "produto_duravel_com_vicio",

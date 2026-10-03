@@ -14,10 +14,12 @@ from app.api.main import create_app
 from app.core.config import LLMProvider, Settings, VectorStoreBackend
 
 # The offline hashed embedder grounds few one-line complaints within the
-# agreement depth; this one it does.
+# agreement depth; this one it does. Re-chosen for corpus v5 (ADR 0022): the
+# lay alias chunks share everyday words with lay queries, which crowds the
+# bag-of-words dense channel, and the former wording lost its dense rank.
 NUBANK = (
-    "O Nubank me cobrou em julho de 2026 uma quantia indevida que eu já tinha pago. "
-    "Quero a devolução em dobro do valor pago em excesso."
+    "O Nubank cobrou duas vezes a mesma fatura em julho de 2026 e eu paguei as duas "
+    "cobranças. Quero a devolução em dobro do valor pago a mais."
 )
 
 

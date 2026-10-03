@@ -39,13 +39,18 @@ def _facts(
 
 
 def _corpus_chunks(count: int, facts: ConsumerCaseFacts | None = None) -> list:
-    """Chunks that resolve to real provisions, so grounds can be built."""
+    """Official chunks that resolve to real provisions, so grounds can be built.
+
+    Alias chunks (ADR 0022) are left out: the window tests rely on one chunk
+    per provision, and an alias sits beside its unit's official chunk.
+    """
     corpus = get_default_legal_corpus()
     service = _service()
     resolved = [
         chunk
         for chunk in corpus.as_chunks()
-        if any(
+        if chunk.metadata.get("chunk_level") != "alias"
+        and any(
             provision_is_eligible(provision)
             for provision in service._legal_corpus.provisions_for_chunk(
                 RetrievedChunk(chunk=chunk, score=1.0)
@@ -176,8 +181,11 @@ def test_candidates_beyond_the_window_are_ignored() -> None:
     grounds = service._legal_grounds(results, facts, _traces(results))
 
     eligible = {item.chunk.chunk_id for item in ranked[:MAX_GROUND_CANDIDATES]}
-    assert {ground.authority.chunk_id for ground in grounds} <= eligible
-    assert ranked[-1].chunk.chunk_id not in {g.authority.chunk_id for g in grounds}
+    # A ground found through an alias quotes its unit's official chunk; the
+    # retrieved chunk is the alias it records (ADR 0022).
+    retrieved = {g.authority.matched_chunk_id or g.authority.chunk_id for g in grounds}
+    assert retrieved <= eligible
+    assert ranked[-1].chunk.chunk_id not in retrieved
 
 
 def test_no_results_yield_no_grounds() -> None:
