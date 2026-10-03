@@ -32,6 +32,29 @@ from app.schemas.evaluation import (
 )
 
 DATASET_PATH = Path("eval_data/consumer_legal_retrieval")
+HOLDOUT_CASES = frozenset(
+    {
+        "cartao_de_credito_nao_solicitado",
+        "titulo_de_capitalizacao_exigido_no_emprestimo",
+        "preco_da_prateleira_diferente_no_caixa",
+        "conserto_sem_orcamento",
+        "preco_abusivo_durante_enchente",
+        "recusa_de_venda_a_vista",
+        "nome_mantido_no_cadastro_apos_quitacao",
+        "quitacao_antecipada_do_financiamento",
+        "multa_de_cancelamento_da_academia",
+        "pedido_de_acesso_aos_dados_ignorado",
+        "carregador_pegou_fogo",
+        "voo_cancelado_sem_assistencia",
+        "loja_nega_garantia_e_manda_ao_fabricante",
+        "cliente_empresarial_nao_paga",
+        "caucao_retida_pelo_proprietario",
+        "auxilio_doenca_negado_pelo_inss",
+        "restituicao_do_imposto_retida",
+        "batida_de_carro_com_particular",
+        "taxa_extra_do_condominio",
+    }
+)
 
 
 def test_consumer_regression_gates_check_floors_ceilings_and_missing_metrics() -> None:
@@ -136,13 +159,13 @@ def test_seed_dataset_is_separate_versioned_and_explicitly_unreviewed() -> None:
     dataset = load_consumer_legal_dataset(DATASET_PATH)
 
     assert dataset.dataset_id == "consumer-legal-retrieval-seed"
-    assert dataset.version == "2.1.0"
+    assert dataset.version == "2.2.0"
     assert dataset.authoring == "developer_authored_seed"
     assert dataset.review_status == "requires_legal_review"
     assert dataset.source_url.endswith("/l8078compilado.htm")
-    assert len(dataset.cases) == 37
+    assert len(dataset.cases) == 43
     assert len({case.category for case in dataset.cases}) >= 20
-    assert sum(case.no_applicable_ground for case in dataset.cases) == 4
+    assert sum(case.no_applicable_ground for case in dataset.cases) == 10
     assert all(case.slices for case in dataset.cases)
     salary_case = next(case for case in dataset.cases if case.case_id == "salario_atrasado")
     assert salary_case.category == "no_consumer_relationship"
@@ -348,12 +371,23 @@ def test_golden_case_rejects_an_unknown_field() -> None:
         ConsumerLegalGoldenCase.model_validate(payload)
 
 
-def test_dataset_version_is_two_one_zero() -> None:
-    """2.1.0 adds 15 cases: 13 in scope, several on CDC art. 39, and two
-    disputes with no consumer relationship (a traffic fine, a private loan)."""
+def test_dataset_version_is_two_two_zero_with_an_explicit_holdout() -> None:
+    """2.2.0 states every case's split. The holdout is the 13 in-scope cases
+    2.1.0 added, on which no parameter was tuned, and six new disputes with no
+    consumer relationship written without consulting the scope gate's keywords.
+    The traffic-fine and private-loan cases stay in development: the scope
+    keywords were written against them."""
     dataset = load_consumer_legal_dataset(DATASET_PATH)
+    raw = json.loads((DATASET_PATH / "dataset.json").read_text(encoding="utf-8"))
 
-    assert dataset.version == "2.1.0"
+    assert dataset.version == "2.2.0"
+    assert all("split" in case for case in raw["cases"])
+    assert {case.case_id for case in dataset.cases if case.split == "holdout"} == HOLDOUT_CASES
+    new_no_ground = [
+        case for case in dataset.cases if case.no_applicable_ground and case.split == "holdout"
+    ]
+    assert len(new_no_ground) == 6
+    assert all("ground:none" in case.slices for case in new_no_ground)
 
 
 def test_dataset_covers_an_unrequested_service_charge() -> None:

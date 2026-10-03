@@ -238,6 +238,13 @@ async def test_offline_notice_baseline_on_the_seed_dataset() -> None:
     Re-measured on 2026-10-02 for the ground classes (precision and article
     recall, spec 2026-10-02): of the 22 grounds, 2 cite an article the case
     labels and 20 cite one it does not.
+
+    Re-measured on 2026-10-02 for dataset 2.2.0 (six holdout disputes with no
+    consumer relationship; every earlier case unchanged): 26 grounds, 2
+    labelled, 24 unlabelled, still no known-bad citation. All six new cases pass
+    the scope gate and two still get grounds (cliente_empresarial_nao_paga: CDC
+    arts. 18, 104-B § 4 and 20 II; batida_de_carro_com_particular: CDC art. 18),
+    so holdout abstention is 0.667 while development stays 1.0.
     """
 
     summary = await run_notice_evaluation(load_consumer_legal_dataset(DATASET_PATH))
@@ -245,14 +252,22 @@ async def test_offline_notice_baseline_on_the_seed_dataset() -> None:
     assert summary.failed_case_count == 0
     assert summary.totals == {
         "consumer_notice_complementary_grounds": 7,
-        "consumer_notice_grounds": 22,
+        "consumer_notice_grounds": 26,
         "consumer_notice_known_bad_citations": 0,
         "consumer_notice_labelled_grounds": 2,
-        "consumer_notice_unlabelled_grounds": 20,
+        "consumer_notice_unlabelled_grounds": 24,
     }
     assert summary.averages["consumer_notice_exact_recall"] == 0.0
-    assert summary.averages["consumer_notice_abstention"] == 1.0
+    assert summary.averages["consumer_notice_abstention"] == 0.8
     assert summary.averages["consumer_notice_semantic_success"] == 1.0
+    development = summary.by_split["development"].averages
+    holdout = summary.by_split["holdout"].averages
+    assert development["consumer_notice_abstention"] == 1.0
+    assert development["consumer_notice_precision"] == 0.042
+    assert development["consumer_notice_article_recall"] == 0.025
+    assert holdout["consumer_notice_abstention"] == 0.667
+    assert holdout["consumer_notice_precision"] == 0.167
+    assert holdout["consumer_notice_article_recall"] == 0.077
     assert summary.run is not None
     assert summary.run.cutoffs == (8,)
     assert summary.run.ground_policy_version == LEGAL_GROUND_POLICY_VERSION
@@ -287,11 +302,12 @@ async def test_a_failing_case_is_recorded_without_stopping_the_run() -> None:
 
     summary = await evaluator.run(load_consumer_legal_dataset(DATASET_PATH))
 
-    # Every case the scope gate lets through fails: 37 cases in dataset 2.1.0
-    # minus the four no_applicable_ground ones the gate stops first.
+    # Every case the scope gate lets through fails: 43 cases in dataset 2.2.0
+    # minus the four development no-ground cases the gate stops first. The six
+    # holdout no-ground cases pass the gate.
     failed = [case for case in summary.cases if case.retrieval_outcome == "failed"]
-    assert len(failed) == 33
-    assert summary.failed_case_count == 33
+    assert len(failed) == 39
+    assert summary.failed_case_count == 39
     assert all("store offline" in case.errors[0] for case in failed)
     assert failed[0].score("consumer_notice_article_recall") == 0.0
     assert failed[0].score("consumer_notice_precision") is None
@@ -400,14 +416,14 @@ async def test_an_agreement_sweep_retrieves_each_case_once(
     shallow = await evaluator.run(dataset, agreement_max_rank=8)
     default = await evaluator.run(dataset)
 
-    # 37 cases, four of them stopped by the scope gate before retrieval.
-    assert len(calls) == 33
+    # 43 cases, four of them stopped by the scope gate before retrieval.
+    assert len(calls) == 39
     assert shallow.run is not None and shallow.run.agreement_max_rank == 8
     assert default.run is not None and default.run.agreement_max_rank == 13
     assert default.run.ground_verifier == "none"
     # A shallower gate can only drop grounds.
-    assert shallow.totals["consumer_notice_grounds"] == 11
-    assert default.totals["consumer_notice_grounds"] == 22
+    assert shallow.totals["consumer_notice_grounds"] == 14
+    assert default.totals["consumer_notice_grounds"] == 26
 
 
 class _RejectEveryGround:
@@ -429,7 +445,7 @@ async def test_verifier_removals_are_counted_per_case() -> None:
     summary = await evaluator.run(load_consumer_legal_dataset(DATASET_PATH))
 
     assert summary.totals["consumer_notice_grounds"] == 0
-    assert summary.totals["consumer_notice_verifier_removed"] == 22
+    assert summary.totals["consumer_notice_verifier_removed"] == 26
     assert summary.totals["consumer_notice_verifier_failures"] == 0
     assert summary.run is not None and summary.run.ground_verifier == "llm"
 
@@ -462,7 +478,7 @@ def test_cli_prints_an_agreement_sweep(
     table = printed[start : start + 3]
     assert table[0].split()[:4] == ["agreement_max_rank", "grounds", "complementary", "known_bad"]
     assert "labelled" in table[0].split()
-    assert [line.split()[:2] for line in table[1:]] == [["16", "27"], ["20", "33"]]
+    assert [line.split()[:2] for line in table[1:]] == [["16", "31"], ["20", "40"]]
     payload = json.loads(output.read_text(encoding="utf-8"))
     assert sorted(payload["agreement_sweep"]) == ["16", "20"]
     assert payload["agreement_sweep"]["20"]["run"]["agreement_max_rank"] == 20

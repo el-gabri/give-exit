@@ -1,7 +1,7 @@
 {
   "dataset_id": "consumer-legal-retrieval-seed",
-  "version": "2.1.0",
-  "description": "Developer-authored seed for offline retrieval evaluation from lay Brazilian consumer complaints to CDC provisions, with LGPD and Civil Code complements. It is not a production legal golden until specialist review.",
+  "version": "2.2.0",
+  "description": "Developer-authored seed for offline retrieval evaluation from lay Brazilian consumer complaints to CDC provisions, with LGPD and Civil Code complements. It is not a production legal golden until specialist review. Development cases may inform parameter choices; holdout cases are only reported, and a holdout case whose result informed a decision moves to development in the next version.",
   "source_url": "https://www.planalto.gov.br/ccivil_03/leis/l8078compilado.htm",
   "authoring": "developer_authored_seed",
   "review_status": "requires_legal_review",
@@ -35,7 +35,8 @@
       "hard_negatives": [
         "br-cdc-art-14",
         "br-cdc-art-49"
-      ]
+      ],
+      "split": "development"
     },
     {
       "case_id": "servico_de_reparo_malfeito",
@@ -64,7 +65,8 @@
       "hard_negatives": [
         "br-cdc-art-18",
         "br-cdc-art-49"
-      ]
+      ],
+      "split": "development"
     },
     {
       "case_id": "oferta_nao_entregue",
@@ -92,7 +94,8 @@
       "hard_negatives": [
         "br-cdc-art-18",
         "br-cdc-art-49"
-      ]
+      ],
+      "split": "development"
     },
     {
       "case_id": "arrependimento_compra_online",
@@ -121,7 +124,8 @@
       "hard_negatives": [
         "br-cdc-art-18",
         "br-cdc-art-26"
-      ]
+      ],
+      "split": "development"
     },
     {
       "case_id": "publicidade_enganosa_por_omissao",
@@ -149,7 +153,8 @@
       "hard_negatives": [
         "br-cdc-art-37-paragrafo-2",
         "br-cdc-art-42"
-      ]
+      ],
+      "split": "development"
     },
     {
       "case_id": "venda_casada_seguro",
@@ -172,7 +177,8 @@
       "hard_negatives": [
         "br-cdc-art-39-inciso-iii",
         "br-cdc-art-49"
-      ]
+      ],
+      "split": "development"
     },
     {
       "case_id": "cobranca_indevida_ja_paga",
@@ -195,7 +201,8 @@
       "hard_negatives": [
         "br-cdc-art-42-caput",
         "br-cdc-art-43"
-      ]
+      ],
+      "split": "development"
     },
     {
       "case_id": "cobranca_com_ameacas",
@@ -218,7 +225,8 @@
       "hard_negatives": [
         "br-cdc-art-42-paragrafo-unico",
         "br-cdc-art-49"
-      ]
+      ],
+      "split": "development"
     },
     {
       "case_id": "negativacao_sem_aviso",
@@ -241,7 +249,8 @@
       "hard_negatives": [
         "br-cdc-art-42",
         "br-cdc-art-43-paragrafo-5"
-      ]
+      ],
+      "split": "development"
     },
     {
       "case_id": "contrato_ilegivel_e_limitacao_oculta",
@@ -275,7 +284,8 @@
       "hard_negatives": [
         "br-cdc-art-49",
         "br-cdc-art-54-paragrafo-5"
-      ]
+      ],
+      "split": "development"
     },
     {
       "case_id": "interrupcao_servico_essencial",
@@ -304,7 +314,8 @@
       "hard_negatives": [
         "br-cdc-art-20",
         "br-cdc-art-49"
-      ]
+      ],
+      "split": "development"
     },
     {
       "case_id": "alergeno_omitido_no_rotulo",
@@ -339,7 +350,8 @@
       "hard_negatives": [
         "br-cdc-art-20",
         "br-cdc-art-49"
-      ]
+      ],
+      "split": "development"
     },
     {
       "case_id": "superendividamento_e_minimo_existencial",
@@ -368,7 +380,8 @@
       "hard_negatives": [
         "br-cdc-art-54-e",
         "br-cdc-art-42-paragrafo-unico"
-      ]
+      ],
+      "split": "development"
     },
     {
       "case_id": "conflito_entre_vizinhos",
@@ -386,7 +399,8 @@
         "br-cdc-art-3",
         "br-cdc-art-22"
       ],
-      "no_applicable_ground": true
+      "no_applicable_ground": true,
+      "split": "development"
     },
     {
       "case_id": "salario_atrasado",
@@ -404,7 +418,8 @@
         "br-cdc-art-3-paragrafo-2",
         "br-cdc-art-42"
       ],
-      "no_applicable_ground": true
+      "no_applicable_ground": true,
+      "split": "development"
     },
     {
       "case_id": "vazamento_de_dados_cadastrais",
@@ -446,7 +461,8 @@
       "hard_negatives": [
         "br-lgpd-art-52",
         "br-cdc-art-49"
-      ]
+      ],
+      "split": "development"
     },
     {
       "case_id": "pedido_de_exclusao_de_dados_ignorado",
@@ -476,7 +492,8 @@
       "hard_negatives": [
         "br-lgpd-art-55-j",
         "br-cdc-art-42"
-      ]
+      ],
+      "split": "development"
     },
     {
       "case_id": "compartilhamento_de_dados_sem_consentimento",
@@ -512,7 +529,8 @@
       "hard_negatives": [
         "br-lgpd-art-52",
         "br-cdc-art-49"
-      ]
+      ],
+      "split": "development"
     },
     {
       "case_id": "pagamento_em_duplicidade_nao_devolvido",
@@ -542,7 +560,8 @@
       "hard_negatives": [
         "br-cc-art-42",
         "br-lgpd-art-42"
-      ]
+      ],
+      "split": "development"
     },
     {
       "case_id": "atraso_na_devolucao_combinada",
@@ -572,7 +591,8 @@
       "hard_negatives": [
         "br-cdc-art-26",
         "br-cc-art-42"
-      ]
+      ],
+      "split": "development"
     },
     {
       "case_id": "renuncia_antecipada_em_contrato_de_adesao",
@@ -602,7 +622,8 @@
       "hard_negatives": [
         "br-cdc-art-49",
         "br-lgpd-art-46"
-      ]
+      ],
+      "split": "development"
     },
     {
       "case_id": "cobranca_de_servico_nao_solicitado",
@@ -639,7 +660,8 @@
         "br-cc-art-880",
         "br-cc-art-881",
         "br-cdc-art-54-g"
-      ]
+      ],
+      "split": "development"
     },
     {
       "case_id": "cartao_de_credito_nao_solicitado",
@@ -668,7 +690,8 @@
       "hard_negatives": [
         "br-cdc-art-49",
         "br-cdc-art-18"
-      ]
+      ],
+      "split": "holdout"
     },
     {
       "case_id": "titulo_de_capitalizacao_exigido_no_emprestimo",
@@ -691,7 +714,8 @@
       "hard_negatives": [
         "br-cdc-art-49",
         "br-cdc-art-18"
-      ]
+      ],
+      "split": "holdout"
     },
     {
       "case_id": "preco_da_prateleira_diferente_no_caixa",
@@ -719,7 +743,8 @@
       "hard_negatives": [
         "br-cdc-art-18",
         "br-cdc-art-42-paragrafo-unico"
-      ]
+      ],
+      "split": "holdout"
     },
     {
       "case_id": "conserto_sem_orcamento",
@@ -748,7 +773,8 @@
       "hard_negatives": [
         "br-cdc-art-49",
         "br-cdc-art-18"
-      ]
+      ],
+      "split": "holdout"
     },
     {
       "case_id": "preco_abusivo_durante_enchente",
@@ -777,7 +803,8 @@
       "hard_negatives": [
         "br-cdc-art-49",
         "br-cdc-art-18"
-      ]
+      ],
+      "split": "holdout"
     },
     {
       "case_id": "recusa_de_venda_a_vista",
@@ -800,7 +827,8 @@
       "hard_negatives": [
         "br-cdc-art-49",
         "br-cdc-art-18"
-      ]
+      ],
+      "split": "holdout"
     },
     {
       "case_id": "nome_mantido_no_cadastro_apos_quitacao",
@@ -823,7 +851,8 @@
       "hard_negatives": [
         "br-cdc-art-43-paragrafo-2",
         "br-cdc-art-42-paragrafo-unico"
-      ]
+      ],
+      "split": "holdout"
     },
     {
       "case_id": "quitacao_antecipada_do_financiamento",
@@ -846,7 +875,8 @@
       "hard_negatives": [
         "br-cdc-art-52-paragrafo-1",
         "br-cdc-art-49"
-      ]
+      ],
+      "split": "holdout"
     },
     {
       "case_id": "multa_de_cancelamento_da_academia",
@@ -875,7 +905,8 @@
       "hard_negatives": [
         "br-cdc-art-49",
         "br-cdc-art-42-paragrafo-unico"
-      ]
+      ],
+      "split": "holdout"
     },
     {
       "case_id": "pedido_de_acesso_aos_dados_ignorado",
@@ -916,7 +947,8 @@
       "hard_negatives": [
         "br-lgpd-art-18-inciso-vi",
         "br-cdc-art-49"
-      ]
+      ],
+      "split": "holdout"
     },
     {
       "case_id": "carregador_pegou_fogo",
@@ -945,7 +977,8 @@
       "hard_negatives": [
         "br-cdc-art-18",
         "br-cdc-art-26"
-      ]
+      ],
+      "split": "holdout"
     },
     {
       "case_id": "voo_cancelado_sem_assistencia",
@@ -974,7 +1007,8 @@
       "hard_negatives": [
         "br-cdc-art-18",
         "br-cdc-art-49"
-      ]
+      ],
+      "split": "holdout"
     },
     {
       "case_id": "loja_nega_garantia_e_manda_ao_fabricante",
@@ -1003,7 +1037,8 @@
       "hard_negatives": [
         "br-cdc-art-12",
         "br-cdc-art-49"
-      ]
+      ],
+      "split": "holdout"
     },
     {
       "case_id": "multa_de_transito",
@@ -1020,7 +1055,8 @@
         "br-cdc-art-42",
         "br-cdc-art-6-inciso-vi"
       ],
-      "no_applicable_ground": true
+      "no_applicable_ground": true,
+      "split": "development"
     },
     {
       "case_id": "emprestimo_entre_amigos",
@@ -1037,7 +1073,117 @@
         "br-cdc-art-42",
         "br-cdc-art-52"
       ],
-      "no_applicable_ground": true
+      "no_applicable_ground": true,
+      "split": "development"
+    },
+    {
+      "case_id": "cliente_empresarial_nao_paga",
+      "category": "no_consumer_relationship",
+      "slices": [
+        "ground:none",
+        "domain:b2b",
+        "wording:lay"
+      ],
+      "complaint": "Tenho uma pequena gráfica e imprimi cinco mil folhetos para uma rede de academias. Entreguei tudo no prazo, emiti a nota fiscal e a empresa não paga há três meses.",
+      "desired_resolution": "Quero receber o valor da nota fiscal com correção.",
+      "relevant": [],
+      "hard_negatives": [
+        "br-cdc-art-2",
+        "br-cdc-art-35",
+        "br-cdc-art-42"
+      ],
+      "no_applicable_ground": true,
+      "split": "holdout"
+    },
+    {
+      "case_id": "caucao_retida_pelo_proprietario",
+      "category": "no_consumer_relationship",
+      "slices": [
+        "ground:none",
+        "domain:private_lease",
+        "wording:lay"
+      ],
+      "complaint": "Aluguei um apartamento direto com o dono, sem imobiliária. Saí do imóvel há dois meses, devolvi as chaves e ele ainda não devolveu o depósito de caução de três aluguéis.",
+      "desired_resolution": "Quero a devolução do depósito de caução.",
+      "relevant": [],
+      "hard_negatives": [
+        "br-cdc-art-42",
+        "br-cdc-art-51"
+      ],
+      "no_applicable_ground": true,
+      "split": "holdout"
+    },
+    {
+      "case_id": "auxilio_doenca_negado_pelo_inss",
+      "category": "no_consumer_relationship",
+      "slices": [
+        "ground:none",
+        "domain:social_security",
+        "wording:lay"
+      ],
+      "complaint": "Pedi auxílio-doença ao INSS depois de uma cirurgia no joelho e o pedido foi negado, mesmo com os laudos do médico dizendo que não posso trabalhar.",
+      "desired_resolution": "Quero que o benefício seja concedido desde a data do pedido.",
+      "relevant": [],
+      "hard_negatives": [
+        "br-cdc-art-22",
+        "br-cdc-art-6-inciso-x"
+      ],
+      "no_applicable_ground": true,
+      "split": "holdout"
+    },
+    {
+      "case_id": "restituicao_do_imposto_retida",
+      "category": "no_consumer_relationship",
+      "slices": [
+        "ground:none",
+        "domain:tax",
+        "wording:lay"
+      ],
+      "complaint": "Minha declaração do imposto de renda caiu na malha fina por causa de um recibo médico e a restituição está retida há um ano, mesmo eu tendo mandado os documentos pedidos pela Receita Federal.",
+      "desired_resolution": "Quero liberar a restituição com a correção.",
+      "relevant": [],
+      "hard_negatives": [
+        "br-cdc-art-22",
+        "br-cdc-art-42"
+      ],
+      "no_applicable_ground": true,
+      "split": "holdout"
+    },
+    {
+      "case_id": "batida_de_carro_com_particular",
+      "category": "no_consumer_relationship",
+      "slices": [
+        "ground:none",
+        "domain:traffic_accident",
+        "wording:lay"
+      ],
+      "complaint": "Um motorista bateu na traseira do meu carro no semáforo, admitiu a culpa na hora, mas agora não atende minhas ligações nem paga o conserto do para-choque.",
+      "desired_resolution": "Quero que ele pague o orçamento do conserto.",
+      "relevant": [],
+      "hard_negatives": [
+        "br-cdc-art-12",
+        "br-cdc-art-14"
+      ],
+      "no_applicable_ground": true,
+      "split": "holdout"
+    },
+    {
+      "case_id": "taxa_extra_do_condominio",
+      "category": "no_consumer_relationship",
+      "slices": [
+        "ground:none",
+        "domain:condominium",
+        "wording:lay"
+      ],
+      "complaint": "O condomínio aprovou uma taxa extra para reformar a fachada numa assembleia da qual não fui avisado, e agora a administração cobra a taxa junto com a mensalidade.",
+      "desired_resolution": "Quero suspender a cobrança da taxa extra até uma nova assembleia.",
+      "relevant": [],
+      "hard_negatives": [
+        "br-cdc-art-39-inciso-iii",
+        "br-cdc-art-42"
+      ],
+      "no_applicable_ground": true,
+      "split": "holdout"
     }
   ]
 }
