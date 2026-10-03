@@ -87,6 +87,11 @@ back safely. Embeddings are independent.
   ground; the LGPD can ground a data-protection notice on its own (ADR 0020).
 - Statutory chunks preserve law, article, subdivision, official URL, release,
   status and source hashes.
+- Each citable CDC, LGPD and Constitution unit may carry two to four lay sentences
+  (`app/consumer/data/aliases/aliases.json`), indexed as a separate alias chunk so a
+  complaint in everyday words can reach it. An alias is never quoted: a ground found
+  through one cites the unit's official text and records the alias that matched
+  (ADR 0022).
 - Legal retrieval is hybrid because exact article references and institutional
   language complement semantic paraphrase matching.
 - Retrieved chunks are candidates, not automatically accepted authorities. A
@@ -380,6 +385,21 @@ The refresher records the user agent it used, writes nothing when the
 extracted text is unchanged, and writes new snapshots as `pending_review`;
 compare a sample of articles with the official page before promoting a
 snapshot and building a new corpus release.
+
+Aliases are generated offline from the statute text alone, one LLM call per article,
+with the configured LLM provider; the generator never reads the golden set:
+
+```bash
+python -m app.consumer.generate_aliases --dry-run --article br-cdc-art-39
+python -m app.consumer.generate_aliases
+```
+
+The committed file was generated with `--model gpt-5.6-terra --reasoning-effort low`;
+a reasoning model needs `--reasoning-effort`, because it rejects temperature 0.
+The run resumes after an interruption and never replaces an entry marked `reviewed`
+or `rejected` unless `--force` is given. Edit an entry's aliases by hand and set it to
+`reviewed`, or set `rejected` to keep it out of the index. Corpus load refuses an entry
+generated from statute text that has since changed.
 
 At query time, embedding calls have a timeout, concurrency bound, short-lived
 query-hash cache and circuit breaker. The concurrency bound is a queue, not a

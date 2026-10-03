@@ -78,6 +78,11 @@ forma determinística; saída inválida aciona o compositor determinístico.
   de contrato) não é citado nem indexado.
 - Os chunks preservam lei, artigo, subdivisão, URL oficial, release, vigência e
   hashes de origem.
+- Cada unidade citável do CDC, da LGPD e da Constituição pode ter de duas a quatro
+  frases leigas (`app/consumer/data/aliases/aliases.json`), indexadas como um chunk de
+  alias separado, para que um relato em palavras comuns a alcance. Um alias nunca é
+  citado: o fundamento encontrado por ele cita o texto oficial da unidade e registra o
+  alias que o encontrou (ADR 0022).
 - A recuperação jurídica combina semântica e correspondência lexical exata.
 - O principal controle de precisão é a concordância: um artigo só vira
   fundamento quando a busca densa e a lexical o colocam entre os 13 primeiros.
@@ -272,6 +277,22 @@ O refresher registra o user agent usado, não grava nada quando o texto extraíd
 não mudou e grava snapshots novos como `pending_review`; confira artigos por
 amostragem na página oficial antes de promover o snapshot e de gerar um novo
 release do corpus.
+
+Os aliases são gerados offline só a partir do texto da lei, com uma chamada ao LLM
+configurado por artigo; o gerador nunca lê o golden set:
+
+```bash
+python -m app.consumer.generate_aliases --dry-run --article br-cdc-art-39
+python -m app.consumer.generate_aliases
+```
+
+O arquivo versionado foi gerado com `--model gpt-5.6-terra --reasoning-effort low`;
+um modelo de raciocínio precisa de `--reasoning-effort`, porque recusa temperatura 0.
+A execução continua de onde parou após uma interrupção e nunca substitui uma entrada
+marcada como `reviewed` ou `rejected`, a menos que se use `--force`. Edite os aliases
+de uma entrada à mão e marque-a como `reviewed`, ou marque `rejected` para tirá-la do
+índice. O carregamento do corpus recusa uma entrada gerada a partir de um texto legal
+que mudou depois.
 
 Nas consultas, timeout, limite de concorrência, cache por hash e circuit breaker
 protegem o modelo local. Se ele falhar, o modo híbrido pode degradar para busca
