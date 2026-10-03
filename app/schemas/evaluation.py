@@ -83,6 +83,18 @@ class CaseResult(BaseModel):
         return None
 
 
+class MetricInterval(BaseModel):
+    """A bootstrap confidence interval for one averaged metric or difference."""
+
+    model_config = ConfigDict(frozen=True)
+
+    low: float
+    high: float
+    level: float = Field(gt=0.0, lt=1.0)
+    resamples: int = Field(ge=1)
+    seed: int
+
+
 class EvaluationGroupSummary(BaseModel):
     """Metric aggregates and failure coverage for one case segment."""
 
@@ -90,6 +102,7 @@ class EvaluationGroupSummary(BaseModel):
     failed_case_count: int = Field(ge=0)
     failure_rate: float = Field(ge=0.0, le=1.0)
     averages: dict[str, float] = Field(default_factory=dict)
+    intervals: dict[str, MetricInterval] = Field(default_factory=dict)
     metric_case_counts: dict[str, int] = Field(default_factory=dict)
 
 
@@ -160,6 +173,7 @@ class EvaluationSummary(BaseModel):
 
     cases: list[CaseResult] = Field(default_factory=list)
     averages: dict[str, float] = Field(default_factory=dict)
+    intervals: dict[str, MetricInterval] = Field(default_factory=dict)
     totals: dict[str, int] = Field(default_factory=dict)
     metric_case_counts: dict[str, int] = Field(default_factory=dict)
     metric_directions: dict[str, MetricDirection] = Field(default_factory=dict)

@@ -485,6 +485,7 @@ async def test_builtin_offline_hybrid_retriever_returns_auditable_legal_hits() -
     assert summary.run is not None
     assert summary.run.retrieval.configuration_complete is True
     assert summary.run.retrieval.embedding_model == "mock-hashed-bow-v1:128"
+    assert set(summary.intervals) == set(summary.averages)
 
 
 def _split_dataset() -> ConsumerLegalGoldenDataset:

@@ -27,6 +27,7 @@ from app.evaluation.consumer_golden import (
     load_consumer_legal_dataset,
     validate_consumer_legal_labels,
 )
+from app.evaluation.intervals import with_intervals
 from app.schemas.evaluation import (
     CASE_SPLITS,
     LEGAL_UNIT_MARKERS,
@@ -397,7 +398,7 @@ class ConsumerLegalRetrievalEvaluator:
             retrieval=retrieval,
             case_split=dataset.case_split,
         )
-        return EvaluationSummary.from_cases(results, run=run)
+        return with_intervals(EvaluationSummary.from_cases(results, run=run))
 
     async def _run_case(self, case: ConsumerLegalGoldenCase) -> CaseResult:
         queries: list[str] = []

@@ -268,6 +268,8 @@ async def test_offline_notice_baseline_on_the_seed_dataset() -> None:
     assert holdout["consumer_notice_abstention"] == 0.667
     assert holdout["consumer_notice_precision"] == 0.167
     assert holdout["consumer_notice_article_recall"] == 0.077
+    assert set(summary.intervals) == set(summary.averages)
+    assert set(summary.by_split["holdout"].intervals) == set(holdout)
     assert summary.run is not None
     assert summary.run.cutoffs == (8,)
     assert summary.run.ground_policy_version == LEGAL_GROUND_POLICY_VERSION

@@ -37,6 +37,7 @@ from app.evaluation.consumer_retrievers import (
     prepare_evaluation_pipeline,
 )
 from app.evaluation.consumer_runner import QUERY_BUILDER_VERSION, query_hashes
+from app.evaluation.intervals import with_intervals
 from app.rag.pipeline import RagPipeline
 from app.schemas.evaluation import (
     LEGAL_UNIT_MARKERS,
@@ -278,7 +279,7 @@ class ConsumerNoticeGroundEvaluator:
             ground_verifier=self._verifier_mode.value,
             case_split=dataset.case_split,
         )
-        return EvaluationSummary.from_cases(cases, run=run)
+        return with_intervals(EvaluationSummary.from_cases(cases, run=run))
 
     async def _run_case(
         self, case: ConsumerLegalGoldenCase, doc_id: str, agreement_max_rank: int
