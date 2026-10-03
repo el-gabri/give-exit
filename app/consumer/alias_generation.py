@@ -151,14 +151,13 @@ async def generate_aliases(
 
     entries = {entry.unit_key: entry for entry in alias_set.entries}
     order = {key: index for index, key in enumerate(_corpus_order(corpus))}
-    stale_prompt = alias_set.prompt_version != ALIAS_PROMPT_VERSION
     report = GenerationReport()
     current = alias_set
     for request in alias_requests(corpus, articles=articles):
         pending = [
             key
             for key, source in request.sources.items()
-            if _needs_generation(entries.get(key), source, force=force, stale_prompt=stale_prompt)
+            if _needs_generation(entries.get(key), source, force=force)
         ]
         report.skipped += len(request.sources) - len(pending)
         if not pending:
@@ -172,7 +171,7 @@ async def generate_aliases(
             reasoning_effort=reasoning_effort,
             max_output_tokens=ALIAS_MAX_OUTPUT_TOKENS,
         )
-        entries.update(_new_entries(request, pending, result.data, report))
+        _replace(entries, pending, _new_entries(request, pending, result.data, report))
         current = AliasSet(
             prompt_version=ALIAS_PROMPT_VERSION,
             prompt_sha256=PROMPT_SHA256,
@@ -199,14 +198,30 @@ def render_report(report: GenerationReport) -> str:
     return "\n".join(lines)
 
 
-def _needs_generation(
-    entry: AliasEntry | None, source: str, *, force: bool, stale_prompt: bool
-) -> bool:
+def _needs_generation(entry: AliasEntry | None, source: str, *, force: bool) -> bool:
     if entry is None or force:
         return True
     if entry.status != "generated":
         return False
-    return stale_prompt or entry.source_sha256 != sha256_hex(source)
+    return entry.prompt_version != ALIAS_PROMPT_VERSION or entry.source_sha256 != sha256_hex(
+        source
+    )
+
+
+def _replace(
+    entries: dict[str, AliasEntry], pending: list[str], new: dict[str, AliasEntry]
+) -> None:
+    """Install the new entries; drop a pending generated entry that got none.
+
+    A stale entry must not outlive the run that was meant to replace it, or an
+    older prompt's aliases would sit under the current manifest. Entries a
+    person reviewed or rejected are kept when a forced run brings nothing.
+    """
+    for key in pending:
+        if key in new:
+            entries[key] = new[key]
+        elif key in entries and entries[key].status == "generated":
+            del entries[key]
 
 
 def _new_entries(
@@ -234,6 +249,7 @@ def _new_entries(
             provision_id=request.provision_id,
             source_sha256=sha256_hex(request.sources[key]),
             aliases=tuple(aliases[:MAX_ALIASES]),
+            prompt_version=ALIAS_PROMPT_VERSION,
         )
         report.written.append(key)
     return entries

@@ -318,11 +318,16 @@ async def test_a_reasoning_model_is_called_through_its_effort_not_a_temperature(
 async def test_a_new_prompt_version_regenerates_only_generated_entries() -> None:
     first, _, _ = await _run(_FakeLLM(), _empty(), "br-cdc-art-39")
     key = "br-cdc-art-39-inciso-i"
+    # Staleness is per entry: the manifest may already name the current prompt
+    # (an interrupted run) while some entries still come from an older one.
     older = first.model_copy(
         update={
-            "prompt_version": "consumer-lay-aliases:v0",
             "entries": tuple(
-                entry.model_copy(update={"status": "reviewed"}) if entry.unit_key == key else entry
+                entry.model_copy(
+                    update={"status": "reviewed", "prompt_version": "consumer-lay-aliases:v0"}
+                )
+                if entry.unit_key == key
+                else entry.model_copy(update={"prompt_version": "consumer-lay-aliases:v0"})
                 for entry in first.entries
             ),
         }
@@ -345,4 +350,47 @@ def test_the_prompt_asks_for_the_units_distinguishing_condition() -> None:
     assert "distingue" in prompt
     assert "lista vazia" in prompt
     assert ALIAS_PROMPT_VERSION == "consumer-lay-aliases:v2"
+
+
+async def test_new_entries_record_the_current_prompt_version() -> None:
+    result, _, _ = await _run(_FakeLLM(), _empty(), "br-cf-art-5-xxxii")
+
+    assert {entry.prompt_version for entry in result.entries} == {ALIAS_PROMPT_VERSION}
+
+
+async def test_a_stale_entry_without_a_valid_replacement_is_dropped_not_kept() -> None:
+    first, _, _ = await _run(_FakeLLM(), _empty(), "br-cdc-art-39")
+    short_key, missing_key, reviewed_key = (
+        "br-cdc-art-39-inciso-i",
+        "br-cdc-art-39-inciso-ii",
+        "br-cdc-art-39-inciso-iii",
+    )
+    stale = first.model_copy(
+        update={
+            "entries": tuple(
+                entry.model_copy(
+                    update={
+                        "prompt_version": None,
+                        "status": "reviewed" if entry.unit_key == reviewed_key else "generated",
+                    }
+                )
+                for entry in first.entries
+            )
+        }
+    )
+    llm = _FakeLLM(overrides={short_key: [], reviewed_key: []})
+
+    async def omit_missing(**kwargs: Any) -> ParsedResult[Any]:
+        result = await _FakeLLM.parse(llm, **kwargs)
+        units = [unit for unit in result.data.units if unit.unit_key != missing_key]
+        return ParsedResult(data=result.data.model_copy(update={"units": units}), meta=result.meta)
+
+    llm.parse = omit_missing  # type: ignore[method-assign]
+    result, report, _ = await _run(llm, stale, "br-cdc-art-39", force=True)
+
+    keys = {entry.unit_key for entry in result.entries}
+    assert short_key not in keys and missing_key not in keys
+    assert short_key in report.short and missing_key in report.missing
+    # A human-owned entry survives a forced run that brought nothing better.
+    assert reviewed_key in keys
 

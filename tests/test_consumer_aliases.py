@@ -141,3 +141,16 @@ def test_a_hand_edited_file_with_bom_and_crlf_loads(tmp_path: Path) -> None:
     path.write_bytes(b"\xef\xbb\xbf" + text.encode("utf-8"))
 
     assert load_alias_set(path).entries[0].aliases == (FIRST, SECOND)
+
+
+def test_an_entry_records_the_prompt_version_it_came_from() -> None:
+    legacy = _entry()
+    current = _entry(prompt_version="consumer-lay-aliases:v2")
+
+    assert legacy.prompt_version is None
+    assert current.prompt_version == "consumer-lay-aliases:v2"
+    assert (
+        AliasSet(prompt_version="p", entries=(legacy,)).identity()
+        != AliasSet(prompt_version="p", entries=(current,)).identity()
+    )
+

@@ -67,6 +67,9 @@ class AliasEntry(BaseModel):
     source_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     aliases: tuple[str, ...] = Field(min_length=2, max_length=4)
     status: AliasStatus = "generated"
+    # The generator prompt this entry came from; None for entries written before
+    # entries recorded it. A generated entry from an older prompt is regenerated.
+    prompt_version: str | None = None
 
     @field_validator("aliases", mode="before")
     @classmethod
@@ -137,6 +140,7 @@ class AliasSet(BaseModel):
                     "source_sha256": entry.source_sha256,
                     "aliases": list(entry.aliases),
                     "status": entry.status,
+                    "prompt_version": entry.prompt_version,
                 }
                 for entry in self.indexed
             ],
