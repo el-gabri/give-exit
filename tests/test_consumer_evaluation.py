@@ -15,13 +15,16 @@ from app.consumer.legal_corpus import get_default_legal_corpus
 from app.consumer.schemas import ProvisionStatus
 from app.evaluation import consumer_runner
 from app.evaluation.consumer_golden import dataset_split, load_consumer_legal_dataset
-from app.evaluation.consumer_retrievers import offline_hybrid_retriever
+from app.evaluation.consumer_retrievers import _LazyConsumerRetriever, offline_hybrid_retriever
 from app.evaluation.consumer_runner import (
     ConsumerLegalRetrievalEvaluator,
     check_consumer_gates,
     consumer_legal_metrics_at_k,
     normalize_consumer_retrieval_hit,
 )
+from app.rag.embeddings import MockEmbeddingClient
+from app.rag.pipeline import RagPipeline
+from app.rag.vector_store import InMemoryVectorStore
 from app.schemas.evaluation import (
     CaseResult,
     ConsumerLegalGoldenCase,
@@ -587,3 +590,29 @@ def test_cli_rejects_a_split_the_dataset_lacks(
 
     assert excinfo.value.code == 2
     assert "no holdout cases" in capsys.readouterr().err
+
+
+class _BrokenQueryEmbedder(MockEmbeddingClient):
+    async def embed_queries(self, texts: list[str]) -> list[list[float]]:
+        raise RuntimeError("synthetic outage")
+
+
+async def test_a_degraded_retrieval_fails_the_case_instead_of_scoring_lexical_only() -> None:
+    retriever = _LazyConsumerRetriever(
+        lambda _corpus: RagPipeline(_BrokenQueryEmbedder(), InMemoryVectorStore()),
+        retriever_id="degraded_fixture",
+    )
+    dataset = ConsumerLegalGoldenDataset(
+        dataset_id="degraded-fixture",
+        version="1.0.0",
+        description="Small deterministic evaluator fixture for degraded retrieval.",
+        source_url="https://www.planalto.gov.br/ccivil_03/leis/l8078compilado.htm",
+        authoring="developer_authored_seed",
+        review_status="requires_legal_review",
+        cases=(_case(),),
+    )
+
+    summary = await ConsumerLegalRetrievalEvaluator(retriever).run(dataset)
+
+    assert summary.failed_case_count == 1
+    assert "retrieval degraded: lexical_only" in summary.cases[0].errors[0]

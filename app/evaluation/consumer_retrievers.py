@@ -17,6 +17,10 @@ from app.schemas.rag import RetrievedChunk
 PipelineFactory = Callable[[LegalCorpus], RagPipeline]
 
 
+class DegradedRetrievalError(RuntimeError):
+    """An evaluation query fell back from hybrid retrieval to one channel."""
+
+
 class _LazyConsumerRetriever:
     """Index one corpus once and reuse it for every golden query."""
 
@@ -30,12 +34,14 @@ class _LazyConsumerRetriever:
 
     async def __call__(self, query: str, k: int) -> list[RetrievedChunk]:
         pipeline, doc_id = await self._ready()
-        return await pipeline.retrieve(
-            query,
-            doc_id=doc_id,
-            k=k,
-            mode=RetrievalMode.HYBRID,
+        results, trace = await pipeline.retrieve_with_trace(
+            query, doc_id=doc_id, agent="direct", k=k, mode=RetrievalMode.HYBRID
         )
+        if trace.degraded_mode:
+            # Scored as hybrid, a lexical-only fallback would pass for the
+            # configured stack's result; a failed case makes the run exit 2.
+            raise DegradedRetrievalError(f"retrieval degraded: {trace.degraded_mode}")
+        return results
 
     async def evaluation_configuration(
         self, requested_k: int
