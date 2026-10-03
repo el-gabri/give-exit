@@ -13,7 +13,7 @@ from app.evaluation import label_ranks
 from app.evaluation.consumer_golden import load_consumer_legal_dataset
 from app.evaluation.consumer_retrievers import offline_pipeline, prepare_evaluation_pipeline
 from app.evaluation.label_ranks import LabelRank, label_ranks_for_case, rank_labels
-from app.schemas.evaluation import ConsumerLegalRelevance
+from app.schemas.evaluation import ConsumerLegalGoldenCase, ConsumerLegalRelevance
 from app.schemas.rag import Chunk, RetrievedChunk
 
 DATASET_PATH = Path("eval_data/consumer_legal_retrieval")
@@ -119,3 +119,20 @@ async def test_cli_prints_the_table_and_writes_json(
     assert {"case_id", "label", "dense", "lexical", "agreement_depth", "verdict"} <= set(
         payload["labels"][0]
     )
+
+
+async def test_cli_ranks_one_split(tmp_path: Path) -> None:
+    dataset = load_consumer_legal_dataset(DATASET_PATH)
+    first = dataset.cases[0]
+    holdout = ConsumerLegalGoldenCase.model_validate(
+        {**first.model_dump(mode="json"), "case_id": "holdout_fixture", "split": "holdout"}
+    )
+    subset = dataset.model_copy(update={"cases": (first, holdout)})
+    dataset_path = tmp_path / "dataset.json"
+    dataset_path.write_text(subset.model_dump_json(), encoding="utf-8")
+    output = tmp_path / "ranks.json"
+
+    await label_ranks._cli([str(dataset_path), "--split", "holdout", "--output", str(output)])
+
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    assert {label["case_id"] for label in payload["labels"]} == {"holdout_fixture"}

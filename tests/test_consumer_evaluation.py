@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -11,7 +13,8 @@ from pydantic import ValidationError
 
 from app.consumer.legal_corpus import get_default_legal_corpus
 from app.consumer.schemas import ProvisionStatus
-from app.evaluation.consumer_golden import load_consumer_legal_dataset
+from app.evaluation import consumer_runner
+from app.evaluation.consumer_golden import dataset_split, load_consumer_legal_dataset
 from app.evaluation.consumer_retrievers import offline_hybrid_retriever
 from app.evaluation.consumer_runner import (
     ConsumerLegalRetrievalEvaluator,
@@ -448,3 +451,104 @@ async def test_builtin_offline_hybrid_retriever_returns_auditable_legal_hits() -
     assert summary.run is not None
     assert summary.run.retrieval.configuration_complete is True
     assert summary.run.retrieval.embedding_model == "mock-hashed-bow-v1:128"
+
+
+def _split_dataset() -> ConsumerLegalGoldenDataset:
+    holdout = ConsumerLegalGoldenCase.model_validate(
+        {**_case().model_dump(mode="json"), "case_id": "holdout_fixture", "split": "holdout"}
+    )
+    return ConsumerLegalGoldenDataset(
+        dataset_id="split-fixture",
+        version="1.0.0",
+        description="Small deterministic evaluator fixture for golden splits.",
+        source_url="https://www.planalto.gov.br/ccivil_03/leis/l8078compilado.htm",
+        authoring="developer_authored_seed",
+        review_status="requires_legal_review",
+        cases=(_case(), holdout),
+    )
+
+
+def _write_dataset(path: Path, dataset: ConsumerLegalGoldenDataset) -> Path:
+    path.write_text(dataset.model_dump_json(), encoding="utf-8")
+    return path
+
+
+def test_golden_cases_default_to_development_and_reject_unknown_splits() -> None:
+    payload = _case().model_dump(mode="json")
+
+    assert _case().split == "development"
+    assert ConsumerLegalGoldenCase.model_validate({**payload, "split": "holdout"}).split == (
+        "holdout"
+    )
+    with pytest.raises(ValidationError, match="split"):
+        ConsumerLegalGoldenCase.model_validate({**payload, "split": "test"})
+
+
+def test_dataset_split_keeps_only_the_requested_cases() -> None:
+    dataset = _split_dataset()
+    development = dataset_split(dataset, "development")
+
+    assert dataset_split(dataset, "all") is dataset
+    assert [case.case_id for case in dataset_split(dataset, "holdout").cases] == [
+        "holdout_fixture"
+    ]
+    assert dataset.case_split == "all"
+    assert development.case_split == "development"
+    with pytest.raises(ValueError, match="unknown split"):
+        dataset_split(dataset, "test")
+    with pytest.raises(ValueError, match="no holdout cases"):
+        dataset_split(development, "holdout")
+
+
+async def test_case_results_carry_their_split_and_the_summary_groups_by_it() -> None:
+    def retriever(_query: str, _k: int) -> list[str]:
+        return ["br-cdc-art-42-paragrafo-unico"]
+
+    summary = await ConsumerLegalRetrievalEvaluator(retriever).run(_split_dataset())
+
+    assert [case.split for case in summary.cases] == ["development", "holdout"]
+    assert set(summary.by_split) == {"development", "holdout"}
+    assert summary.by_split["holdout"].case_count == 1
+    assert summary.run is not None and summary.run.case_split == "all"
+
+
+def test_cli_evaluates_one_split(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    dataset_path = _write_dataset(tmp_path / "dataset.json", _split_dataset())
+    output = tmp_path / "out.json"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "consumer_runner",
+            str(dataset_path),
+            "--empty-baseline",
+            "--split",
+            "holdout",
+            "--output",
+            str(output),
+        ],
+    )
+
+    asyncio.run(consumer_runner._cli())
+
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    assert [case["case_name"] for case in payload["cases"]] == ["holdout_fixture"]
+    assert payload["run"]["case_split"] == "holdout"
+
+
+def test_cli_rejects_a_split_the_dataset_lacks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    development = dataset_split(_split_dataset(), "development")
+    dataset_path = _write_dataset(tmp_path / "dataset.json", development)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["consumer_runner", str(dataset_path), "--empty-baseline", "--split", "holdout"],
+    )
+
+    with pytest.raises(SystemExit) as excinfo:
+        asyncio.run(consumer_runner._cli())
+
+    assert excinfo.value.code == 2
+    assert "no holdout cases" in capsys.readouterr().err

@@ -273,6 +273,8 @@ async def test_degraded_retrieval_is_reported_per_case() -> None:
 
     assert summary.cases[0].retrieval_outcome == "degraded"
     assert summary.averages["consumer_notice_semantic_success"] == 0.0
+    assert summary.cases[0].split == "development"
+    assert summary.run is not None and summary.run.case_split == "development"
 
 
 async def test_a_failing_case_is_recorded_without_stopping_the_run() -> None:

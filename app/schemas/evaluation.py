@@ -21,6 +21,8 @@ _LEGAL_ID_PATTERN = re.compile(r"^br-(?:cdc|cf|lgpd|cc)-art-[a-z0-9]+(?:-[a-z0-9
 LEGAL_UNIT_MARKERS = ("-caput", "-paragrafo-", "-inciso-", "-alinea-")
 
 MetricDirection = Literal["higher_is_better", "lower_is_better"]
+CaseSplit = Literal["development", "holdout"]
+CASE_SPLITS: tuple[CaseSplit, ...] = ("development", "holdout")
 
 
 def _validate_legal_id(value: str, *, field_name: str) -> str:
@@ -62,6 +64,7 @@ class CaseResult(BaseModel):
     case_name: str
     category: str | None = None
     slices: tuple[str, ...] = ()
+    split: str | None = None
     queries: tuple[str, ...] = ()
     query_sha256: tuple[str, ...] = ()
     retrieved_hits: tuple[RankedEvaluationRetrievalHit, ...] = ()
@@ -147,6 +150,9 @@ class EvaluationRunMetadata(BaseModel):
     ground_verifier: str | None = Field(
         default=None, description="Verifier applied to the selected grounds, if any"
     )
+    case_split: str | None = Field(
+        default=None, description="Golden split evaluated: development, holdout or all"
+    )
 
 
 class EvaluationSummary(BaseModel):
@@ -161,6 +167,7 @@ class EvaluationSummary(BaseModel):
     failure_rate: float = Field(default=0.0, ge=0.0, le=1.0)
     by_category: dict[str, EvaluationGroupSummary] = Field(default_factory=dict)
     by_slice: dict[str, EvaluationGroupSummary] = Field(default_factory=dict)
+    by_split: dict[str, EvaluationGroupSummary] = Field(default_factory=dict)
     run: EvaluationRunMetadata | None = None
 
     @classmethod
@@ -185,6 +192,9 @@ class EvaluationSummary(BaseModel):
                 lambda case: (case.category,) if case.category is not None else (),
             ),
             by_slice=_group_cases(cases, lambda case: case.slices),
+            by_split=_group_cases(
+                cases, lambda case: (case.split,) if case.split is not None else ()
+            ),
             run=run,
         )
 
@@ -295,6 +305,13 @@ class ConsumerLegalGoldenCase(BaseModel):
     relevant: tuple[ConsumerLegalRelevance, ...] = ()
     hard_negatives: tuple[str, ...] = ()
     no_applicable_ground: bool = False
+    split: CaseSplit = Field(
+        default="development",
+        description=(
+            "development cases may inform parameter choices; holdout cases are only "
+            "reported, and move to development once a decision has used them"
+        ),
+    )
 
     @field_validator("slices")
     @classmethod
@@ -372,6 +389,12 @@ class ConsumerLegalGoldenDataset(BaseModel):
     def content_sha256(self) -> str:
         """Hash the canonical semantic payload, independent of JSON formatting."""
         return canonical_json_sha256(self.model_dump(mode="json"))
+
+    @property
+    def case_split(self) -> str:
+        """The split every case belongs to, or ``all`` when the cases are mixed."""
+        splits = {case.split for case in self.cases}
+        return next(iter(splits)) if len(splits) == 1 else "all"
 
 
 class ConsumerLegalRetrievalHit(BaseModel):

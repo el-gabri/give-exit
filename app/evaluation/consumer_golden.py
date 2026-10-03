@@ -12,7 +12,11 @@ from pathlib import Path
 
 from app.consumer.legal_corpus import LegalCorpus, get_default_legal_corpus
 from app.consumer.schemas import LegalProvision, LegalTextUnit
-from app.schemas.evaluation import ConsumerLegalGoldenCase, ConsumerLegalGoldenDataset
+from app.schemas.evaluation import (
+    CASE_SPLITS,
+    ConsumerLegalGoldenCase,
+    ConsumerLegalGoldenDataset,
+)
 
 DEFAULT_DATASET_FILENAME = "dataset.json"
 
@@ -39,6 +43,21 @@ def load_consumer_legal_dataset(
     dataset = ConsumerLegalGoldenDataset.model_validate(payload)
     validate_consumer_legal_labels(dataset, corpus=corpus)
     return dataset
+
+
+def dataset_split(
+    dataset: ConsumerLegalGoldenDataset, split: str
+) -> ConsumerLegalGoldenDataset:
+    """The dataset restricted to one split; ``all`` returns it unchanged."""
+
+    if split == "all":
+        return dataset
+    if split not in CASE_SPLITS:
+        raise ValueError(f"unknown split {split!r}; expected all, development or holdout")
+    cases = tuple(case for case in dataset.cases if case.split == split)
+    if not cases:
+        raise ValueError(f"the dataset has no {split} cases")
+    return dataset.model_copy(update={"cases": cases})
 
 
 def validate_consumer_legal_labels(

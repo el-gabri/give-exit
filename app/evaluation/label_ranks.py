@@ -30,6 +30,7 @@ from app.consumer.legal_policy import AGREEMENT_MAX_RANK
 from app.consumer.retrieval import build_legal_queries, is_consumer_scope
 from app.consumer.schemas import ConsumerCaseFacts
 from app.evaluation.consumer_golden import (
+    dataset_split,
     load_consumer_legal_dataset,
     validate_consumer_legal_labels,
 )
@@ -39,7 +40,11 @@ from app.evaluation.consumer_retrievers import (
     prepare_evaluation_pipeline,
 )
 from app.rag.pipeline import RagPipeline
-from app.schemas.evaluation import ConsumerLegalGoldenDataset, ConsumerLegalRelevance
+from app.schemas.evaluation import (
+    CASE_SPLITS,
+    ConsumerLegalGoldenDataset,
+    ConsumerLegalRelevance,
+)
 from app.schemas.rag import DENSE_CHANNEL, LEXICAL_CHANNEL, RetrievedChunk
 
 # Fused results returned per query. It must exceed the number of indexed legal
@@ -162,8 +167,17 @@ async def _cli(argv: Sequence[str] | None = None) -> None:
     parser.add_argument("--pipeline", choices=("offline", "configured"), default="offline")
     parser.add_argument("--depth", type=int, default=DEFAULT_DEPTH)
     parser.add_argument("--output", help="optional JSON output path")
+    parser.add_argument(
+        "--split",
+        choices=("all", *CASE_SPLITS),
+        default="all",
+        help="rank only the development or the holdout labels (default: all)",
+    )
     args = parser.parse_args(argv)
-    dataset = load_consumer_legal_dataset(Path(args.dataset))
+    try:
+        dataset = dataset_split(load_consumer_legal_dataset(Path(args.dataset)), args.split)
+    except ValueError as exc:
+        parser.error(str(exc))
     factory = offline_pipeline if args.pipeline == "offline" else configured_pipeline
     pipeline = await prepare_evaluation_pipeline(factory, get_default_legal_corpus())
     try:

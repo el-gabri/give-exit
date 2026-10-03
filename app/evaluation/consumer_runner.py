@@ -23,10 +23,12 @@ from app.consumer.retrieval import build_legal_queries, is_consumer_scope
 from app.consumer.schemas import ConsumerCaseFacts
 from app.core.hashing import sha256_hex
 from app.evaluation.consumer_golden import (
+    dataset_split,
     load_consumer_legal_dataset,
     validate_consumer_legal_labels,
 )
 from app.schemas.evaluation import (
+    CASE_SPLITS,
     LEGAL_UNIT_MARKERS,
     CaseResult,
     ConsumerLegalGoldenCase,
@@ -393,6 +395,7 @@ class ConsumerLegalRetrievalEvaluator:
             queries_per_case=max_queries_per_case(results),
             cutoffs=self._cutoffs,
             retrieval=retrieval,
+            case_split=dataset.case_split,
         )
         return EvaluationSummary.from_cases(results, run=run)
 
@@ -423,6 +426,7 @@ class ConsumerLegalRetrievalEvaluator:
                 case_name=case.case_id,
                 category=case.category,
                 slices=case.slices,
+                split=case.split,
                 queries=tuple(queries),
                 query_sha256=query_hashes(queries),
                 retrieval_outcome="failed",
@@ -439,6 +443,7 @@ class ConsumerLegalRetrievalEvaluator:
             case_name=case.case_id,
             category=case.category,
             slices=case.slices,
+            split=case.split,
             queries=tuple(queries),
             query_sha256=query_hashes(queries),
             retrieved_hits=tuple(
@@ -680,6 +685,17 @@ async def _run_agreement_sweep(
         raise SystemExit(2)
 
 
+def _prepare(
+    parser: argparse.ArgumentParser, args: argparse.Namespace
+) -> ConsumerLegalGoldenDataset:
+    """Load the dataset and keep the split the flags select."""
+    dataset = load_consumer_legal_dataset(Path(args.dataset))
+    try:
+        return dataset_split(dataset, args.split)
+    except ValueError as exc:
+        parser.error(str(exc))
+
+
 def _positive_int(value: str) -> int:
     number = int(value)
     if number < 1:
@@ -780,9 +796,15 @@ async def _cli() -> None:
         default="none",
         help="with --evaluate-notice, verify the selected grounds with the configured LLM",
     )
+    parser.add_argument(
+        "--split",
+        choices=("all", *CASE_SPLITS),
+        default="all",
+        help="evaluate only the development or the holdout cases (default: all)",
+    )
     args = parser.parse_args()
     _check_arguments(parser, args)
-    dataset = load_consumer_legal_dataset(Path(args.dataset))
+    dataset = _prepare(parser, args)
     if len(args.agreement_max_ranks) > 1:
         await _run_agreement_sweep(args, dataset)
         return

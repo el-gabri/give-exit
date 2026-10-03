@@ -276,6 +276,7 @@ class ConsumerNoticeGroundEvaluator:
             ground_policy_version=LEGAL_GROUND_POLICY_VERSION,
             agreement_max_rank=agreement_max_rank,
             ground_verifier=self._verifier_mode.value,
+            case_split=dataset.case_split,
         )
         return EvaluationSummary.from_cases(cases, run=run)
 
@@ -303,6 +304,7 @@ class ConsumerNoticeGroundEvaluator:
                 case_name=case.case_id,
                 category=case.category,
                 slices=case.slices,
+                split=case.split,
                 queries=tuple(queries),
                 query_sha256=query_hashes(queries),
                 retrieval_outcome="failed",
@@ -316,6 +318,7 @@ class ConsumerNoticeGroundEvaluator:
             case_name=case.case_id,
             category=case.category,
             slices=case.slices,
+            split=case.split,
             queries=tuple(queries),
             query_sha256=query_hashes(queries),
             retrieved_hits=tuple(
