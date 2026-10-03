@@ -16,6 +16,13 @@ from datetime import date
 from functools import lru_cache
 from types import MappingProxyType
 
+from app.consumer.aliases import (
+    ALIAS_LAW_IDS,
+    INDEXED_ALIAS_STATUSES,
+    AliasEntry,
+    AliasSet,
+    load_alias_set,
+)
 from app.consumer.legal_policy import provision_is_eligible
 from app.consumer.schemas import (
     LegalAuthorityCitation,
@@ -386,7 +393,7 @@ def _caput_extract(article: ParsedArticle) -> str:
     return caput[: sentence_end + 1 if sentence_end >= 200 else 697].rstrip() + "..."
 
 
-def _default_provisions() -> tuple[LegalProvision, ...]:
+def default_legal_provisions() -> tuple[LegalProvision, ...]:
     return (
         *_CONSTITUTION_PROVISIONS,
         *_statute_provisions(load_statute(CDC), _REVIEWED_CDC_METADATA),
@@ -398,7 +405,9 @@ def _default_provisions() -> tuple[LegalProvision, ...]:
 class LegalCorpus:
     """Immutable view over versioned legal authorities and their official text."""
 
-    def __init__(self, provisions: Sequence[LegalProvision]) -> None:
+    def __init__(
+        self, provisions: Sequence[LegalProvision], *, aliases: AliasSet | None = None
+    ) -> None:
         if not provisions:
             raise ValueError("legal corpus cannot be empty")
         ids = [provision.provision_id for provision in provisions]
@@ -419,6 +428,8 @@ class LegalCorpus:
         self._by_id = MappingProxyType(
             {provision.provision_id: provision for provision in self._provisions}
         )
+        self._aliases = aliases
+        self._alias_entries = self._attach_aliases(aliases)
         self._corpus_sha256 = self._calculate_corpus_sha256()
         # The corpus is immutable, but ``as_parsed_document`` renders every
         # article and hashes the whole text to derive the doc_id. Notice
@@ -451,6 +462,11 @@ class LegalCorpus:
     @property
     def corpus_sha256(self) -> str:
         return self._corpus_sha256
+
+    @property
+    def aliases(self) -> AliasSet | None:
+        """The lay-language alias file this corpus indexes, if any (ADR 0022)."""
+        return self._aliases
 
     @property
     def document_id(self) -> str:
@@ -528,6 +544,10 @@ class LegalCorpus:
                 for position, provision in enumerate(self._provisions, start=1)
             ],
         }
+        if self._aliases is not None and self._aliases.entries:
+            # An empty alias set keeps the identity of the releases before it.
+            payload["schema_version"] = 3
+            payload["aliases"] = self._aliases.identity()
         return canonical_json_sha256(payload)
 
     def get(self, provision_id: str) -> LegalProvision:
@@ -630,6 +650,14 @@ class LegalCorpus:
                     include_inactive=include_inactive,
                 )
             )
+            chunks.extend(
+                self._alias_chunks(
+                    provision,
+                    document_id=document_id,
+                    page_number=page_number,
+                    chunking_version=chunking_version,
+                )
+            )
         return chunks
 
     def _unit_chunks(
@@ -723,6 +751,113 @@ class LegalCorpus:
         ]
 
     @staticmethod
+    def aliasable_units(provision: LegalProvision) -> tuple[LegalTextUnit | None, ...]:
+        """The units that get unit chunks and may get aliases; ``(None,)`` without units."""
+
+        if not provision.units:
+            return (None,)
+        return tuple(
+            unit
+            for unit in provision.units
+            if unit.kind not in _AMENDMENT_KINDS and unit.status is ProvisionStatus.ACTIVE
+        )
+
+    def alias_source_block(self, provision: LegalProvision, unit: LegalTextUnit | None) -> str:
+        """The text the alias generator sends for one unit; its hash pins the entry."""
+
+        if unit is None:
+            body = provision.official_text or provision.summary
+            return f"[{provision.provision_id}] {provision.citation_label}:\n{body}"
+        lead_in = self._lead_in_text(provision, unit)
+        context = f"{lead_in}\n" if lead_in else ""
+        return f"[{unit.unit_id}] {unit.label}:\n{context}{unit.text}"
+
+    def _alias_chunks(
+        self,
+        provision: LegalProvision,
+        *,
+        document_id: str,
+        page_number: int,
+        chunking_version: str,
+    ) -> list[Chunk]:
+        """One chunk of lay paraphrases per aliased unit; it is never quoted."""
+
+        if not self._alias_entries or not provision_is_eligible(provision):
+            return []
+        chunks: list[Chunk] = []
+        for unit in self.aliasable_units(provision):
+            key = provision.provision_id if unit is None else unit.unit_id
+            entry = self._alias_entries.get(key)
+            if entry is None:
+                continue
+            chunks.append(
+                Chunk(
+                    chunk_id=f"{document_id}:legal:{key}:alias-01",
+                    doc_id=document_id,
+                    text="\n".join(entry.aliases),
+                    section=self._section_label(provision),
+                    page_start=page_number,
+                    page_end=page_number,
+                    metadata=self._legal_metadata(
+                        provision,
+                        unit,
+                        page=page_number,
+                        chunking_version=chunking_version,
+                        chunk_level="alias",
+                        content_kind="lay_alias",
+                    ),
+                )
+            )
+        return chunks
+
+    def _attach_aliases(self, aliases: AliasSet | None) -> Mapping[str, AliasEntry]:
+        """Validate the alias file against this corpus; return the indexed entries."""
+
+        if aliases is None:
+            return MappingProxyType({})
+        problems = [
+            problem for problem in map(self._alias_problem, aliases.entries) if problem is not None
+        ]
+        if problems:
+            raise ValueError("alias file does not match the corpus: " + "; ".join(problems[:10]))
+        indexed = [entry for entry in aliases.entries if entry.status in INDEXED_ALIAS_STATUSES]
+        stale = [
+            entry.unit_key for entry in indexed if entry.source_sha256 != self._alias_sha256(entry)
+        ]
+        if stale:
+            raise ValueError(
+                f"{len(stale)} alias entries were generated from statute text that has since "
+                f"changed ({', '.join(stale[:5])}); regenerate them with "
+                "`python -m app.consumer.generate_aliases`"
+            )
+        return MappingProxyType({entry.unit_key: entry for entry in indexed})
+
+    def _alias_problem(self, entry: AliasEntry) -> str | None:
+        provision = self._by_id.get(entry.provision_id)
+        if provision is None:
+            return f"{entry.unit_key}: unknown provision {entry.provision_id}"
+        if provision.law_id not in ALIAS_LAW_IDS:
+            return f"{entry.unit_key}: {provision.law_id} is outside alias coverage"
+        found, _ = self._alias_target(provision, entry.unit_key)
+        if not found:
+            return f"{entry.unit_key}: not a unit of {entry.provision_id}"
+        return None
+
+    @staticmethod
+    def _alias_target(
+        provision: LegalProvision, unit_key: str
+    ) -> tuple[bool, LegalTextUnit | None]:
+        if not provision.units:
+            return unit_key == provision.provision_id, None
+        unit = next((item for item in provision.units if item.unit_id == unit_key), None)
+        return unit is not None, unit
+
+    def _alias_sha256(self, entry: AliasEntry) -> str:
+        provision = self._by_id[entry.provision_id]
+        _, unit = self._alias_target(provision, entry.unit_key)
+        return sha256_hex(self.alias_source_block(provision, unit))
+
+    @staticmethod
     def _article_text_parts(
         provision: LegalProvision, *, include_inactive: bool
     ) -> list[str]:
@@ -777,7 +912,8 @@ class LegalCorpus:
         chunk = _as_chunk(item)
         provision = self.provision_for_chunk(chunk)
         for unit in provision.units:
-            if f":legal:{unit.unit_id}:part-" in chunk.chunk_id:
+            unit_ids = (f":legal:{unit.unit_id}:part-", f":legal:{unit.unit_id}:alias-")
+            if any(marker in chunk.chunk_id for marker in unit_ids):
                 return unit
         return None
 
@@ -800,8 +936,11 @@ class LegalCorpus:
         chunking_version: str = LEGAL_CHUNKING_IDENTITY,
         chunk_level: str = "unit",
         lead_in_unit_ids: str | None = None,
+        content_kind: str | None = None,
     ) -> dict[str, MetadataValue]:
-        content_kind = "official" if provision.official_text is not None or unit else "editorial"
+        content_kind = content_kind or (
+            "official" if provision.official_text is not None or unit else "editorial"
+        )
         return {
             "law_id": provision.law_id,
             "provision_id": provision.provision_id,
@@ -1102,4 +1241,4 @@ def _split_text(text: str, max_chars: int) -> list[str]:
 
 @lru_cache(maxsize=1)
 def get_default_legal_corpus() -> LegalCorpus:
-    return LegalCorpus(_default_provisions())
+    return LegalCorpus(default_legal_provisions(), aliases=load_alias_set())

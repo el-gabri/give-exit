@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "review_status": "requires_legal_review",
+  "prompt_version": "consumer-lay-aliases:v1",
+  "prompt_sha256": null,
+  "model": null,
+  "generated_on": null,
+  "entries": []
+}
