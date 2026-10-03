@@ -14,7 +14,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from collections.abc import Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -81,6 +81,8 @@ class Comparison:
     metrics: tuple[MetricComparison, ...]
     counts: tuple[CountComparison, ...]
     one_sided_metrics: tuple[str, ...]
+    one_sided_counts: tuple[str, ...]
+    unpaired_metrics: tuple[str, ...]
     metadata_differences: tuple[tuple[str, str, str], ...]
 
 
@@ -96,13 +98,19 @@ def compare_summaries(
         scope = f" in the {split} split" if split else ""
         raise ValueError(f"the two runs share no case{scope}")
     pairs = [(earlier[name], later[name]) for name in shared]
+    metrics = _metric_comparisons(pairs)
+    before_metrics, after_metrics = _reported(pairs, _scores)
+    before_counts, after_counts = _reported(pairs, lambda case: case.counts)
+    compared = {item.name for item in metrics}
     return Comparison(
         pairs=len(pairs),
         only_before=tuple(sorted(earlier.keys() - later.keys())),
         only_after=tuple(sorted(later.keys() - earlier.keys())),
-        metrics=_metric_comparisons(pairs),
-        counts=_count_comparisons(pairs),
-        one_sided_metrics=_one_sided_metrics(pairs),
+        metrics=metrics,
+        counts=_count_comparisons(pairs, sorted(before_counts & after_counts)),
+        one_sided_metrics=tuple(sorted(before_metrics ^ after_metrics)),
+        one_sided_counts=tuple(sorted(before_counts ^ after_counts)),
+        unpaired_metrics=tuple(sorted((before_metrics & after_metrics) - compared)),
         metadata_differences=_metadata_differences(before.run, after.run),
     )
 
@@ -117,6 +125,13 @@ def render_comparison(comparison: Comparison) -> str:
         lines.append("only in AFTER (excluded): " + ", ".join(comparison.only_after))
     if comparison.one_sided_metrics:
         lines.append("reported by one run only: " + ", ".join(comparison.one_sided_metrics))
+    if comparison.one_sided_counts:
+        lines.append("counts reported by one run only: " + ", ".join(comparison.one_sided_counts))
+    if comparison.unpaired_metrics:
+        lines.append(
+            "reported by both runs but never for the same case: "
+            + ", ".join(comparison.unpaired_metrics)
+        )
     lines.extend(
         f"changed {name}: {earlier} -> {later}"
         for name, earlier, later in comparison.metadata_differences
@@ -199,8 +214,8 @@ def _metric_comparisons(pairs: list[_Pair]) -> tuple[MetricComparison, ...]:
     )
 
 
-def _count_comparisons(pairs: list[_Pair]) -> tuple[CountComparison, ...]:
-    names = sorted({name for pair in pairs for case in pair for name in case.counts})
+def _count_comparisons(pairs: list[_Pair], names: list[str]) -> tuple[CountComparison, ...]:
+    """Counts both runs report. A case without one counts 0 (a failed case has none)."""
     comparisons: list[CountComparison] = []
     for name in names:
         before = [earlier.counts.get(name, 0) for earlier, _ in pairs]
@@ -220,11 +235,18 @@ def _count_comparisons(pairs: list[_Pair]) -> tuple[CountComparison, ...]:
     return tuple(comparisons)
 
 
-def _one_sided_metrics(pairs: list[_Pair]) -> tuple[str, ...]:
-    """Metrics one run reports for the shared cases and the other never does."""
-    before = {name for earlier, _ in pairs for name in _scores(earlier)}
-    after = {name for _, later in pairs for name in _scores(later)}
-    return tuple(sorted(before ^ after))
+def _reported(
+    pairs: list[_Pair], names: Callable[[CaseResult], Mapping[str, object]]
+) -> tuple[set[str], set[str]]:
+    """The names each run reports for any shared case.
+
+    A name only one run reports is listed rather than compared: reading it as 0
+    in the other run would invent a difference, for instance against a result
+    file written before that metric or count existed.
+    """
+    before = {name for earlier, _ in pairs for name in names(earlier)}
+    after = {name for _, later in pairs for name in names(later)}
+    return before, after
 
 
 def _metadata_differences(

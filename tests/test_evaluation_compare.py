@@ -108,6 +108,40 @@ def test_metrics_one_run_never_reports_are_named() -> None:
     assert "reported by one run only: precision" in render_comparison(comparison)
 
 
+
+def test_counts_and_metrics_one_run_cannot_pair_are_named_not_invented() -> None:
+    # A result file written before a count existed must not read as 0 -> N.
+    before = EvaluationSummary.from_cases(
+        [
+            CaseResult(
+                case_name="a",
+                metrics=[MetricResult(name="precision", score=0.5)],
+                counts={"grounds": 1},
+            ),
+            CaseResult(case_name="b", counts={"grounds": 0}),
+        ]
+    )
+    after = EvaluationSummary.from_cases(
+        [
+            CaseResult(case_name="a", counts={"grounds": 2, "labelled": 1}),
+            CaseResult(
+                case_name="b",
+                metrics=[MetricResult(name="precision", score=1.0)],
+                counts={"grounds": 1, "labelled": 1},
+            ),
+        ]
+    )
+
+    comparison = compare_summaries(before, after)
+
+    assert [count.name for count in comparison.counts] == ["grounds"]
+    assert comparison.one_sided_counts == ("labelled",)
+    assert comparison.metrics == ()
+    assert comparison.unpaired_metrics == ("precision",)
+    rendered = render_comparison(comparison)
+    assert "counts reported by one run only: labelled" in rendered
+    assert "reported by both runs but never for the same case: precision" in rendered
+
 def test_runs_without_metadata_or_counts_compare_too() -> None:
     plain = EvaluationSummary.from_cases(
         [CaseResult(case_name="a", metrics=[MetricResult(name="recall", score=1.0)])]
