@@ -89,6 +89,7 @@ source = [
     "app.consumer.vector_reuse",
     "app.evaluation.compare",
     "app.evaluation.intervals",
+    "app.evaluation.query_vectors",
     "app.rag.reranking",
 ]
 
