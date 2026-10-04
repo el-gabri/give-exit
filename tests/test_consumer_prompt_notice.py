@@ -277,3 +277,21 @@ async def test_prompt_notice_refused_by_the_scope_verifier_is_422(
 
     assert response.status_code == 422
     assert "relação de consumo" in response.json()["detail"]
+
+
+async def test_a_prompt_out_of_scope_without_its_request_sentence_is_422(
+    api: tuple[httpx.AsyncClient, FastAPI],
+) -> None:
+    # The whole message passes the gate at intake ("a empresa" and "pagamento"
+    # share the request sentence); the account the notice is drafted from,
+    # without that sentence, is a tenancy dispute. A refusal, not a retry.
+    client, _ = api
+    text = (
+        "Moro de aluguel e o dono do apartamento não devolveu a caução. "
+        "Quero que a empresa devolva o pagamento."
+    )
+
+    response = await client.post("/consumer/prompt-notices", data={"text": text})
+
+    assert response.status_code == 422
+    assert "relação de consumo" in response.json()["detail"]

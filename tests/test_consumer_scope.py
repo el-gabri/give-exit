@@ -60,10 +60,17 @@ def test_concessionaires_stay_in_scope() -> None:
     )
 
 
-def test_a_car_rental_is_not_tenancy() -> None:
-    assert is_consumer_scope(
-        complaint="Aluguei um carro na locadora e cobraram uma diária a mais."
-    )
+@pytest.mark.parametrize(
+    "complaint",
+    [
+        "Aluguei um carro na locadora e cobraram uma diária a mais.",
+        "Aluguei um carro na locadora. No contrato de locação havia uma franquia abusiva.",
+        "Aluguei um carro e a locadora cobrou avarias que já existiam. Como locatário, "
+        "pedi as fotos da vistoria e negaram.",
+    ],
+)
+def test_a_car_rental_is_not_tenancy(complaint: str) -> None:
+    assert is_consumer_scope(complaint=complaint)
 
 
 def test_common_consumer_phrases_are_not_class_signals() -> None:
@@ -71,6 +78,47 @@ def test_common_consumer_phrases_are_not_class_signals() -> None:
     assert is_consumer_scope(
         complaint="A operadora marcou três visitas técnicas e ninguém apareceu."
     )
+
+
+@pytest.mark.parametrize(
+    "complaint",
+    [
+        "A operadora fez a suspensão da minha linha sem aviso.",
+        "Comprei um carro zero e a suspensão quebrou.",
+        "O aplicativo fez o compartilhamento dos meus dados pessoais sem meu consentimento.",
+        "Tenho plano pelo sindicato. Negaram minha cirurgia.",
+    ],
+)
+def test_a_class_signal_inside_a_longer_word_is_not_a_signal(complaint: str) -> None:
+    # "suspensão" holds "pensão", "compartilhamento" holds "partilha" and
+    # "sindicato" holds "síndica": signals match whole words only.
+    assert is_consumer_scope(complaint=complaint)
+
+
+def test_a_class_signal_still_matches_its_plural() -> None:
+    assessment = assess_scope(complaint="Tenho dois inquilinos que não pagam.")
+
+    assert not assessment.in_scope
+    assert assessment.relationship is R.TENANCY
+
+
+@pytest.mark.parametrize(
+    "complaint",
+    [
+        "Recebi uma mensagem de uma pessoa que dizia ser do banco e acabei fazendo um Pix. "
+        "O banco se recusa a devolver.",
+        "Um amigo me indicou a academia. A academia cobrou a matrícula duas vezes.",
+        "O manobrista do estacionamento bateu no meu carro e ninguém quer pagar o conserto.",
+        "A companhia aérea extraviou minha mala e eu estava indo ver minha filha.",
+        "Sou autônomo e contratei um plano de saúde da operadora que negou a cirurgia.",
+        "O hospital particular cobrou a internação que o plano já tinha pago. "
+        "Fui demitido no mês passado.",
+    ],
+)
+def test_a_person_or_event_mentioned_in_a_consumer_complaint_keeps_it_in_scope(
+    complaint: str,
+) -> None:
+    assert is_consumer_scope(complaint=complaint)
 
 
 def test_a_company_in_a_complainant_supplier_clause_is_the_customer() -> None:

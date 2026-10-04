@@ -32,15 +32,20 @@ precision 0.281 (v4: 0.336).
    - **Complainant as supplier.** The complainant is the professional side: "meu cliente",
      "minha empresa", "me contratou".
 
-   "aluguel" alone is not tenancy, because car rentals are consumer contracts. "aviso
-   prévio" and "visita" are not employment or family signals, because consumer complaints
-   use them every day.
+   Signals match whole words, a plural "s" allowed, so "suspensão" does not read as
+   "pensão" nor "compartilhamento" as "partilha". "aluguel", "locação" and "locatário"
+   alone are not tenancy, because car rentals are consumer contracts. "aviso prévio",
+   "visita", and a friend or a child merely mentioned are not class signals, because
+   consumer complaints use them every day. A complaint that names a business (a store, an
+   app, a bank, a parking lot) is not a dispute between private parties.
 2. **The consumer-clause override stays.** A clause naming a business counterparty
    together with a transaction or service keeps the case in scope, so "comprei um sofá
    numa loja e a entrega no meu condomínio atrasou" stays in. Two exceptions:
    - An employment clause still needs a personal card or invoice charge, as before.
    - A clause naming the complainant as supplier never satisfies the override, because the
-     company named there is the complainant's customer.
+     company named there is the complainant's customer. The complainant's occupation
+     alone ("sou autônomo") does not count: a self-employed person still buys as a
+     consumer.
 
    **The default stays in scope.** A missing word must never cost a consumer the notice.
    `assess_scope` reports the class and phrase behind every abstention.
@@ -82,6 +87,10 @@ definitions:
 The development abstention figure below is therefore tuned on development.
 
 ## Measurements
+
+The final review's fixes (whole-word signals, narrower tenancy, family and private-party
+signals, the named-business rule) change no decision on the 71 dataset cases, so the
+measurements below stand.
 
 **Gate decisions.**
 - No labelled in-scope case abstains: 41 cases, the 33 earlier ones plus the 8 look-alikes.

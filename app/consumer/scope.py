@@ -13,12 +13,12 @@ from __future__ import annotations
 
 import re
 import unicodedata
-from enum import StrEnum
+from enum import Enum
 
 from pydantic import BaseModel, ConfigDict
 
 
-class NonConsumerRelationship(StrEnum):
+class NonConsumerRelationship(str, Enum):
     STATE = "state"
     TENANCY = "tenancy"
     EMPLOYMENT = "employment"
@@ -37,11 +37,18 @@ class ScopeAssessment(BaseModel):
     signal: str | None = None
 
 
+# The complainant's occupation alone does not make a company named beside it
+# their customer: a self-employed person still buys a health plan as a consumer.
+_SELF_EMPLOYED_SIGNALS = ("sou autônomo", "sou autônoma")
+
+
 # Signals are written from what defines each relationship in law, not from
 # evaluation cases, and adjusted only on development evidence (ledgered).
-# "aluguel" alone is not tenancy (car rentals are consumer contracts), and
-# "aviso prévio" / "visita" are not employment or family (consumer complaints
-# use them every day).
+# They match whole words, so "suspensão" is not "pensão". "aluguel",
+# "locação" and "locatário" alone are not tenancy (car rentals are consumer
+# contracts), "aviso prévio" / "visita" are not employment or family, and a
+# friend or a child merely mentioned is not a relationship (consumer
+# complaints use all of them every day).
 _RELATIONSHIP_SIGNALS: dict[NonConsumerRelationship, tuple[str, ...]] = {
     NonConsumerRelationship.STATE: (
         "imposto",
@@ -69,12 +76,12 @@ _RELATIONSHIP_SIGNALS: dict[NonConsumerRelationship, tuple[str, ...]] = {
         "moro de aluguel",
         "aluguel do apartamento",
         "aluguel da casa",
-        "contrato de locação",
+        "locação do imóvel",
+        "locação do apartamento",
+        "locação da casa",
         "imóvel alugado",
         "inquilino",
         "inquilina",
-        "locatário",
-        "locatária",
         "senhorio",
         "dono do apartamento",
         "dona do apartamento",
@@ -118,8 +125,8 @@ _RELATIONSHIP_SIGNALS: dict[NonConsumerRelationship, tuple[str, ...]] = {
         "guarda do meu filho",
         "guarda da minha filha",
         "direito de visita",
-        "ver meu filho",
-        "ver minha filha",
+        "deixa ver meu filho",
+        "deixa ver minha filha",
         "ex-mulher",
         "ex-marido",
         "ex-companheiro",
@@ -135,10 +142,6 @@ _RELATIONSHIP_SIGNALS: dict[NonConsumerRelationship, tuple[str, ...]] = {
         "minha vizinha",
         "emprestei dinheiro",
         "dinheiro emprestado",
-        "meu amigo",
-        "minha amiga",
-        "um amigo",
-        "uma amiga",
         "de um particular",
         "de uma pessoa",
         "vendedor particular",
@@ -162,8 +165,7 @@ _RELATIONSHIP_SIGNALS: dict[NonConsumerRelationship, tuple[str, ...]] = {
         "me contratou",
         "me contrataram",
         "prestei serviço",
-        "sou autônomo",
-        "sou autônoma",
+        *_SELF_EMPLOYED_SIGNALS,
         "vendi para",
     ),
 }
@@ -181,11 +183,16 @@ _CONSUMER_COUNTERPARTY_SIGNALS = (
     "distribuidora",
     "companhia",
     "locadora",
+    "estacionamento",
+    "hospital particular",
 )
 _CONSUMER_TRANSACTION_SERVICE_SIGNALS = (
     "assinatura",
     "cartão",
     "cobrança",
+    "cobrou",
+    "cobraram",
+    "cobrando",
     "compra",
     "comprei",
     "contratei",
@@ -251,22 +258,52 @@ def _scope_clauses(normalized_complaint: str) -> tuple[str, ...]:
     )
 
 
-_FOLDED_SIGNALS: tuple[tuple[NonConsumerRelationship, str], ...] = tuple(
-    (relationship, _scope_normalize(signal))
+def _whole_words(signal: str) -> re.Pattern[str]:
+    # A plural "s" still matches: "inquilinos" is "inquilino".
+    return re.compile(rf"(?<!\w){re.escape(_scope_normalize(signal))}s?(?!\w)")
+
+
+_CLASS_SIGNALS: tuple[tuple[NonConsumerRelationship, str, re.Pattern[str]], ...] = tuple(
+    (relationship, _scope_normalize(signal), _whole_words(signal))
     for relationship, signals in _RELATIONSHIP_SIGNALS.items()
     for signal in signals
 )
+
+
+def _has_class_signal(
+    value: str,
+    relationship: NonConsumerRelationship,
+    *,
+    except_signals: tuple[str, ...] = (),
+) -> bool:
+    excluded = {_scope_normalize(signal) for signal in except_signals}
+    return any(
+        pattern.search(value)
+        for signal_relationship, signal, pattern in _CLASS_SIGNALS
+        if signal_relationship is relationship and signal not in excluded
+    )
+
+
+def _bank_named(value: str) -> bool:
+    return "banco" in value and "banco de horas" not in value
 
 
 def assess_scope(*, complaint: str) -> ScopeAssessment:
     """The gate's decision, with the class and phrase that made it abstain."""
 
     normalized = _scope_normalize(complaint)
+    # Private parties are two individuals, neither acting professionally: a
+    # named business (the bank a scammer impersonated, the parking lot whose
+    # valet hit the car) contradicts the class.
+    business_named = _bank_named(normalized) or _scope_contains_any(
+        normalized, _CONSUMER_COUNTERPARTY_SIGNALS
+    )
     match = next(
         (
             (relationship, signal)
-            for relationship, signal in _FOLDED_SIGNALS
-            if signal in normalized
+            for relationship, signal, pattern in _CLASS_SIGNALS
+            if pattern.search(normalized)
+            and not (business_named and relationship is NonConsumerRelationship.PRIVATE_PARTIES)
         ),
         None,
     )
@@ -291,7 +328,7 @@ def is_consumer_scope(*, complaint: str) -> bool:
 
 
 def _clause_has_consumer_relationship(clause: str) -> bool:
-    bank_counterparty = "banco" in clause and "banco de horas" not in clause
+    bank_counterparty = _bank_named(clause)
     bank_account_dispute = (
         bank_counterparty
         and _scope_contains_any(clause, _BANK_ACCOUNT_SIGNALS)
@@ -301,8 +338,10 @@ def _clause_has_consumer_relationship(clause: str) -> bool:
         return True
     # When the complainant is the professional side, a company named in the
     # same clause is the complainant's customer, not a supplier.
-    if _scope_contains_any(
-        clause, _RELATIONSHIP_SIGNALS[NonConsumerRelationship.COMPLAINANT_SUPPLIER]
+    if _has_class_signal(
+        clause,
+        NonConsumerRelationship.COMPLAINANT_SUPPLIER,
+        except_signals=_SELF_EMPLOYED_SIGNALS,
     ):
         return False
 
@@ -313,7 +352,7 @@ def _clause_has_consumer_relationship(clause: str) -> bool:
         clause, _CONSUMER_TRANSACTION_SERVICE_SIGNALS
     ):
         return False
-    if not _scope_contains_any(clause, _RELATIONSHIP_SIGNALS[NonConsumerRelationship.EMPLOYMENT]):
+    if not _has_class_signal(clause, NonConsumerRelationship.EMPLOYMENT):
         return True
 
     # A worker can still have a separate consumer dispute with the employer's

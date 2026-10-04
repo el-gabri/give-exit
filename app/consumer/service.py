@@ -550,16 +550,19 @@ class ConsumerCaseService:
         return legal_results, legal_traces, evidence_results, evidence_traces
 
     async def _check_scope(self, record: ConsumerCaseRecord, mode: NoticeGenerationMode) -> None:
-        """Run the optional scope verifier once per complaint text; refuse a removal."""
+        """Refuse a complaint out of scope, asking the optional verifier once per text.
+
+        The prompt path's intake checked the whole message; the account read
+        here leaves out the "Quero..." sentences, so the gate can reject it now.
+        """
         complaint = record.facts.complaint_summary or ""
-        if not is_consumer_scope(complaint=complaint):
-            return
-        stored = record.scope_verification
-        if stored is None or stored.complaint_sha256 != sha256_hex(complaint):
-            stored = await self._scope_verifier.verify(complaint)
-            record.scope_verification = stored
-        if not stored.removed:
-            return
+        if is_consumer_scope(complaint=complaint):
+            stored = record.scope_verification
+            if stored is None or stored.complaint_sha256 != sha256_hex(complaint):
+                stored = await self._scope_verifier.verify(complaint)
+                record.scope_verification = stored
+            if not stored.removed:
+                return
         if mode is NoticeGenerationMode.PROMPT:
             raise ConsumerPromptNoticeError(_OUT_OF_SCOPE_MESSAGE)
         raise ConsumerCaseNotReadyError(["consumer_relationship"])

@@ -62,10 +62,23 @@ async def test_the_verifier_runs_only_for_deterministically_in_scope_cases() -> 
     verifier = _CountingVerifier(remove=False)
     service = _service(verifier)
 
-    await service._check_scope(_record(service, OUT_OF_SCOPE), NoticeGenerationMode.CASE)
+    with pytest.raises(ConsumerCaseNotReadyError):
+        await service._check_scope(_record(service, OUT_OF_SCOPE), NoticeGenerationMode.CASE)
     await service._check_scope(_record(service, IN_SCOPE), NoticeGenerationMode.CASE)
 
     assert verifier.calls == [IN_SCOPE]
+
+
+async def test_a_prompt_complaint_the_gate_rejects_is_refused_at_generation() -> None:
+    # The prompt path's start check reads the whole message, generation reads
+    # the account without the "Quero..." sentences; when only the account is
+    # out of scope, generation must refuse with the out-of-scope message.
+    verifier = _CountingVerifier(remove=False)
+    service = _service(verifier)
+
+    with pytest.raises(ConsumerPromptNoticeError, match="relação de consumo"):
+        await service._check_scope(_record(service, OUT_OF_SCOPE), NoticeGenerationMode.PROMPT)
+    assert verifier.calls == []
 
 
 async def test_a_removal_refuses_the_case_and_is_remembered_by_readiness() -> None:
