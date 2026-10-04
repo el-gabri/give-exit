@@ -8,10 +8,10 @@ from app.consumer.retrieval import (
     build_corroboration_queries,
     build_evidence_queries,
     build_legal_queries,
-    is_consumer_scope,
     retrieve_legal_candidates,
 )
 from app.consumer.schemas import ConsumerCaseFacts
+from app.consumer.scope import is_consumer_scope
 from app.consumer.service import ConsumerCaseService
 from app.ingestion.service import DocumentIngestionService
 from app.llm.mock_client import MockLLMClient

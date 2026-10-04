@@ -50,7 +50,6 @@ from app.consumer.notice_markdown import notice_requests, render_notice_markdown
 from app.consumer.retrieval import (
     LEGAL_REQUESTED_K,
     build_evidence_queries,
-    is_consumer_scope,
     retrieve_legal_candidates,
 )
 from app.consumer.schemas import (
@@ -71,6 +70,7 @@ from app.consumer.schemas import (
     SettlementComponentSource,
     SettlementInputs,
 )
+from app.consumer.scope import is_consumer_scope
 from app.consumer.settlement import SettlementCalculator
 from app.consumer.store import (
     ConsumerCaseRecord,

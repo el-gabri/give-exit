@@ -17,8 +17,8 @@ from app.consumer.legal_policy import (
     provision_is_eligible,
     strongly_supported_chunk_ids,
 )
-from app.consumer.retrieval import is_consumer_scope
 from app.consumer.schemas import ConsumerCaseFacts, LegalGround, LegalProvision, ProvisionStatus
+from app.consumer.scope import is_consumer_scope
 from app.schemas.rag import RetrievedChunk
 from app.schemas.trace import RetrievalTrace
 

@@ -19,8 +19,9 @@ from typing import TYPE_CHECKING, cast
 
 from app.consumer.legal_corpus import LegalCorpus
 from app.consumer.legal_policy import AGREEMENT_MAX_RANK
-from app.consumer.retrieval import build_legal_queries, is_consumer_scope
+from app.consumer.retrieval import build_legal_queries
 from app.consumer.schemas import ConsumerCaseFacts
+from app.consumer.scope import is_consumer_scope
 from app.core.hashing import sha256_hex
 from app.evaluation.consumer_golden import (
     dataset_split,

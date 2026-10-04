@@ -25,10 +25,10 @@ from app.consumer.legal_policy import (
 from app.consumer.retrieval import (
     LEGAL_REQUESTED_K,
     build_legal_queries,
-    is_consumer_scope,
     retrieve_legal_candidates,
 )
 from app.consumer.schemas import ConsumerCaseFacts, LegalGround
+from app.consumer.scope import is_consumer_scope
 from app.core.config import GroundVerifierMode, RetrievalMode
 from app.evaluation.consumer_golden import validate_consumer_legal_labels
 from app.evaluation.consumer_retrievers import (
