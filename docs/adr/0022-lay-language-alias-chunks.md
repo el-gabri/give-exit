@@ -153,12 +153,58 @@ come with this crowding. JUÁ is a semantic model and is measured below with the
 counts; collapsing siblings and capping one alias per query (review step 4) is the lever
 if it crowds too.
 
-## Configured stack
+## Configured stack (JUÁ, 2026-10-03)
 
-Pending the protocol of the spec (§5.7): the golden query cache, a v4 baseline, the v5
-index and a paired comparison, plus the crowding counts above (per-channel alias share at
-depth 13, the fused share, grounds through an alias, the hub aliases and the water-outage
-case). This section is completed when it runs.
+Measured with the golden query-vector cache (`--require-cached-queries`, contract
+`f2260fc2d5f82f86`, 78 of 78 queries), so the 4B model never ran during evaluation. The
+v4 baseline was measured from `main` against the v4 index. The v5 index reused the 1,644
+official vectors from v4 (reuse canary minimum cosine 1.0) and embedded the 329 alias
+chunks. No case was degraded or failed.
+
+| Development (24 cases) | v4 | **v5 release** | v5 − v4, 95% interval |
+|---|---|---|---|
+| notice article recall | 0.421 | **0.608** | +0.187 [+0.013, +0.375] |
+| notice exact recall | 0.225 | **0.400** | +0.175 [−0.008, +0.342] |
+| notice precision | 0.390 | **0.312** | −0.087 [−0.272, +0.096] (19 paired cases) |
+| grounds / labelled / unlabelled | 34 / 13 / 20 | **67 / 17 / 48** | unlabelled +28 [+14, +44]; labelled +4 [−1, +9] |
+| known-bad citations | 1 | **2** | +1 [0, +3] |
+| retrieval article recall@5 | 0.438 | **0.733** | +0.295 [+0.121, +0.492] |
+| retrieval recall@5 | 0.283 | **0.492** | +0.209 [+0.000, +0.425] |
+| retrieval nDCG@5 | 0.265 | **0.510** | +0.245 [+0.065, +0.445] |
+| retrieval hard-negative rate@5 | 0.042 | **0.025** | −0.017 [−0.050, +0.017] |
+
+| Holdout (19 cases, reported only) | v4 | **v5 release** |
+|---|---|---|
+| notice article recall | 0.397 | **0.590** |
+| notice exact recall | 0.019 | **0.346** |
+| notice precision | 0.336 | **0.229** |
+| notice abstention | 0.500 | **0.167** |
+| known-bad citations | 2 | **2** |
+| retrieval article recall@5 / nDCG@5 | 0.462 / 0.086 | **0.705 / 0.375** |
+
+| Crowding, configured | Development | Holdout |
+|---|---|---|
+| alias share of lexical / dense top-13 slots | 96% / 81% | 83% / 66% |
+| alias share of the fused results (k = 8) | 92% | 78% |
+| grounds reached through an alias | 66 of 67 | 40 of 47 |
+
+**Retrieval improves clearly; the notice gets recall at the cost of precision.** Every
+retrieval metric rises on both splits, and the hard-negative rate falls. The water-outage
+case now cites its label, CDC art. 22 caput (v4 cited art. 18 § 1). But the notice cites
+twice as many grounds, most of them unlabelled. Development precision falls 0.390 → 0.312,
+and the known-bad count rises 1 → 2: CDC art. 42 caput on `negativacao_sem_aviso` joins
+art. 18 on `arrependimento_compra_online`, which v4 already cited. On the holdout, four
+more no-ground cases now get grounds (abstention 0.500 → 0.167). They are a car crash
+between private parties, a condominium fee, a tenancy deposit (citing CDC art. 51 XVI, a
+hard negative) and a social-security denial.
+
+JUÁ does not remove the crowding: alias chunks hold more of its dense top 13 than they
+hold of the offline dense channel (81% against 57% on development), and the hub aliases
+are much the same (CDC arts. 51 II, 19 IV, 42 sole paragraph, 49, 20 II; LGPD art. 18).
+**By the stop rules of the spec (§5.5), applied to the configured development split,
+precision fell below v4 and the known-bad count rose. The rules fire on the configured
+stack.** The levers are the ones named above: one candidate per provision before the k = 8
+cut, and a cap on how many alias chunks a query may contribute (review step 4).
 
 ## Consequences
 
@@ -169,8 +215,10 @@ case). This section is completed when it runs.
 - (+) A notice never quotes a supplier's or a controller's defense on the consumer's behalf.
 - (−) Up to one more same-article candidate per unit competes for the eight slots per
   query, and the one remaining known-bad citation is a sibling paragraph (review step 4).
-- (−) On the offline stack, alias chunks hold most top-13 slots in both channels and every
-  ground comes through one; hub aliases reach unrelated cases (the water-outage case cites a
-  card-fraud unit).
+- (−) Alias chunks hold most top-13 slots in both channels on both stacks, and nearly
+  every ground comes through one; hub aliases reach unrelated cases.
+- (−) On JUÁ, notice precision falls (development 0.390 → 0.312), one more known-bad
+  citation appears, and out-of-scope holdout complaints get grounds more often. Retrieval
+  gains alone do not carry over to the notice without step 4.
 - (−) Aliases are model output marked `requires_legal_review`; 189 requested units have
   none (182 declined, 7 unanswered), and the 44 defense or exclusion units never will.
