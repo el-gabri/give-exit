@@ -92,6 +92,46 @@ async def test_timeout_keeps_capacity_reserved_until_local_work_finishes() -> No
     await asyncio.sleep(0.01)
 
 
+async def test_cancelled_caller_keeps_capacity_reserved_until_local_work_finishes() -> None:
+    """Cancelling a caller must not free the slot under a still-running model.
+
+    The shielded embedding keeps running after its caller is cancelled. If the
+    slot were released at once, the next caller would start a second embedding
+    alongside it and break the concurrency limit of one.
+    """
+    release = asyncio.Event()
+
+    class BlockedEmbedder(MockEmbeddingClient):
+        def __init__(self) -> None:
+            super().__init__()
+            self.calls = 0
+
+        async def embed(self, texts: list[str]) -> list[list[float]]:
+            self.calls += 1
+            await release.wait()
+            return await super().embed(texts)
+
+    embedder = BlockedEmbedder()
+    guard = _guard(embedder, timeout_seconds=5.0, queue_timeout_seconds=5.0)
+    first = asyncio.create_task(guard.embed(["consulta cancelada"]))
+    await asyncio.sleep(0.01)
+    assert embedder.calls == 1
+
+    first.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await first
+
+    second = asyncio.create_task(guard.embed(["consulta na fila"]))
+    await asyncio.sleep(0.01)
+    assert embedder.calls == 1, "second embedding started while the first still ran"
+
+    release.set()
+    result = await second
+
+    assert embedder.calls == 2
+    assert len(result.vectors) == 1
+
+
 async def test_overlapping_queries_wait_for_a_slot_instead_of_degrading() -> None:
     """A busy slot must queue the next caller, not push it to lexical-only.
 

@@ -125,6 +125,14 @@ class QueryEmbeddingGuard:
             raise EmbeddingUnavailableError(
                 f"query embedding exceeded {self._timeout_seconds:g}s"
             ) from exc
+        except asyncio.CancelledError:
+            # The caller was cancelled, but the shielded embedding keeps
+            # running. Keep its slot reserved until it finishes, as on
+            # timeout, so the next caller cannot start a second embedding
+            # alongside it.
+            release_in_callback = True
+            self._track_background_task(task)
+            raise
         except Exception as exc:
             self._record_failure()
             raise EmbeddingUnavailableError(
