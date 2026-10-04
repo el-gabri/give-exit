@@ -174,7 +174,10 @@ filters and explicit PII minimization in exported artifacts.
 - A semantic embedding timeout may use lexical-only retrieval, but the trace is
   marked degraded and the normal evidence-corroboration policy may still abstain.
 - Missing facts, confirmation, consumer relationship or accepted evidence
-  returns an explicit readiness error.
+  returns an explicit readiness error. The consumer relationship is decided by
+  a gate that recognises non-consumer relationship classes (the State,
+  tenancy, employment, family, private parties, the complainant as supplier)
+  and, optionally, by a drop-only LLM scope check (ADR 0024).
 - No generated citation or legal assertion is allowed to bypass the
   deterministic source and policy gates.
 
@@ -212,3 +215,4 @@ production claims.
 - [0021](adr/0021-evaluation-precision-holdout-uncertainty.md) — precision, a holdout and uncertainty in evaluation
 - [0022](adr/0022-lay-language-alias-chunks.md) — lay-language alias chunks
 - [0023](adr/0023-agreement-depth-and-alias-cap.md) — agreement depth 10 and an alias support cap
+- [0024](adr/0024-relationship-class-scope-gate.md) — relationship-class scope gate and optional LLM scope check

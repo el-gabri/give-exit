@@ -269,6 +269,13 @@ are found verbatim; the notice then shows them under the citation. Only
 failure keeps every ground with a warning. This sends the complaint, the
 requested remedy and the selected provisions' official text to the provider.
 
+`LITIGATION_SCOPE_VERIFIER=llm` adds an optional, drop-only check that the
+complaint describes a consumer relationship, using the configured LLM (ADR
+0024); off by default. Only a `not_consumer` answer whose quote is found
+verbatim in the complaint moves the case out of scope; with gpt-4o-mini it
+also removed about one in six real consumer cases, so keep it off unless a
+stronger model is measured.
+
 Brazilian legal embedding bake-off:
 
 ```bash
@@ -547,7 +554,7 @@ depth that would have cited it. Two options measure precision controls on any
 stack. `--agreement-max-rank N`,
 repeated, compares gate depths from one retrieval pass and prints a table;
 `--ground-verifier llm` runs the configured ground verifier and counts the
-grounds it removes:
+grounds it removes (`--scope-verifier llm` does the same for the scope check):
 
 ```bash
 python -m app.evaluation.consumer_runner --evaluate-notice --notice-pipeline configured \
