@@ -163,6 +163,9 @@ class EvaluationRunMetadata(BaseModel):
     ground_verifier: str | None = Field(
         default=None, description="Verifier applied to the selected grounds, if any"
     )
+    scope_verifier: str | None = Field(
+        default=None, description="Scope verifier applied before retrieval, if any (ADR 0024)"
+    )
     case_split: str | None = Field(
         default=None, description="Golden split evaluated: development, holdout or all"
     )

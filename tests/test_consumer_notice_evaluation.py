@@ -559,3 +559,55 @@ def test_cli_builds_the_llm_ground_verifier_from_settings(
 
     assert consumer_runner._ground_verifier("none") is None
     assert isinstance(consumer_runner._ground_verifier("llm"), LLMGroundVerifier)
+
+
+class _RemoveEveryCase:
+    """A scope verifier that moves every in-scope case out of scope."""
+
+    async def verify(self, complaint: str) -> Any:
+        from app.consumer.schemas import ScopeVerification
+        from app.core.config import ScopeVerifierMode
+        from app.core.hashing import sha256_hex
+
+        return ScopeVerification(
+            mode=ScopeVerifierMode.LLM,
+            complaint_sha256=sha256_hex(complaint),
+            verdict="not_consumer",
+            quote=complaint[:20],
+            removed=True,
+        )
+
+
+async def test_a_scope_verifier_removal_abstains_and_is_counted() -> None:
+    evaluator = await _offline_evaluator(scope_verifier=_RemoveEveryCase())
+
+    summary = await evaluator.run(load_consumer_legal_dataset(DATASET_PATH))
+
+    assert summary.totals["consumer_notice_grounds"] == 0
+    assert summary.totals["consumer_notice_scope_verifier_removed"] > 0
+    assert summary.totals["consumer_notice_scope_verifier_failures"] == 0
+    assert summary.run is not None and summary.run.scope_verifier == "llm"
+
+
+async def test_without_a_scope_verifier_no_scope_counts_appear() -> None:
+    evaluator = await _offline_evaluator()
+
+    summary = await evaluator.run(load_consumer_legal_dataset(DATASET_PATH))
+
+    assert "consumer_notice_scope_verifier_removed" not in summary.totals
+    assert summary.run is not None and summary.run.scope_verifier == "none"
+
+
+def test_the_cli_accepts_scope_verifier_only_with_evaluate_notice(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr(
+        sys, "argv", ["consumer_runner", str(DATASET_PATH), "--scope-verifier", "llm"]
+    )
+
+    with pytest.raises(SystemExit) as excinfo:
+        asyncio.run(consumer_runner._cli())
+
+    assert excinfo.value.code == 2
+    # A known flag used without --evaluate-notice, not an unrecognised one.
+    assert "--scope-verifier require --evaluate-notice" in capsys.readouterr().err

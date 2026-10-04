@@ -46,6 +46,7 @@ from app.schemas.evaluation import (
 
 if TYPE_CHECKING:
     from app.consumer.ground_verifier import GroundVerifier
+    from app.consumer.scope_verifier import ScopeVerifier
 
 ConsumerRetriever = Callable[[str, int], object]
 
@@ -603,6 +604,7 @@ async def _run_selected_evaluation(
             pipeline_name=args.notice_pipeline,
             agreement_max_rank=agreement_max_rank,
             ground_verifier=_ground_verifier(args.ground_verifier),
+            scope_verifier=_scope_verifier(args.scope_verifier),
         )
         if args.require_semantic:
             minimums.append(("consumer_notice_semantic_success", 1.0))
@@ -633,6 +635,16 @@ def _ground_verifier(mode: str) -> GroundVerifier | None:
     from app.core.config import GroundVerifierMode, Settings
 
     return create_ground_verifier(Settings(ground_verifier=GroundVerifierMode(mode)))
+
+
+def _scope_verifier(mode: str) -> ScopeVerifier | None:
+    """The scope verifier ``--scope-verifier`` selects, built from the configured LLM."""
+    if mode == "none":
+        return None
+    from app.consumer.scope_verifier import create_scope_verifier
+    from app.core.config import ScopeVerifierMode, Settings
+
+    return create_scope_verifier(Settings(scope_verifier=ScopeVerifierMode(mode)))
 
 
 def render_agreement_sweep(sweep: Mapping[int, EvaluationSummary]) -> str:
@@ -673,6 +685,7 @@ async def _run_agreement_sweep(
         pipeline_name=args.notice_pipeline,
         agreement_max_ranks=sorted(set(args.agreement_max_ranks)),
         ground_verifier=_ground_verifier(args.ground_verifier),
+        scope_verifier=_scope_verifier(args.scope_verifier),
     )
     if args.output:
         payload = {
@@ -720,9 +733,17 @@ def _positive_int(value: str) -> int:
 def _check_arguments(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
     if args.evaluate_notice and (args.retriever or args.empty_baseline):
         parser.error("--evaluate-notice cannot be combined with --retriever or --empty-baseline")
-    notice_only = ("--require-semantic", "--agreement-max-rank", "--ground-verifier")
+    notice_only = (
+        "--require-semantic",
+        "--agreement-max-rank",
+        "--ground-verifier",
+        "--scope-verifier",
+    )
     if not args.evaluate_notice and (
-        args.require_semantic or args.agreement_max_ranks or args.ground_verifier != "none"
+        args.require_semantic
+        or args.agreement_max_ranks
+        or args.ground_verifier != "none"
+        or args.scope_verifier != "none"
     ):
         parser.error(f"{', '.join(notice_only)} require --evaluate-notice")
     if args.retriever and args.empty_baseline:
@@ -809,6 +830,15 @@ async def _cli() -> None:
         choices=("none", "llm"),
         default="none",
         help="with --evaluate-notice, verify the selected grounds with the configured LLM",
+    )
+    parser.add_argument(
+        "--scope-verifier",
+        choices=("none", "llm"),
+        default="none",
+        help=(
+            "with --evaluate-notice, check each in-scope complaint with the configured LLM "
+            "(drop-only)"
+        ),
     )
     parser.add_argument(
         "--split",
