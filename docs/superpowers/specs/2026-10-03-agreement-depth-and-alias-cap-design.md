@@ -92,10 +92,13 @@ CLI flag.
 
 ### 4.3 Recognising alias chunks
 
-The gate sees only trace chunk ids. A function `is_alias_chunk_id(chunk_id) -> bool` sits
-beside the alias chunk id format in `app/consumer/legal_corpus.py`, the module that builds
-`…:legal:<unit_key>:alias-NN`. The gate and `LegalCorpus.unit_for_chunk` use it, and the
-scattered `":alias-"` checks go.
+The gate sees only trace chunk ids. `app/consumer/aliases.py` gains
+`alias_chunk_id(document_id, unit_key) -> str`, the one place that writes
+`…:legal:<unit_key>:alias-01`, and `is_alias_chunk_id(chunk_id) -> bool`. They live there,
+not in `legal_corpus.py`, because `legal_corpus.py` imports `legal_policy.py`, so the
+gate importing from it would create a cycle; `aliases.py` imports neither.
+`LegalCorpus._alias_chunks` builds its ids with `alias_chunk_id`, and the gate uses
+`is_alias_chunk_id`. `LegalCorpus.unit_for_chunk` keeps its unit-specific match.
 
 ### 4.4 Policy version
 
