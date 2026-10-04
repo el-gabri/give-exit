@@ -50,7 +50,6 @@ from app.consumer.notice_markdown import notice_requests, render_notice_markdown
 from app.consumer.retrieval import (
     LEGAL_REQUESTED_K,
     build_evidence_queries,
-    is_consumer_scope,
     retrieve_legal_candidates,
 )
 from app.consumer.schemas import (
@@ -71,6 +70,8 @@ from app.consumer.schemas import (
     SettlementComponentSource,
     SettlementInputs,
 )
+from app.consumer.scope import is_consumer_scope
+from app.consumer.scope_verifier import NoScopeVerifier, ScopeVerifier
 from app.consumer.settlement import SettlementCalculator
 from app.consumer.store import (
     ConsumerCaseRecord,
@@ -92,6 +93,7 @@ from app.security.telemetry import redact_sensitive_text
 logger = get_logger(__name__)
 
 DEFAULT_MAX_DOCUMENTS_PER_CASE = 20
+_OUT_OF_SCOPE_MESSAGE = "O relato não caracteriza relação de consumo elegível para este rascunho."
 # Evidence citations keep the agreement depth ADR 0019 measured. ADR 0023
 # lowered the legal depth to 10 because lay alias chunks agree with themselves
 # in both channels; the user's own documents have no alias chunks.
@@ -136,6 +138,7 @@ class ConsumerCaseService:
         settlement_calculator: SettlementCalculator | None = None,
         notice_composer: NoticeDraftComposer | None = None,
         ground_verifier: GroundVerifier | None = None,
+        scope_verifier: ScopeVerifier | None = None,
         max_documents_per_case: int = DEFAULT_MAX_DOCUMENTS_PER_CASE,
         purge_orphaned_evidence: bool = True,
     ) -> None:
@@ -147,6 +150,7 @@ class ConsumerCaseService:
         self._settlement = settlement_calculator or SettlementCalculator()
         self._notice_composer = notice_composer or DeterministicNoticeComposer()
         self._ground_verifier = ground_verifier or NoGroundVerifier()
+        self._scope_verifier = scope_verifier or NoScopeVerifier()
         self._max_documents_per_case = max_documents_per_case
         self._purge_orphaned_evidence = purge_orphaned_evidence
         self._legal_index_lock = asyncio.Lock()
@@ -363,9 +367,7 @@ class ConsumerCaseService:
         if not normalized:
             raise ConsumerPromptNoticeError("O texto da solicitação não pode estar vazio.")
         if not is_consumer_scope(complaint=normalized):
-            raise ConsumerPromptNoticeError(
-                "O relato não caracteriza relação de consumo elegível para este rascunho."
-            )
+            raise ConsumerPromptNoticeError(_OUT_OF_SCOPE_MESSAGE)
         snapshot, token, _ = self.create_case()
         self.add_message(snapshot.case_id, token, text.strip())
         return snapshot.case_id, token
@@ -394,6 +396,7 @@ class ConsumerCaseService:
         missing = self._generation_blockers(record, mode)
         if missing:
             raise ConsumerCaseNotReadyError(missing)
+        await self._check_scope(record, mode)
 
         await self._ensure_legal_corpus_indexed()
         evidence = await self._index_case_evidence(record)
@@ -545,6 +548,24 @@ class ConsumerCaseService:
             mode="hybrid",
         )
         return legal_results, legal_traces, evidence_results, evidence_traces
+
+    async def _check_scope(self, record: ConsumerCaseRecord, mode: NoticeGenerationMode) -> None:
+        """Refuse a complaint out of scope, asking the optional verifier once per text.
+
+        The prompt path's intake checked the whole message; the account read
+        here leaves out the "Quero..." sentences, so the gate can reject it now.
+        """
+        complaint = record.facts.complaint_summary or ""
+        if is_consumer_scope(complaint=complaint):
+            stored = record.scope_verification
+            if stored is None or stored.complaint_sha256 != sha256_hex(complaint):
+                stored = await self._scope_verifier.verify(complaint)
+                record.scope_verification = stored
+            if not stored.removed:
+                return
+        if mode is NoticeGenerationMode.PROMPT:
+            raise ConsumerPromptNoticeError(_OUT_OF_SCOPE_MESSAGE)
+        raise ConsumerCaseNotReadyError(["consumer_relationship"])
 
     def _generation_blockers(
         self, record: ConsumerCaseRecord, mode: NoticeGenerationMode
@@ -760,7 +781,13 @@ class ConsumerCaseService:
 
     def _readiness_missing(self, record: ConsumerCaseRecord) -> list[str]:
         missing = list(record.facts.missing_fields())
-        if not is_consumer_scope(complaint=record.facts.complaint_summary or ""):
+        complaint = record.facts.complaint_summary or ""
+        verification = record.scope_verification
+        if not is_consumer_scope(complaint=complaint) or (
+            verification is not None
+            and verification.removed
+            and verification.complaint_sha256 == sha256_hex(complaint)
+        ):
             missing.append("consumer_relationship")
         if not self._has_accepted_evidence(record):
             missing.append("accepted_evidence")

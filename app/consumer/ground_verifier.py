@@ -163,8 +163,8 @@ def _checked_record(
         return GroundVerification(verdict="uncertain", verified=False)
     if verdict.verdict == "does_not_apply":
         return GroundVerification(verdict="does_not_apply", verified=False)
-    fact_quote = _verified_quote(verdict.fact_quote, fact_sources)
-    provision_quote = _verified_quote(verdict.provision_quote, [official])
+    fact_quote = verified_quote(verdict.fact_quote, fact_sources)
+    provision_quote = verified_quote(verdict.provision_quote, [official])
     if verdict.verdict == "applies" and fact_quote and provision_quote:
         return GroundVerification(
             verdict="applies",
@@ -175,7 +175,7 @@ def _checked_record(
     return GroundVerification(verdict="uncertain", verified=False)
 
 
-def _verified_quote(quote: str, sources: list[str]) -> str | None:
+def verified_quote(quote: str, sources: list[str]) -> str | None:
     """The quote as the source spells it, or None if it is not verbatim there.
 
     Whitespace and letter case may differ; every word must match in order.

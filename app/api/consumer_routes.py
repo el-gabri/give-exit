@@ -389,6 +389,8 @@ async def _draft_prompt_notice(
             )
     try:
         return await service.generate_prompt_notice(case_id, token)
+    except ConsumerPromptNoticeError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     except ConsumerRetrievalError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 

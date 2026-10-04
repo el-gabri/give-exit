@@ -37,6 +37,13 @@ class GroundVerifierMode(str, Enum):
     LLM = "llm"
 
 
+class ScopeVerifierMode(str, Enum):
+    """Whether an LLM may move a complaint out of consumer scope (drop-only)."""
+
+    NONE = "none"
+    LLM = "llm"
+
+
 class VectorStoreBackend(str, Enum):
     """Supported vector store backends (see ADR 0003)."""
 
@@ -122,6 +129,11 @@ class Settings(BaseSettings):
     # draft stays fully deterministic unless an operator opts in.
     ground_verifier: GroundVerifierMode = GroundVerifierMode.NONE
     ground_verifier_max_output_tokens: int = Field(default=2_000, ge=256, le=16_384)
+    # Optional, drop-only check that a complaint describes a consumer
+    # relationship, using the configured LLM provider (ADR 0024). Off by
+    # default: the deterministic relationship-class gate decides alone.
+    scope_verifier: ScopeVerifierMode = ScopeVerifierMode.NONE
+    scope_verifier_max_output_tokens: int = Field(default=1_000, ge=256, le=16_384)
     embedding_provider: EmbeddingProvider = EmbeddingProvider.AUTO
     # Optional override. AUTO resolves a provider-specific default instead of
     # accidentally sending another vendor's model name.

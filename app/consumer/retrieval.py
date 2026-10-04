@@ -20,8 +20,6 @@ separately, only to corroborate candidates the ranking queries found.
 
 from __future__ import annotations
 
-import re
-import unicodedata
 from decimal import Decimal
 
 from app.consumer.schemas import ConsumerCaseFacts
@@ -35,98 +33,6 @@ LEGAL_REQUESTED_K = 8
 LEGAL_RETRIEVAL_AGENT = "consumer_legal_authorities"
 LEGAL_CORROBORATION_AGENT = "consumer_legal_corroboration"
 
-# The intake is intentionally permissive, but a few domains are clearly not
-# consumer relationships.  This deterministic gate is conservative: it only
-# abstains on strong negative signals without any supplier/product/service
-# signal.  Ambiguous cases remain eligible for human review instead of being
-# silently rejected.
-# In a mixed-domain clause, a transaction word alone does not identify which
-# relationship the complaint is about. The bank is handled separately because
-# "banco de horas" is an employment term, not a consumer counterparty.
-_CONSUMER_COUNTERPARTY_SIGNALS = (
-    "fornecedor",
-    "loja",
-    "operadora",
-)
-_CONSUMER_TRANSACTION_SERVICE_SIGNALS = (
-    "assinatura",
-    "cartão",
-    "cobrança",
-    "compra",
-    "comprei",
-    "contratei",
-    "contrato",
-    "crédito",
-    "débito",
-    "entrega",
-    "empréstimo",
-    "fatura",
-    "financiamento",
-    "internet",
-    "juros",
-    "pagamento",
-    "paguei",
-    "plano de saúde",
-    "produto",
-    "seguro",
-    "serviço",
-)
-_NON_CONSUMER_SIGNALS = (
-    "banco de horas",
-    "benefício trabalhista",
-    "beneficio trabalhista",
-    "demissão",
-    "demissao",
-    "empregador",
-    "herança",
-    "heranca",
-    "hora extra",
-    "horas extras",
-    "inventário",
-    "inventario",
-    "contracheque",
-    "em que trabalho",
-    "onde trabalho",
-    "meu vizinho",
-    "salário",
-    "salario",
-    "vale-transporte",
-    "vale transporte",
-    "vínculo empregatício",
-    "vinculo empregaticio",
-    # A traffic fine or a vehicle tax is owed to the State, not to a supplier.
-    "multa de trânsito",
-    "multa de transito",
-    "infração de trânsito",
-    "infracao de transito",
-    "detran",
-    "ipva",
-    # Lending one's own money to someone is a private loan, not consumption.
-    # "Emprestei meu cartão" still names a card dispute, so only money counts.
-    "emprestei dinheiro",
-    "dinheiro emprestado",
-)
-_BANK_ACCOUNT_SIGNALS = (
-    "conta bancária",
-    "conta bancaria",
-    "conta-salário",
-    "conta-salario",
-    "conta salário",
-    "conta salario",
-    "minha conta",
-    "meu saldo",
-)
-_BANK_ACCESS_FAILURE_SIGNALS = (
-    "bloque",
-    "não libera",
-    "nao libera",
-    "retid",
-    "indisponível",
-    "indisponivel",
-)
-_SCOPE_CLAUSE_BOUNDARY = re.compile(
-    r"(?:[.!?;\n]+|,\s+(?:contudo|entretanto|mas|porem)\s+)"
-)
 
 def build_legal_queries(facts: ConsumerCaseFacts) -> list[str]:
     """Build bounded, replayable legal queries from confirmed case facts."""
@@ -202,28 +108,6 @@ async def retrieve_legal_candidates(
     return result_sets, [*traces, *corroborating]
 
 
-def is_consumer_scope(*, complaint: str) -> bool:
-    """Return whether a case can safely use the consumer-law corpus.
-
-    This is a high-precision abstention rule, not a legal merits classifier.
-    It prevents known non-consumer disputes from being dressed in CDC grounds
-    while leaving uncertain cases for human review. The narrative is the only
-    input: the intake taxonomy that used to short-circuit this gate was
-    keyword-inferred from this same text, so it could never contradict it.
-    """
-
-    normalized_complaint = _scope_normalize(complaint)
-    has_non_consumer_signal = _scope_contains_any(
-        normalized_complaint, _NON_CONSUMER_SIGNALS
-    )
-    if has_non_consumer_signal:
-        return any(
-            _clause_has_consumer_relationship(clause)
-            for clause in _scope_clauses(normalized_complaint)
-        )
-    return True
-
-
 def build_evidence_queries(facts: ConsumerCaseFacts) -> list[str]:
     """Build evidence lookups from the confirmed facts, in the consumer's own terms.
 
@@ -267,54 +151,6 @@ def _join_non_empty(*values: str | None) -> str:
 
 def _clean(value: str | None) -> str:
     return " ".join((value or "").split())
-
-
-def _scope_normalize(value: str | None) -> str:
-    decomposed = unicodedata.normalize("NFKD", (value or "").casefold())
-    normalized = "".join(
-        character for character in decomposed if not unicodedata.combining(character)
-    )
-    return re.sub(r"[^\S\n]+", " ", normalized).strip()
-
-
-def _scope_contains_any(value: str, signals: tuple[str, ...]) -> bool:
-    return any(_scope_normalize(signal) in value for signal in signals)
-
-
-def _scope_clauses(normalized_complaint: str) -> tuple[str, ...]:
-    return tuple(
-        clause.strip()
-        for clause in _SCOPE_CLAUSE_BOUNDARY.split(normalized_complaint)
-        if clause.strip()
-    )
-
-
-def _clause_has_consumer_relationship(clause: str) -> bool:
-    bank_counterparty = "banco" in clause and "banco de horas" not in clause
-    bank_account_dispute = (
-        bank_counterparty
-        and _scope_contains_any(clause, _BANK_ACCOUNT_SIGNALS)
-        and _scope_contains_any(clause, _BANK_ACCESS_FAILURE_SIGNALS)
-    )
-    if bank_account_dispute:
-        return True
-
-    has_counterparty = bank_counterparty or _scope_contains_any(
-        clause, _CONSUMER_COUNTERPARTY_SIGNALS
-    )
-    if not has_counterparty or not _scope_contains_any(
-        clause, _CONSUMER_TRANSACTION_SERVICE_SIGNALS
-    ):
-        return False
-    if not _scope_contains_any(clause, _NON_CONSUMER_SIGNALS):
-        return True
-
-    # A worker can still have a separate consumer dispute with the employer's
-    # store. Requiring an explicit personal card or invoice charge preserves
-    # that case without treating a workplace purchase as a CDC relationship.
-    return _scope_contains_any(clause, ("cobrança",)) and _scope_contains_any(
-        clause, ("cartão", "fatura")
-    )
 
 
 def _bounded(value: str) -> str:

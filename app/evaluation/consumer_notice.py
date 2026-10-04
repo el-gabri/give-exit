@@ -25,11 +25,12 @@ from app.consumer.legal_policy import (
 from app.consumer.retrieval import (
     LEGAL_REQUESTED_K,
     build_legal_queries,
-    is_consumer_scope,
     retrieve_legal_candidates,
 )
-from app.consumer.schemas import ConsumerCaseFacts, LegalGround
-from app.core.config import GroundVerifierMode, RetrievalMode
+from app.consumer.schemas import ConsumerCaseFacts, LegalGround, ScopeVerification
+from app.consumer.scope import is_consumer_scope
+from app.consumer.scope_verifier import NoScopeVerifier, ScopeVerifier
+from app.core.config import GroundVerifierMode, RetrievalMode, ScopeVerifierMode
 from app.evaluation.consumer_golden import validate_consumer_legal_labels
 from app.evaluation.consumer_retrievers import (
     configured_pipeline,
@@ -230,12 +231,17 @@ class ConsumerNoticeGroundEvaluator:
         *,
         retriever_id: str,
         ground_verifier: GroundVerifier | None = None,
+        scope_verifier: ScopeVerifier | None = None,
     ) -> None:
         self._pipeline = pipeline
         self._corpus = corpus
         self._retriever_id = retriever_id
         self._ground_verifier = ground_verifier or NoGroundVerifier()
         self._verifier_mode = GroundVerifierMode.NONE
+        self._scope_verifier = scope_verifier or NoScopeVerifier()
+        self._scope_mode = ScopeVerifierMode.NONE
+        # Like retrieval, the scope verdict does not depend on the gate depth.
+        self._scope_results: dict[str, ScopeVerification] = {}
         # Retrieval does not depend on the gate depth, so a sweep over depths
         # embeds and searches each case once.
         self._retrievals: dict[str, _CaseRetrieval] = {}
@@ -277,6 +283,7 @@ class ConsumerNoticeGroundEvaluator:
             ground_policy_version=LEGAL_GROUND_POLICY_VERSION,
             agreement_max_rank=agreement_max_rank,
             ground_verifier=self._verifier_mode.value,
+            scope_verifier=self._scope_mode.value,
             case_split=dataset.case_split,
         )
         return with_intervals(EvaluationSummary.from_cases(cases, run=run))
@@ -289,6 +296,19 @@ class ConsumerNoticeGroundEvaluator:
             desired_resolution=case.desired_resolution,
         )
         in_scope = is_consumer_scope(complaint=case.complaint)
+        scope_counts: dict[str, int] = {}
+        if in_scope:
+            verification = self._scope_results.get(case.case_id)
+            if verification is None:
+                verification = await self._scope_verifier.verify(case.complaint)
+                self._scope_results[case.case_id] = verification
+            self._scope_mode = verification.mode
+            if verification.mode is ScopeVerifierMode.LLM:
+                scope_counts = {
+                    "consumer_notice_scope_verifier_removed": int(verification.removed),
+                    "consumer_notice_scope_verifier_failures": int(verification.error is not None),
+                }
+            in_scope = not verification.removed
         queries = build_legal_queries(facts) if in_scope else []
         try:
             retrieval = await self._retrieve(case.case_id, facts, queries, doc_id)
@@ -335,7 +355,7 @@ class ConsumerNoticeGroundEvaluator:
             ),
             retrieval_outcome=retrieval.outcome,
             metrics=metrics,
-            counts={**counts, **verifier_counts},
+            counts={**counts, **verifier_counts, **scope_counts},
         )
 
     async def _retrieve(
@@ -382,6 +402,7 @@ async def run_notice_evaluation(
     pipeline_name: NoticePipelineName = "offline",
     agreement_max_rank: int = AGREEMENT_MAX_RANK,
     ground_verifier: GroundVerifier | None = None,
+    scope_verifier: ScopeVerifier | None = None,
 ) -> EvaluationSummary:
     """Evaluate final grounds with the offline mock stack or the configured one."""
 
@@ -390,6 +411,7 @@ async def run_notice_evaluation(
         pipeline_name=pipeline_name,
         agreement_max_ranks=(agreement_max_rank,),
         ground_verifier=ground_verifier,
+        scope_verifier=scope_verifier,
     )
     return sweep[agreement_max_rank]
 
@@ -400,6 +422,7 @@ async def run_notice_agreement_sweep(
     pipeline_name: NoticePipelineName = "offline",
     agreement_max_ranks: Sequence[int],
     ground_verifier: GroundVerifier | None = None,
+    scope_verifier: ScopeVerifier | None = None,
 ) -> dict[int, EvaluationSummary]:
     """Evaluate the notice grounds at several agreement-gate depths.
 
@@ -415,6 +438,7 @@ async def run_notice_agreement_sweep(
         corpus,
         retriever_id=f"{pipeline_name}_notice_path",
         ground_verifier=ground_verifier,
+        scope_verifier=scope_verifier,
     )
     try:
         return {

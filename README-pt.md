@@ -401,7 +401,10 @@ denso e lexical e a profundidade de gate que o teria citado. Duas opções medem
 os controles de precisão em qualquer stack. `--agreement-max-rank N`, repetida, compara profundidades do
 gate a partir de uma única recuperação e imprime uma tabela;
 `--ground-verifier llm` executa o verificador de fundamentos configurado e
-conta os fundamentos que ele remove:
+conta os fundamentos que ele remove (`--scope-verifier llm` faz o mesmo com a
+verificação opcional de escopo, que só pode retirar o caso do escopo e se
+ativa no serviço com `LITIGATION_SCOPE_VERIFIER=llm`, desligada por padrão;
+ADR 0024):
 
 ```powershell
 python -m app.evaluation.consumer_runner --evaluate-notice --notice-pipeline configured `

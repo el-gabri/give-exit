@@ -87,6 +87,8 @@ source = [
     "app.consumer.aliases",
     "app.consumer.embedding_artifacts",
     "app.consumer.ground_selection",
+    "app.consumer.scope",
+    "app.consumer.scope_verifier",
     "app.consumer.statutes",
     "app.consumer.vector_reuse",
     "app.evaluation.compare",

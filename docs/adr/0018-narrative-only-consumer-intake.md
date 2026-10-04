@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted · Date: 2026-09-14 · Amends: [ADR 0012](0012-bounded-consumer-extrajudicial-notice.md)
+Accepted · Date: 2026-09-14 · Amends: [ADR 0012](0012-bounded-consumer-extrajudicial-notice.md) · Amended by: [ADR 0024](0024-relationship-class-scope-gate.md)
 
 ## Context
 

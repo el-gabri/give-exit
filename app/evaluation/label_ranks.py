@@ -27,8 +27,9 @@ from pathlib import Path
 
 from app.consumer.legal_corpus import get_default_legal_corpus
 from app.consumer.legal_policy import AGREEMENT_MAX_RANK
-from app.consumer.retrieval import build_legal_queries, is_consumer_scope
+from app.consumer.retrieval import build_legal_queries
 from app.consumer.schemas import ConsumerCaseFacts
+from app.consumer.scope import is_consumer_scope
 from app.evaluation.consumer_golden import (
     dataset_split,
     load_consumer_legal_dataset,

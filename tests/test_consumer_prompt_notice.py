@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from pathlib import Path
+from typing import Any
 
 import fitz
 import httpx
@@ -249,3 +250,48 @@ async def test_unindexed_corpus_fails_without_keeping_the_case(
         assert response.status_code == 503
         assert "pré-indexada" in response.json()["detail"]
         assert _open_cases(app) == 0
+
+
+class _RemovingScopeVerifier:
+    async def verify(self, complaint: str) -> Any:
+        from app.consumer.schemas import ScopeVerification
+        from app.core.config import ScopeVerifierMode
+        from app.core.hashing import sha256_hex
+
+        return ScopeVerification(
+            mode=ScopeVerifierMode.LLM,
+            complaint_sha256=sha256_hex(complaint),
+            verdict="not_consumer",
+            quote=complaint[:20],
+            removed=True,
+        )
+
+
+async def test_prompt_notice_refused_by_the_scope_verifier_is_422(
+    api: tuple[httpx.AsyncClient, FastAPI],
+) -> None:
+    client, app = api
+    app.state.consumer_service._scope_verifier = _RemovingScopeVerifier()
+
+    response = await client.post("/consumer/prompt-notices", data={"text": NUBANK})
+
+    assert response.status_code == 422
+    assert "relação de consumo" in response.json()["detail"]
+
+
+async def test_a_prompt_out_of_scope_without_its_request_sentence_is_422(
+    api: tuple[httpx.AsyncClient, FastAPI],
+) -> None:
+    # The whole message passes the gate at intake ("a empresa" and "pagamento"
+    # share the request sentence); the account the notice is drafted from,
+    # without that sentence, is a tenancy dispute. A refusal, not a retry.
+    client, _ = api
+    text = (
+        "Moro de aluguel e o dono do apartamento não devolveu a caução. "
+        "Quero que a empresa devolva o pagamento."
+    )
+
+    response = await client.post("/consumer/prompt-notices", data={"text": text})
+
+    assert response.status_code == 422
+    assert "relação de consumo" in response.json()["detail"]
