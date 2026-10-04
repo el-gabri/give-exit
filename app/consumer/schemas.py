@@ -14,7 +14,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from app.core.config import GroundVerifierMode, NoticeComposer
+from app.core.config import GroundVerifierMode, NoticeComposer, ScopeVerifierMode
 from app.core.hashing import sha256_hex
 from app.llm.base import LLMCallMetadata
 from app.schemas.document import ExtractionMethod
@@ -475,6 +475,22 @@ class GroundVerificationSummary(BaseModel):
     error: str | None = Field(
         default=None, description="Exception class when verification was unavailable"
     )
+
+
+class ScopeVerification(BaseModel):
+    """What the optional scope verifier decided for one complaint (ADR 0024)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    mode: ScopeVerifierMode
+    complaint_sha256: str
+    verdict: Literal["consumer", "not_consumer", "uncertain"] = "consumer"
+    relationship: str | None = None
+    quote: str | None = None
+    removed: bool = False
+    error: str | None = None
+    metadata: LLMCallMetadata | None = None
+    prompt_version: str | None = None
 
 
 class SettlementComponentSource(BaseModel):

@@ -71,6 +71,7 @@ from app.consumer.schemas import (
     SettlementInputs,
 )
 from app.consumer.scope import is_consumer_scope
+from app.consumer.scope_verifier import NoScopeVerifier, ScopeVerifier
 from app.consumer.settlement import SettlementCalculator
 from app.consumer.store import (
     ConsumerCaseRecord,
@@ -136,6 +137,7 @@ class ConsumerCaseService:
         settlement_calculator: SettlementCalculator | None = None,
         notice_composer: NoticeDraftComposer | None = None,
         ground_verifier: GroundVerifier | None = None,
+        scope_verifier: ScopeVerifier | None = None,
         max_documents_per_case: int = DEFAULT_MAX_DOCUMENTS_PER_CASE,
         purge_orphaned_evidence: bool = True,
     ) -> None:
@@ -147,6 +149,7 @@ class ConsumerCaseService:
         self._settlement = settlement_calculator or SettlementCalculator()
         self._notice_composer = notice_composer or DeterministicNoticeComposer()
         self._ground_verifier = ground_verifier or NoGroundVerifier()
+        self._scope_verifier = scope_verifier or NoScopeVerifier()
         self._max_documents_per_case = max_documents_per_case
         self._purge_orphaned_evidence = purge_orphaned_evidence
         self._legal_index_lock = asyncio.Lock()
