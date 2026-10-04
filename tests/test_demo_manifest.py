@@ -5,24 +5,42 @@ import json
 from datetime import date
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
-DEMO_DIR = ROOT / "demo"
-MANIFEST_PATH = DEMO_DIR / "manifest.json"
 ALLOWED_RECORD_KINDS = {"public_judicial_record", "synthetic_fixture"}
 
 
-def _demo_pdf_paths() -> set[str]:
-    """Return all demo PDFs present in a CI checkout."""
+def _demo_pdf_paths(root: Path) -> set[str]:
+    """Return all demo PDFs present in a checkout."""
 
+    demo_dir = root / "demo"
+    if not demo_dir.is_dir():
+        return set()
     return {
-        path.relative_to(ROOT).as_posix()
-        for path in DEMO_DIR.rglob("*")
+        path.relative_to(root).as_posix()
+        for path in demo_dir.rglob("*")
         if path.is_file() and path.suffix.casefold() == ".pdf"
     }
 
 
 def test_demo_pdf_manifest_is_complete_current_and_reviewed() -> None:
-    manifest = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
+    _check_demo_manifest(ROOT)
+
+
+def _check_demo_manifest(root: Path) -> None:
+    """Every committed demo PDF is manifested, current and reviewed.
+
+    With no demo PDF committed there is nothing to govern, and no manifest is
+    needed; a PDF added back without one fails.
+    """
+
+    pdfs = _demo_pdf_paths(root)
+    manifest_path = root / "demo" / "manifest.json"
+    if not manifest_path.exists():
+        assert not pdfs, f"demo PDFs without demo/manifest.json: {sorted(pdfs)}"
+        return
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
 
     assert manifest["schema_version"] == 1
     assert (
@@ -35,12 +53,12 @@ def test_demo_pdf_manifest_is_complete_current_and_reviewed() -> None:
     entries = manifest["files"]
     manifest_paths = [entry["path"] for entry in entries]
     assert len(manifest_paths) == len(set(manifest_paths)), "duplicate manifest path"
-    assert set(manifest_paths) == _demo_pdf_paths(), (
+    assert set(manifest_paths) == pdfs, (
         "Every demo PDF must be manifested, and stale entries must be removed"
     )
 
     for entry in entries:
-        path = ROOT / entry["path"]
+        path = root / entry["path"]
         actual_hash = hashlib.sha256(path.read_bytes()).hexdigest()
         assert entry["sha256"] == actual_hash, f"hash drift for {entry['path']}"
 
@@ -73,3 +91,17 @@ def test_demo_pdf_manifest_is_complete_current_and_reviewed() -> None:
             assert provenance["source_url"] is None or provenance[
                 "source_url"
             ].strip()
+
+
+def test_no_demo_pdfs_need_no_manifest(tmp_path: Path) -> None:
+    # The demo directory was deleted (ed1c004); with no committed PDF there is
+    # nothing to govern.
+    _check_demo_manifest(tmp_path)
+
+
+def test_a_demo_pdf_without_a_manifest_still_fails(tmp_path: Path) -> None:
+    (tmp_path / "demo").mkdir()
+    (tmp_path / "demo" / "peticao.pdf").write_bytes(b"%PDF-1.4")
+
+    with pytest.raises(AssertionError, match="demo/peticao.pdf"):
+        _check_demo_manifest(tmp_path)
