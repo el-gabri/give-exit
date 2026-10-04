@@ -149,10 +149,12 @@ the prompt version and the `complaint_sha256` it was computed for.
 
 Today the service uses the deterministic gate in two places, and the check joins both:
 
-- **The one-call prompt path** (`ConsumerCaseService` prompt notice, `service.py:365`). The
-  deterministic gate runs first. If it says in scope, the verifier runs. A removal raises the
-  same `ConsumerPromptNoticeError` ("O relato não caracteriza relação de consumo elegível
-  para este rascunho.") before any case is created.
+- **The one-call prompt path.** `start_prompt_case` (`service.py:365`) is synchronous and
+  keeps the deterministic gate. The asynchronous verifier therefore runs at the start of
+  `generate_prompt_notice`, before legal retrieval. A removal raises the same
+  `ConsumerPromptNoticeError` ("O relato não caracteriza relação de consumo elegível para
+  este rascunho."), which the route maps to 422 like the deterministic refusal. The case
+  already exists by then and records the refusal.
 - **The case path.** When a notice is generated, and before legal retrieval, the verifier
   runs if the deterministic gate says in scope. Its result is stored on the case record as
   `scope_verification`. A removal refuses the generation with the same out-of-scope message.
@@ -161,8 +163,9 @@ Today the service uses the deterministic gate in two places, and the check joins
   `complaint_sha256` matches the current complaint. If the complaint is edited, the stored
   verdict no longer applies and the check runs again at the next generation.
 
-The case record keeps the deterministic `ScopeAssessment` and the `ScopeVerification`, so the
-audit shows which rule or which verified quote made a case abstain.
+The case record keeps the `ScopeVerification`. The deterministic `ScopeAssessment` is a pure
+function of the complaint, so it is recomputed rather than stored. Between them, the audit
+shows which rule or which verified quote made a case abstain.
 
 - **The notice evaluation** counts:
   - `consumer_notice_scope_verifier_removed`, cases the check moved out of scope;
