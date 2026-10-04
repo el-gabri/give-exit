@@ -110,7 +110,8 @@ back safely. Embeddings are independent.
   retrieval matched to unrelated complaints.
 - The load-bearing precision control is retrieval agreement: an article
   becomes a ground only when dense and lexical retrieval both ranked it within
-  their top 13. Each chunk's rank in each channel is recorded in the trace and
+  their top 10, and each query counts at most three alias chunks (ADR 0023).
+  Each chunk's rank in each channel is recorded in the trace and
   the gate reads it from there, so it holds for any fusion weights and with a
   reranker enabled (ADR 0019). When retrieval degrades to lexical-only, the
   complaint and the requested remedy are also searched separately, and an

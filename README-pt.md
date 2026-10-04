@@ -85,7 +85,8 @@ forma determinística; saída inválida aciona o compositor determinístico.
   alias que o encontrou (ADR 0022).
 - A recuperação jurídica combina semântica e correspondência lexical exata.
 - O principal controle de precisão é a concordância: um artigo só vira
-  fundamento quando a busca densa e a lexical o colocam entre os 13 primeiros.
+  fundamento quando a busca densa e a lexical o colocam entre os 10 primeiros,
+  e cada consulta conta no máximo três chunks de aliases (ADR 0023).
   A posição em cada canal fica no trace e o controle a lê de lá, então vale para
   quaisquer pesos de fusão e com reranker. Em modo apenas lexical, o relato e a
   solução desejada também são buscados separadamente e o artigo precisa estar

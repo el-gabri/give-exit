@@ -66,7 +66,8 @@ flowchart LR
    Reranking is optional and orders candidates only within their
    channel-agreement tier.
 9. Legal chunks must pass status, provenance and agreement rules: both
-   channels must rank a chunk within their top 13. When retrieval degrades to
+   channels must rank a chunk within their top 10, and each query counts at most
+   three alias chunks (ADR 0023). When retrieval degrades to
    one channel, the complaint and the requested remedy are searched
    separately and must both rank the chunk in their top three. An optional
    LLM verifier may then drop grounds it shows do not apply, with verbatim
@@ -210,3 +211,4 @@ production claims.
 - [0020](adr/0020-lgpd-grounds-without-cdc-anchor.md) — the LGPD may ground a notice alone
 - [0021](adr/0021-evaluation-precision-holdout-uncertainty.md) — precision, a holdout and uncertainty in evaluation
 - [0022](adr/0022-lay-language-alias-chunks.md) — lay-language alias chunks
+- [0023](adr/0023-agreement-depth-and-alias-cap.md) — agreement depth 10 and an alias support cap

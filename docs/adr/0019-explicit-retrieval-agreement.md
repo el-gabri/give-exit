@@ -4,7 +4,8 @@
 
 Accepted · Date: 2026-09-24 · Amends: [ADR 0006](0006-section-aware-chunking.md),
 [ADR 0013](0013-versioned-consumer-law-retrieval.md),
-[ADR 0015](0015-bounded-notice-prose-composer.md)
+[ADR 0015](0015-bounded-notice-prose-composer.md) · Amended by:
+[ADR 0023](0023-agreement-depth-and-alias-cap.md)
 
 ## Context
 

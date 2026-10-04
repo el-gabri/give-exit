@@ -206,6 +206,10 @@ precision fell below v4 and the known-bad count rose. The rules fire on the conf
 stack.** The levers are the ones named above: one candidate per provision before the k = 8
 cut, and a cap on how many alias chunks a query may contribute (review step 4).
 
+Step 4 of the review answers these numbers. Collapsing siblings turned out to change no
+ground. Agreement depth 10 and at most three alias chunks per query restore development
+precision to 0.491 with no known-bad citation ([ADR 0023](0023-agreement-depth-and-alias-cap.md)).
+
 ## Consequences
 
 - (+) Lay wording reaches units whose statutory text it never shares, and precision rose
