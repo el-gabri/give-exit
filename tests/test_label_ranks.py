@@ -39,7 +39,7 @@ def test_the_best_rank_of_each_channel_and_the_depth_that_would_support_it() -> 
     label = _label("br-cdc-art-42", "br-cdc-art-42-paragrafo-unico")
     result_sets = [
         [_hit("br-cdc-art-42-paragrafo-unico", "br-cdc-art-42", dense=30, lexical=2)],
-        [_hit("br-cdc-art-42-paragrafo-unico", "br-cdc-art-42", dense=9, lexical=12)],
+        [_hit("br-cdc-art-42-paragrafo-unico", "br-cdc-art-42", dense=9, lexical=10)],
         # The whole article does not cite the unit.
         [_hit(None, "br-cdc-art-42", dense=1, lexical=1)],
     ]
@@ -51,7 +51,7 @@ def test_the_best_rank_of_each_channel_and_the_depth_that_would_support_it() -> 
         label="br-cdc-art-42-paragrafo-unico",
         dense=9,
         lexical=2,
-        agreement_depth=12,
+        agreement_depth=10,
     )
     assert rank.verdict == "within the gate"
 

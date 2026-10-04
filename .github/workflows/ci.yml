@@ -148,12 +148,13 @@ jobs:
         # consumer_notice_labelled_grounds >= 1 fails a selector that cites
         # nothing, which the known-bad and abstention gates alone would pass.
         #
-        # Re-measured on 2026-10-03 for corpus v5 (ADR 0022), development split:
-        # 31 grounds, 8 labelled, 22 unlabelled, 1 known-bad (after the defense
-        # and exclusion units lost their aliases, ADR 0022 Decision 3). The known-bad
-        # ceiling is 1 by decision: the single citation is CDC art. 42 sole
-        # paragraph beside a label on art. 42 caput (a sibling paragraph), which
-        # collapsing siblings before truncation (review step 4) addresses.
+        # Re-measured on 2026-10-03 for agreement depth 10 and the alias support
+        # cap (ADR 0023, chosen on the configured stack), development split: 22
+        # grounds, 6 labelled, 15 unlabelled, 1 known-bad (corpus v5 at depth 13:
+        # 31 / 8 / 22 / 1). The known-bad ceiling stays 1 by decision: the single
+        # citation is CDC art. 42 sole paragraph beside a label on art. 42 caput
+        # (a sibling paragraph) on cobranca_com_ameacas. The configured stack no
+        # longer cites it; this hashed-embedder stack still does.
         run: |
           python -m app.evaluation.consumer_runner \
             eval_data/consumer_legal_retrieval \
@@ -162,7 +163,7 @@ jobs:
             --output consumer-notice-results.json \
             --max consumer_notice_known_bad_citations=1 \
             --min consumer_notice_abstention=1.0 \
-            --min consumer_notice_labelled_grounds=8
+            --min consumer_notice_labelled_grounds=6
       - name: Consumer holdout report (not gated)
         # The holdout split is measured on every build and never gated, so no
         # parameter is tuned against it. Its results are uploaded below.

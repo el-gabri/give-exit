@@ -256,33 +256,39 @@ async def test_offline_notice_baseline_on_the_seed_dataset() -> None:
     aliases (ADR 0022, Decision 3): 58 grounds, 14 labelled (LGPD art. 18 on
     the holdout data-access case), 42 unlabelled, the same 2 known-bad.
     Development precision 0.3 -> 0.289; holdout article recall 0.308 -> 0.333.
+
+    Re-measured on 2026-10-03 for agreement depth 10 and the alias support cap
+    (ADR 0023, chosen on the configured stack): 43 grounds, 12 labelled, 29
+    unlabelled, the same 2 known-bad. Development precision 0.289 -> 0.292 and
+    article recall 0.267 -> 0.225; holdout precision 0.179 -> 0.269.
     """
 
     summary = await run_notice_evaluation(load_consumer_legal_dataset(DATASET_PATH))
 
     assert summary.failed_case_count == 0
     assert summary.totals == {
-        "consumer_notice_complementary_grounds": 7,
-        "consumer_notice_grounds": 58,
+        "consumer_notice_complementary_grounds": 6,
+        "consumer_notice_grounds": 43,
         "consumer_notice_known_bad_citations": 2,
-        "consumer_notice_labelled_grounds": 14,
-        "consumer_notice_unlabelled_grounds": 42,
+        "consumer_notice_labelled_grounds": 12,
+        "consumer_notice_unlabelled_grounds": 29,
     }
-    assert summary.averages["consumer_notice_exact_recall"] == 0.152
+    assert summary.averages["consumer_notice_exact_recall"] == 0.136
     assert summary.averages["consumer_notice_abstention"] == 0.9
     assert summary.averages["consumer_notice_semantic_success"] == 1.0
     development = summary.by_split["development"].averages
     holdout = summary.by_split["holdout"].averages
     assert development["consumer_notice_abstention"] == 1.0
-    assert development["consumer_notice_precision"] == 0.289
-    assert development["consumer_notice_article_recall"] == 0.267
+    assert development["consumer_notice_precision"] == 0.292
+    assert development["consumer_notice_article_recall"] == 0.225
     assert holdout["consumer_notice_abstention"] == 0.833
-    assert holdout["consumer_notice_precision"] == 0.179
+    assert holdout["consumer_notice_precision"] == 0.269
     assert holdout["consumer_notice_article_recall"] == 0.333
     assert set(summary.intervals) == set(summary.averages)
     assert set(summary.by_split["holdout"].intervals) == set(holdout)
     assert summary.run is not None
     assert summary.run.cutoffs == (8,)
+    assert summary.run.agreement_max_rank == 10
     assert summary.run.ground_policy_version == LEGAL_GROUND_POLICY_VERSION
     assert summary.run.retrieval.retriever_id == "offline_notice_path"
 
@@ -433,12 +439,14 @@ async def test_an_agreement_sweep_retrieves_each_case_once(
     # 43 cases, four of them stopped by the scope gate before retrieval.
     assert len(calls) == 39
     assert shallow.run is not None and shallow.run.agreement_max_rank == 8
-    assert default.run is not None and default.run.agreement_max_rank == 13
+    assert default.run is not None and default.run.agreement_max_rank == 10
     assert default.run.ground_verifier == "none"
     # A shallower gate can only drop grounds.
     # Corpus v5 (ADR 0022): 14 -> 36 and 26 -> 58 with the lay alias chunks.
+    # Depth 10 and the alias cap (ADR 0023): the default falls to 43; depth 8
+    # stays at 36, where the cap never binds offline.
     assert shallow.totals["consumer_notice_grounds"] == 36
-    assert default.totals["consumer_notice_grounds"] == 58
+    assert default.totals["consumer_notice_grounds"] == 43
 
 
 class _RejectEveryGround:
@@ -460,7 +468,7 @@ async def test_verifier_removals_are_counted_per_case() -> None:
     summary = await evaluator.run(load_consumer_legal_dataset(DATASET_PATH))
 
     assert summary.totals["consumer_notice_grounds"] == 0
-    assert summary.totals["consumer_notice_verifier_removed"] == 58
+    assert summary.totals["consumer_notice_verifier_removed"] == 43
     assert summary.totals["consumer_notice_verifier_failures"] == 0
     assert summary.run is not None and summary.run.ground_verifier == "llm"
 
@@ -493,7 +501,7 @@ def test_cli_prints_an_agreement_sweep(
     table = printed[start : start + 3]
     assert table[0].split()[:4] == ["agreement_max_rank", "grounds", "complementary", "known_bad"]
     assert "labelled" in table[0].split()
-    assert [line.split()[:2] for line in table[1:]] == [["16", "70"], ["20", "88"]]
+    assert [line.split()[:2] for line in table[1:]] == [["16", "63"], ["20", "77"]]
     payload = json.loads(output.read_text(encoding="utf-8"))
     assert sorted(payload["agreement_sweep"]) == ["16", "20"]
     assert payload["agreement_sweep"]["20"]["run"]["agreement_max_rank"] == 20
