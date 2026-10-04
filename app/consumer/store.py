@@ -25,6 +25,7 @@ from app.consumer.schemas import (
     ConsumerEvidence,
     ConsumerMessage,
     ConsumerNotice,
+    ScopeVerification,
 )
 from app.core.hashing import sha256_hex
 from app.schemas.document import ParsedDocument
@@ -58,6 +59,9 @@ class ConsumerCaseRecord:
     documents: list[StoredEvidence] = field(default_factory=list)
     facts_confirmed: bool = False
     notice: ConsumerNotice | None = None
+    # The optional scope verifier's verdict for the complaint text it saw
+    # (ADR 0024); readiness reads it while that text is unchanged.
+    scope_verification: ScopeVerification | None = None
     indexed_document_ids: set[str] = field(default_factory=set)
     # The combined evidence document is content-addressed. Retaining its id
     # prevents re-embedding unchanged uploads every time a user regenerates a

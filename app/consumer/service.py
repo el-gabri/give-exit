@@ -93,6 +93,7 @@ from app.security.telemetry import redact_sensitive_text
 logger = get_logger(__name__)
 
 DEFAULT_MAX_DOCUMENTS_PER_CASE = 20
+_OUT_OF_SCOPE_MESSAGE = "O relato não caracteriza relação de consumo elegível para este rascunho."
 # Evidence citations keep the agreement depth ADR 0019 measured. ADR 0023
 # lowered the legal depth to 10 because lay alias chunks agree with themselves
 # in both channels; the user's own documents have no alias chunks.
@@ -366,9 +367,7 @@ class ConsumerCaseService:
         if not normalized:
             raise ConsumerPromptNoticeError("O texto da solicitação não pode estar vazio.")
         if not is_consumer_scope(complaint=normalized):
-            raise ConsumerPromptNoticeError(
-                "O relato não caracteriza relação de consumo elegível para este rascunho."
-            )
+            raise ConsumerPromptNoticeError(_OUT_OF_SCOPE_MESSAGE)
         snapshot, token, _ = self.create_case()
         self.add_message(snapshot.case_id, token, text.strip())
         return snapshot.case_id, token
@@ -397,6 +396,7 @@ class ConsumerCaseService:
         missing = self._generation_blockers(record, mode)
         if missing:
             raise ConsumerCaseNotReadyError(missing)
+        await self._check_scope(record, mode)
 
         await self._ensure_legal_corpus_indexed()
         evidence = await self._index_case_evidence(record)
@@ -548,6 +548,21 @@ class ConsumerCaseService:
             mode="hybrid",
         )
         return legal_results, legal_traces, evidence_results, evidence_traces
+
+    async def _check_scope(self, record: ConsumerCaseRecord, mode: NoticeGenerationMode) -> None:
+        """Run the optional scope verifier once per complaint text; refuse a removal."""
+        complaint = record.facts.complaint_summary or ""
+        if not is_consumer_scope(complaint=complaint):
+            return
+        stored = record.scope_verification
+        if stored is None or stored.complaint_sha256 != sha256_hex(complaint):
+            stored = await self._scope_verifier.verify(complaint)
+            record.scope_verification = stored
+        if not stored.removed:
+            return
+        if mode is NoticeGenerationMode.PROMPT:
+            raise ConsumerPromptNoticeError(_OUT_OF_SCOPE_MESSAGE)
+        raise ConsumerCaseNotReadyError(["consumer_relationship"])
 
     def _generation_blockers(
         self, record: ConsumerCaseRecord, mode: NoticeGenerationMode
@@ -763,7 +778,13 @@ class ConsumerCaseService:
 
     def _readiness_missing(self, record: ConsumerCaseRecord) -> list[str]:
         missing = list(record.facts.missing_fields())
-        if not is_consumer_scope(complaint=record.facts.complaint_summary or ""):
+        complaint = record.facts.complaint_summary or ""
+        verification = record.scope_verification
+        if not is_consumer_scope(complaint=complaint) or (
+            verification is not None
+            and verification.removed
+            and verification.complaint_sha256 == sha256_hex(complaint)
+        ):
             missing.append("consumer_relationship")
         if not self._has_accepted_evidence(record):
             missing.append("accepted_evidence")
