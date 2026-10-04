@@ -27,7 +27,8 @@ from app.schemas.trace import RetrievalTrace
 # must show dense/lexical agreement (or independent-query corroboration when
 # a trace lacks one of the channels).
 #
-# The relative floor applies only to reranker and single-channel scores. On
+# The relative floor applies only to reranker and single-channel scores, and
+# only when the best of them is positive (see _score_floor). On
 # reciprocal-rank fusion it can never bind: the best fused score is
 # (w_dense + w_lexical) / (c + 1), and any chunk both channels returned within
 # the candidate depth K scores at least (w_dense + w_lexical) / (c + K), which
@@ -104,11 +105,21 @@ def select_legal_grounds(
 
 
 def _score_floor(merged: list[RetrievedChunk], traces: list[RetrievalTrace]) -> float:
-    """Half the best score, except on fused ranks where the gate already dominates."""
+    """Half a positive best score; no floor on fused ranks or a non-positive best."""
 
     if all(trace.score_type == "rrf_score" for trace in traces if trace.error is None):
         return float("-inf")
-    return merged[0].score * MIN_GROUND_SCORE_RATIO
+    best = merged[0].score
+    # A fraction of the best score is a relative floor only when the best is
+    # positive. Raw cross-encoder logits and cosine similarities can be zero or
+    # negative, and half of a negative best lies above it, so every candidate,
+    # the best included, would fall below the floor. With no positive anchor
+    # there is no ratio to take: the floor is skipped and, as on fused ranks,
+    # the agreement gate and the candidate window bound what is cited. Positive
+    # bests keep the ratio unchanged.
+    if best <= 0:
+        return float("-inf")
+    return best * MIN_GROUND_SCORE_RATIO
 
 
 def _eligible_candidates(

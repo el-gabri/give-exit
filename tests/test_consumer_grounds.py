@@ -134,6 +134,24 @@ def test_weakly_reranked_articles_are_not_cited_as_authority() -> None:
     assert weak.chunk_id not in cited
 
 
+def test_negative_reranker_scores_still_cite_the_top_article() -> None:
+    """Raw cross-encoder logits can all be negative; half of -2 is above -2."""
+    service = _service()
+    top, runner_up = _corpus_chunks(2)
+    results = [
+        [
+            RetrievedChunk(chunk=top, score=-2.0),
+            RetrievedChunk(chunk=runner_up, score=-2.5),
+        ]
+    ]
+
+    grounds = service._legal_grounds(
+        results, _facts(), _traces(results, score_type="reranker_score")
+    )
+
+    assert top.chunk_id in {ground.authority.chunk_id for ground in grounds}
+
+
 def test_rrf_scores_are_not_filtered_by_the_relative_floor() -> None:
     """On fused ranks the channel-agreement gate, not a score ratio, decides."""
     service = _service()
