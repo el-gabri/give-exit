@@ -1,7 +1,7 @@
 {
   "dataset_id": "consumer-legal-retrieval-seed",
-  "version": "2.3.0",
-  "description": "Developer-authored seed for offline retrieval evaluation from lay Brazilian consumer complaints to CDC provisions, with LGPD and Civil Code complements. It is not a production legal golden until specialist review. Development cases may inform parameter choices; holdout cases are only reported, and a holdout case whose result informed a decision moves to development in the next version. Version 2.3.0 targets corpus release v5 (lay-language alias chunks, ADR 0022); labels and splits are unchanged.",
+  "version": "2.4.0",
+  "description": "Developer-authored seed for offline retrieval evaluation from lay Brazilian consumer complaints to CDC provisions, with LGPD and Civil Code complements. It is not a production legal golden until specialist review. Development cases may inform parameter choices; holdout cases are only reported, and a holdout case whose result informed a decision moves to development in the next version. Version 2.3.0 targets corpus release v5 (lay-language alias chunks, ADR 0022); labels and splits are unchanged. Version 2.4.0 adds 28 development cases for the scope gate (spec 2026-10-04): 20 disputes with no consumer relationship and 8 consumer cases that mention a non-consumer word; the holdout is unchanged.",
   "source_url": "https://www.planalto.gov.br/ccivil_03/leis/l8078compilado.htm",
   "authoring": "developer_authored_seed",
   "review_status": "requires_legal_review",
@@ -1184,6 +1184,619 @@
       ],
       "no_applicable_ground": true,
       "split": "holdout"
+    },
+    {
+      "case_id": "iptu_em_dobro_na_prefeitura",
+      "category": "no_consumer_relationship",
+      "slices": [
+        "ground:none",
+        "domain:state",
+        "wording:lay"
+      ],
+      "complaint": "A prefeitura me mandou dois carnês de IPTU para o mesmo imóvel neste ano e não responde meus e-mails.",
+      "desired_resolution": "Quero que cancelem o carnê repetido.",
+      "relevant": [],
+      "hard_negatives": [
+        "br-cdc-art-2",
+        "br-cdc-art-3",
+        "br-cdc-art-42"
+      ],
+      "no_applicable_ground": true,
+      "split": "development"
+    },
+    {
+      "case_id": "vaga_na_creche_publica",
+      "category": "no_consumer_relationship",
+      "slices": [
+        "ground:none",
+        "domain:state",
+        "wording:lay"
+      ],
+      "complaint": "Inscrevi minha filha na creche pública do bairro há oito meses e até hoje não fomos chamados.",
+      "desired_resolution": "Quero que ela consiga a vaga ainda este semestre.",
+      "relevant": [],
+      "hard_negatives": [
+        "br-cdc-art-2",
+        "br-cdc-art-3",
+        "br-cdc-art-22"
+      ],
+      "no_applicable_ground": true,
+      "split": "development"
+    },
+    {
+      "case_id": "passaporte_atrasado",
+      "category": "no_consumer_relationship",
+      "slices": [
+        "ground:none",
+        "domain:state",
+        "wording:lay"
+      ],
+      "complaint": "Paguei a taxa do passaporte, fui ao atendimento na Polícia Federal e o documento está atrasado há dois meses.",
+      "desired_resolution": "Quero receber o passaporte antes da minha viagem.",
+      "relevant": [],
+      "hard_negatives": [
+        "br-cdc-art-2",
+        "br-cdc-art-3",
+        "br-cdc-art-22"
+      ],
+      "no_applicable_ground": true,
+      "split": "development"
+    },
+    {
+      "case_id": "vazamento_que_o_dono_nao_conserta",
+      "category": "no_consumer_relationship",
+      "slices": [
+        "ground:none",
+        "domain:tenancy",
+        "wording:lay"
+      ],
+      "complaint": "Moro de aluguel e o dono do apartamento não conserta um vazamento no banheiro há três meses.",
+      "desired_resolution": "Quero que ele faça o conserto ou desconte do aluguel.",
+      "relevant": [],
+      "hard_negatives": [
+        "br-cdc-art-2",
+        "br-cdc-art-3",
+        "br-cdc-art-20"
+      ],
+      "no_applicable_ground": true,
+      "split": "development"
+    },
+    {
+      "case_id": "inquilino_sem_pagar",
+      "category": "no_consumer_relationship",
+      "slices": [
+        "ground:none",
+        "domain:tenancy",
+        "wording:lay"
+      ],
+      "complaint": "Aluguei minha casa para um casal e o inquilino está há quatro meses sem pagar nada.",
+      "desired_resolution": "Quero receber os meses atrasados.",
+      "relevant": [],
+      "hard_negatives": [
+        "br-cdc-art-2",
+        "br-cdc-art-3",
+        "br-cdc-art-42"
+      ],
+      "no_applicable_ground": true,
+      "split": "development"
+    },
+    {
+      "case_id": "multa_do_sindico_pelo_cachorro",
+      "category": "no_consumer_relationship",
+      "slices": [
+        "ground:none",
+        "domain:tenancy",
+        "wording:lay"
+      ],
+      "complaint": "O síndico me aplicou uma multa porque meu cachorro latiu durante a noite.",
+      "desired_resolution": "Quero cancelar essa multa.",
+      "relevant": [],
+      "hard_negatives": [
+        "br-cdc-art-2",
+        "br-cdc-art-3",
+        "br-cdc-art-39"
+      ],
+      "no_applicable_ground": true,
+      "split": "development"
+    },
+    {
+      "case_id": "proprietaria_quer_que_eu_saia",
+      "category": "no_consumer_relationship",
+      "slices": [
+        "ground:none",
+        "domain:tenancy",
+        "wording:lay"
+      ],
+      "complaint": "A proprietária da casa onde eu moro quer que eu saia em trinta dias porque decidiu vender.",
+      "desired_resolution": "Quero um prazo maior para me mudar.",
+      "relevant": [],
+      "hard_negatives": [
+        "br-cdc-art-2",
+        "br-cdc-art-3",
+        "br-cdc-art-51"
+      ],
+      "no_applicable_ground": true,
+      "split": "development"
+    },
+    {
+      "case_id": "carteira_nunca_assinada",
+      "category": "no_consumer_relationship",
+      "slices": [
+        "ground:none",
+        "domain:employment",
+        "wording:lay"
+      ],
+      "complaint": "Trabalho no caixa de uma padaria há um ano e o dono nunca assinou minha carteira.",
+      "desired_resolution": "Quero ter meus direitos registrados.",
+      "relevant": [],
+      "hard_negatives": [
+        "br-cdc-art-2",
+        "br-cdc-art-3",
+        "br-cdc-art-39"
+      ],
+      "no_applicable_ground": true,
+      "split": "development"
+    },
+    {
+      "case_id": "fgts_nao_depositado",
+      "category": "no_consumer_relationship",
+      "slices": [
+        "ground:none",
+        "domain:employment",
+        "wording:lay"
+      ],
+      "complaint": "Descobri que meu antigo patrão não depositou meu FGTS nos últimos dois anos.",
+      "desired_resolution": "Quero que ele deposite o que deve.",
+      "relevant": [],
+      "hard_negatives": [
+        "br-cdc-art-2",
+        "br-cdc-art-3",
+        "br-cdc-art-42"
+      ],
+      "no_applicable_ground": true,
+      "split": "development"
+    },
+    {
+      "case_id": "mandado_embora_sem_acerto",
+      "category": "no_consumer_relationship",
+      "slices": [
+        "ground:none",
+        "domain:employment",
+        "wording:lay"
+      ],
+      "complaint": "Fui mandado embora da transportadora e até hoje não pagaram o meu acerto.",
+      "desired_resolution": "Quero receber o acerto completo.",
+      "relevant": [],
+      "hard_negatives": [
+        "br-cdc-art-2",
+        "br-cdc-art-3",
+        "br-cdc-art-42"
+      ],
+      "no_applicable_ground": true,
+      "split": "development"
+    },
+    {
+      "case_id": "pensao_atrasada",
+      "category": "no_consumer_relationship",
+      "slices": [
+        "ground:none",
+        "domain:family",
+        "wording:lay"
+      ],
+      "complaint": "O pai da minha filha está há cinco meses sem pagar a pensão.",
+      "desired_resolution": "Quero receber os valores atrasados.",
+      "relevant": [],
+      "hard_negatives": [
+        "br-cdc-art-2",
+        "br-cdc-art-3",
+        "br-cdc-art-42"
+      ],
+      "no_applicable_ground": true,
+      "split": "development"
+    },
+    {
+      "case_id": "ex_nao_deixa_ver_o_filho",
+      "category": "no_consumer_relationship",
+      "slices": [
+        "ground:none",
+        "domain:family",
+        "wording:lay"
+      ],
+      "complaint": "Minha ex-mulher não me deixa ver meu filho nos fins de semana combinados.",
+      "desired_resolution": "Quero voltar a passar os fins de semana com ele.",
+      "relevant": [],
+      "hard_negatives": [
+        "br-cdc-art-2",
+        "br-cdc-art-3",
+        "br-cdc-art-6"
+      ],
+      "no_applicable_ground": true,
+      "split": "development"
+    },
+    {
+      "case_id": "casa_que_o_pai_deixou",
+      "category": "no_consumer_relationship",
+      "slices": [
+        "ground:none",
+        "domain:family",
+        "wording:lay"
+      ],
+      "complaint": "Meu pai faleceu e meu irmão está morando sozinho na casa que ele deixou, sem dividir nada com os outros filhos.",
+      "desired_resolution": "Quero minha parte da casa.",
+      "relevant": [],
+      "hard_negatives": [
+        "br-cdc-art-2",
+        "br-cdc-art-3",
+        "br-cdc-art-51"
+      ],
+      "no_applicable_ground": true,
+      "split": "development"
+    },
+    {
+      "case_id": "celular_comprado_de_uma_pessoa",
+      "category": "no_consumer_relationship",
+      "slices": [
+        "ground:none",
+        "domain:private_parties",
+        "wording:lay"
+      ],
+      "complaint": "Comprei um celular usado de uma pessoa num site de anúncios e ele parou de funcionar no dia seguinte.",
+      "desired_resolution": "Quero meu dinheiro de volta.",
+      "relevant": [],
+      "hard_negatives": [
+        "br-cdc-art-2",
+        "br-cdc-art-3",
+        "br-cdc-art-18",
+        "br-cdc-art-26"
+      ],
+      "no_applicable_ground": true,
+      "split": "development"
+    },
+    {
+      "case_id": "moto_batida_por_um_rapaz",
+      "category": "no_consumer_relationship",
+      "slices": [
+        "ground:none",
+        "domain:private_parties",
+        "wording:lay"
+      ],
+      "complaint": "O rapaz que bateu na traseira da minha moto no semáforo prometeu pagar o conserto e sumiu.",
+      "desired_resolution": "Quero que ele pague o conserto.",
+      "relevant": [],
+      "hard_negatives": [
+        "br-cdc-art-2",
+        "br-cdc-art-3",
+        "br-cdc-art-14"
+      ],
+      "no_applicable_ground": true,
+      "split": "development"
+    },
+    {
+      "case_id": "notebook_vendido_e_pix_contestado",
+      "category": "no_consumer_relationship",
+      "slices": [
+        "ground:none",
+        "domain:private_parties",
+        "wording:lay"
+      ],
+      "complaint": "Vendi meu notebook para um rapaz que conheci pela internet e ele contestou o pix depois de receber o aparelho.",
+      "desired_resolution": "Quero receber o valor da venda.",
+      "relevant": [],
+      "hard_negatives": [
+        "br-cdc-art-2",
+        "br-cdc-art-3",
+        "br-cdc-art-49"
+      ],
+      "no_applicable_ground": true,
+      "split": "development"
+    },
+    {
+      "case_id": "cliente_da_costureira_nao_pagou",
+      "category": "no_consumer_relationship",
+      "slices": [
+        "ground:none",
+        "domain:complainant_supplier",
+        "wording:lay"
+      ],
+      "complaint": "Sou costureira e uma cliente levou o vestido de festa que encomendou sem pagar o restante combinado.",
+      "desired_resolution": "Quero receber o valor que falta.",
+      "relevant": [],
+      "hard_negatives": [
+        "br-cdc-art-2",
+        "br-cdc-art-3",
+        "br-cdc-art-42"
+      ],
+      "no_applicable_ground": true,
+      "split": "development"
+    },
+    {
+      "case_id": "frete_nao_pago",
+      "category": "no_consumer_relationship",
+      "slices": [
+        "ground:none",
+        "domain:complainant_supplier",
+        "wording:lay"
+      ],
+      "complaint": "Faço fretes com minha van e uma empresa que me contratou para três viagens não pagou a última.",
+      "desired_resolution": "Quero receber pela última viagem.",
+      "relevant": [],
+      "hard_negatives": [
+        "br-cdc-art-2",
+        "br-cdc-art-3",
+        "br-cdc-art-42"
+      ],
+      "no_applicable_ground": true,
+      "split": "development"
+    },
+    {
+      "case_id": "bicicleta_furtada",
+      "category": "no_consumer_relationship",
+      "slices": [
+        "ground:none",
+        "domain:criminal",
+        "wording:lay"
+      ],
+      "complaint": "Furtaram minha bicicleta que estava presa em frente ao prédio onde moro.",
+      "desired_resolution": "Quero recuperar a bicicleta.",
+      "relevant": [],
+      "hard_negatives": [
+        "br-cdc-art-2",
+        "br-cdc-art-3",
+        "br-cdc-art-14"
+      ],
+      "no_applicable_ground": true,
+      "split": "development"
+    },
+    {
+      "case_id": "socio_retirou_dinheiro_do_caixa",
+      "category": "no_consumer_relationship",
+      "slices": [
+        "ground:none",
+        "domain:partnership",
+        "wording:lay"
+      ],
+      "complaint": "Meu sócio na loja de roupas retirou dinheiro do caixa sem me avisar e parou de responder.",
+      "desired_resolution": "Quero que ele devolva o dinheiro da sociedade.",
+      "relevant": [],
+      "hard_negatives": [
+        "br-cdc-art-2",
+        "br-cdc-art-3",
+        "br-cdc-art-39"
+      ],
+      "no_applicable_ground": true,
+      "split": "development"
+    },
+    {
+      "case_id": "seguro_descontado_da_aposentadoria",
+      "category": "unrequested_product",
+      "slices": [
+        "scope:lookalike",
+        "supplier:bank",
+        "wording:lay"
+      ],
+      "complaint": "O banco onde recebo minha aposentadoria do INSS começou a descontar todo mês um seguro que eu nunca contratei.",
+      "desired_resolution": "Quero cancelar o seguro e receber de volta em dobro o que foi descontado.",
+      "relevant": [
+        {
+          "article_id": "br-cdc-art-39",
+          "unit_id": "br-cdc-art-39-inciso-iii",
+          "grade": 3,
+          "rationale": "Fornecer serviço sem solicitação prévia é prática abusiva."
+        },
+        {
+          "article_id": "br-cdc-art-42",
+          "unit_id": "br-cdc-art-42-paragrafo-unico",
+          "grade": 2,
+          "rationale": "Quem é cobrado em quantia indevida tem direito à repetição do indébito em dobro."
+        }
+      ],
+      "hard_negatives": [
+        "br-cdc-art-18"
+      ],
+      "split": "development"
+    },
+    {
+      "case_id": "mensalidade_da_escola_particular",
+      "category": "contract_terms",
+      "slices": [
+        "scope:lookalike",
+        "supplier:education",
+        "wording:lay"
+      ],
+      "complaint": "A escola particular do meu filho aumentou a mensalidade no meio do ano sem nenhum aviso.",
+      "desired_resolution": "Quero que mantenham o valor combinado até o fim do ano.",
+      "relevant": [
+        {
+          "article_id": "br-cdc-art-39",
+          "unit_id": "br-cdc-art-39-inciso-x",
+          "grade": 2,
+          "rationale": "Elevar sem justa causa o preço de serviços é prática abusiva."
+        },
+        {
+          "article_id": "br-cdc-art-51",
+          "unit_id": "br-cdc-art-51-inciso-x",
+          "grade": 2,
+          "rationale": "É nula a cláusula que permite ao fornecedor variar o preço unilateralmente."
+        }
+      ],
+      "hard_negatives": [
+        "br-cdc-art-49"
+      ],
+      "split": "development"
+    },
+    {
+      "case_id": "mudanca_quebrou_os_moveis",
+      "category": "service_failure",
+      "slices": [
+        "scope:lookalike",
+        "supplier:moving",
+        "wording:lay"
+      ],
+      "complaint": "A empresa de mudança que contratei quebrou meu guarda-roupa e riscou a geladeira durante o transporte.",
+      "desired_resolution": "Quero que paguem o conserto dos móveis.",
+      "relevant": [
+        {
+          "article_id": "br-cdc-art-14",
+          "unit_id": "br-cdc-art-14-caput",
+          "grade": 3,
+          "rationale": "O fornecedor de serviços responde pelos danos causados por defeitos na prestação do serviço."
+        },
+        {
+          "article_id": "br-cdc-art-6",
+          "unit_id": "br-cdc-art-6-inciso-vi",
+          "grade": 1,
+          "rationale": "É direito básico a efetiva reparação de danos."
+        }
+      ],
+      "hard_negatives": [
+        "br-cdc-art-18"
+      ],
+      "split": "development"
+    },
+    {
+      "case_id": "acidente_na_corrida_por_aplicativo",
+      "category": "consumer_safety",
+      "slices": [
+        "scope:lookalike",
+        "supplier:ride_hailing",
+        "wording:lay"
+      ],
+      "complaint": "O motorista do aplicativo de transporte bateu o carro durante a corrida e eu machuquei o braço.",
+      "desired_resolution": "Quero que a empresa pague meu tratamento.",
+      "relevant": [
+        {
+          "article_id": "br-cdc-art-14",
+          "unit_id": "br-cdc-art-14-caput",
+          "grade": 3,
+          "rationale": "O fornecedor de serviços responde pelos danos causados por defeitos na prestação do serviço."
+        },
+        {
+          "article_id": "br-cdc-art-6",
+          "unit_id": "br-cdc-art-6-inciso-vi",
+          "grade": 1,
+          "rationale": "É direito básico a efetiva reparação de danos."
+        }
+      ],
+      "hard_negatives": [
+        "br-cdc-art-18"
+      ],
+      "split": "development"
+    },
+    {
+      "case_id": "medidor_trocado_e_conta_triplicou",
+      "category": "public_utility",
+      "slices": [
+        "scope:lookalike",
+        "supplier:energy",
+        "wording:lay"
+      ],
+      "complaint": "A distribuidora de energia trocou meu medidor e a conta do mês seguinte veio três vezes maior.",
+      "desired_resolution": "Quero que revisem a conta e devolvam o que cobraram a mais.",
+      "relevant": [
+        {
+          "article_id": "br-cdc-art-22",
+          "unit_id": "br-cdc-art-22-caput",
+          "grade": 2,
+          "rationale": "Concessionárias devem fornecer serviços adequados e eficientes."
+        },
+        {
+          "article_id": "br-cdc-art-42",
+          "unit_id": "br-cdc-art-42-paragrafo-unico",
+          "grade": 2,
+          "rationale": "Quem é cobrado em quantia indevida tem direito à repetição do indébito em dobro."
+        }
+      ],
+      "hard_negatives": [
+        "br-cdc-art-18"
+      ],
+      "split": "development"
+    },
+    {
+      "case_id": "carro_seminovo_da_revendedora",
+      "category": "product_defect",
+      "slices": [
+        "scope:lookalike",
+        "supplier:vehicle_dealer",
+        "wording:lay"
+      ],
+      "complaint": "Comprei um carro seminovo numa revendedora e em duas semanas o câmbio quebrou.",
+      "desired_resolution": "Quero que consertem o carro sem custo ou desfaçam a venda.",
+      "relevant": [
+        {
+          "article_id": "br-cdc-art-18",
+          "unit_id": "br-cdc-art-18-caput",
+          "grade": 3,
+          "rationale": "O fornecedor responde pelos vícios de qualidade do produto."
+        },
+        {
+          "article_id": "br-cdc-art-26",
+          "unit_id": "br-cdc-art-26-inciso-ii",
+          "grade": 1,
+          "rationale": "Produto durável tem prazo de noventa dias para reclamação por vício aparente."
+        }
+      ],
+      "hard_negatives": [
+        "br-cdc-art-49"
+      ],
+      "split": "development"
+    },
+    {
+      "case_id": "sofa_com_entrega_atrasada",
+      "category": "non_delivery",
+      "slices": [
+        "scope:lookalike",
+        "supplier:retail",
+        "wording:lay"
+      ],
+      "complaint": "Comprei um sofá numa loja e a entrega no meu condomínio já atrasou três semanas.",
+      "desired_resolution": "Quero que entreguem o sofá ou devolvam meu dinheiro.",
+      "relevant": [
+        {
+          "article_id": "br-cdc-art-35",
+          "unit_id": "br-cdc-art-35-inciso-i",
+          "grade": 2,
+          "rationale": "O consumidor pode exigir o cumprimento forçado da oferta."
+        },
+        {
+          "article_id": "br-cdc-art-35",
+          "unit_id": "br-cdc-art-35-inciso-iii",
+          "grade": 2,
+          "rationale": "O consumidor pode rescindir o contrato com restituição do que antecipou."
+        }
+      ],
+      "hard_negatives": [
+        "br-cdc-art-18"
+      ],
+      "split": "development"
+    },
+    {
+      "case_id": "plano_negou_cirurgia_da_mae",
+      "category": "contract_terms",
+      "slices": [
+        "scope:lookalike",
+        "supplier:health_plan",
+        "wording:lay"
+      ],
+      "complaint": "O plano de saúde negou a cirurgia da minha mãe, que é dependente no meu contrato.",
+      "desired_resolution": "Quero que autorizem a cirurgia.",
+      "relevant": [
+        {
+          "article_id": "br-cdc-art-51",
+          "unit_id": "br-cdc-art-51-inciso-iv",
+          "grade": 2,
+          "rationale": "É nula a cláusula que coloca o consumidor em desvantagem exagerada."
+        },
+        {
+          "article_id": "br-cdc-art-47",
+          "unit_id": "br-cdc-art-47-caput",
+          "grade": 1,
+          "rationale": "As cláusulas contratuais são interpretadas de maneira mais favorável ao consumidor."
+        }
+      ],
+      "hard_negatives": [
+        "br-cdc-art-18"
+      ],
+      "split": "development"
     }
   ]
 }

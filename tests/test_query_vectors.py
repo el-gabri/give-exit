@@ -255,9 +255,9 @@ def _settings(tmp_path: Path) -> Settings:
 def test_golden_queries_are_the_production_queries_of_in_scope_cases() -> None:
     queries = golden_queries(load_consumer_legal_dataset(DATASET_PATH))
 
-    assert len(queries) == 39
+    assert len(queries) == 67
     assert "salario_atrasado" not in queries
-    assert sum(len(texts) for texts in queries.values()) == 78
+    assert sum(len(texts) for texts in queries.values()) == 134
 
 
 async def test_filling_resumes_and_reports_coverage(tmp_path: Path) -> None:
@@ -349,7 +349,7 @@ async def test_cli_fills_one_case_then_checks_coverage(
     lines = _report(capsys.readouterr().out)
     assert lines[0] == "produto_duravel_com_vicio: 0 cached, 2 embedded"
     assert lines[2] == "produto_duravel_com_vicio: 2 cached, 0 embedded"
-    assert lines[-1].startswith("coverage: 2/78 golden queries cached in ")
+    assert lines[-1].startswith("coverage: 2/134 golden queries cached in ")
     assert len(inner.query_batches) == 1
 
 

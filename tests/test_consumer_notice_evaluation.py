@@ -261,26 +261,33 @@ async def test_offline_notice_baseline_on_the_seed_dataset() -> None:
     (ADR 0023, chosen on the configured stack): 43 grounds, 12 labelled, 29
     unlabelled, the same 2 known-bad. Development precision 0.289 -> 0.292 and
     article recall 0.267 -> 0.225; holdout precision 0.179 -> 0.269.
+
+    Dataset 2.4.0 adds 28 development cases for the scope gate (spec
+    2026-10-04), measured here with the gate as it was: none of the 20 new
+    out-of-scope cases is stopped by it, 12 of the 24 development out-of-scope
+    cases abstain only because retrieval found nothing, and the totals rise to
+    66 grounds, 14 labelled, 49 unlabelled and 3 known-bad. Development
+    abstention 1.0 -> 0.5, precision 0.292 -> 0.173.
     """
 
     summary = await run_notice_evaluation(load_consumer_legal_dataset(DATASET_PATH))
 
     assert summary.failed_case_count == 0
     assert summary.totals == {
-        "consumer_notice_complementary_grounds": 6,
-        "consumer_notice_grounds": 43,
-        "consumer_notice_known_bad_citations": 2,
-        "consumer_notice_labelled_grounds": 12,
-        "consumer_notice_unlabelled_grounds": 29,
+        "consumer_notice_complementary_grounds": 10,
+        "consumer_notice_grounds": 66,
+        "consumer_notice_known_bad_citations": 3,
+        "consumer_notice_labelled_grounds": 14,
+        "consumer_notice_unlabelled_grounds": 49,
     }
-    assert summary.averages["consumer_notice_exact_recall"] == 0.136
-    assert summary.averages["consumer_notice_abstention"] == 0.9
+    assert summary.averages["consumer_notice_exact_recall"] == 0.134
+    assert summary.averages["consumer_notice_abstention"] == 0.567
     assert summary.averages["consumer_notice_semantic_success"] == 1.0
     development = summary.by_split["development"].averages
     holdout = summary.by_split["holdout"].averages
-    assert development["consumer_notice_abstention"] == 1.0
-    assert development["consumer_notice_precision"] == 0.292
-    assert development["consumer_notice_article_recall"] == 0.225
+    assert development["consumer_notice_abstention"] == 0.5
+    assert development["consumer_notice_precision"] == 0.173
+    assert development["consumer_notice_article_recall"] == 0.196
     assert holdout["consumer_notice_abstention"] == 0.833
     assert holdout["consumer_notice_precision"] == 0.269
     assert holdout["consumer_notice_article_recall"] == 0.333
@@ -321,12 +328,12 @@ async def test_a_failing_case_is_recorded_without_stopping_the_run() -> None:
 
     summary = await evaluator.run(load_consumer_legal_dataset(DATASET_PATH))
 
-    # Every case the scope gate lets through fails: 43 cases in dataset 2.2.0
+    # Every case the scope gate lets through fails: 71 cases in dataset 2.4.0
     # minus the four development no-ground cases the gate stops first. The six
-    # holdout no-ground cases pass the gate.
+    # holdout no-ground cases and the 28 cases 2.4.0 added pass the gate.
     failed = [case for case in summary.cases if case.retrieval_outcome == "failed"]
-    assert len(failed) == 39
-    assert summary.failed_case_count == 39
+    assert len(failed) == 67
+    assert summary.failed_case_count == 67
     assert all("store offline" in case.errors[0] for case in failed)
     assert failed[0].score("consumer_notice_article_recall") == 0.0
     assert failed[0].score("consumer_notice_precision") is None
@@ -363,7 +370,8 @@ def test_cli_writes_notice_results_and_gates_on_totals(
     # test_offline_notice_baseline_on_the_seed_dataset for the full
     # explanation. Re-measured on 2026-10-03 for corpus v5 (ADR 0022): 2, both
     # CDC art. 42 sole paragraph cited beside a sibling-paragraph label.
-    assert payload["totals"]["consumer_notice_known_bad_citations"] == 2
+    # Dataset 2.4.0 (28 scope-gate development cases): 3.
+    assert payload["totals"]["consumer_notice_known_bad_citations"] == 3
 
 
 def test_cli_rejects_require_semantic_without_notice_mode(
@@ -436,8 +444,8 @@ async def test_an_agreement_sweep_retrieves_each_case_once(
     shallow = await evaluator.run(dataset, agreement_max_rank=8)
     default = await evaluator.run(dataset)
 
-    # 43 cases, four of them stopped by the scope gate before retrieval.
-    assert len(calls) == 39
+    # 71 cases, four of them stopped by the scope gate before retrieval.
+    assert len(calls) == 67
     assert shallow.run is not None and shallow.run.agreement_max_rank == 8
     assert default.run is not None and default.run.agreement_max_rank == 10
     assert default.run.ground_verifier == "none"
@@ -445,8 +453,9 @@ async def test_an_agreement_sweep_retrieves_each_case_once(
     # Corpus v5 (ADR 0022): 14 -> 36 and 26 -> 58 with the lay alias chunks.
     # Depth 10 and the alias cap (ADR 0023): the default falls to 43; depth 8
     # stays at 36, where the cap never binds offline.
-    assert shallow.totals["consumer_notice_grounds"] == 36
-    assert default.totals["consumer_notice_grounds"] == 43
+    # Dataset 2.4.0 (28 scope-gate development cases): 36 -> 52 and 43 -> 66.
+    assert shallow.totals["consumer_notice_grounds"] == 52
+    assert default.totals["consumer_notice_grounds"] == 66
 
 
 class _RejectEveryGround:
@@ -468,7 +477,7 @@ async def test_verifier_removals_are_counted_per_case() -> None:
     summary = await evaluator.run(load_consumer_legal_dataset(DATASET_PATH))
 
     assert summary.totals["consumer_notice_grounds"] == 0
-    assert summary.totals["consumer_notice_verifier_removed"] == 43
+    assert summary.totals["consumer_notice_verifier_removed"] == 66
     assert summary.totals["consumer_notice_verifier_failures"] == 0
     assert summary.run is not None and summary.run.ground_verifier == "llm"
 
@@ -501,7 +510,7 @@ def test_cli_prints_an_agreement_sweep(
     table = printed[start : start + 3]
     assert table[0].split()[:4] == ["agreement_max_rank", "grounds", "complementary", "known_bad"]
     assert "labelled" in table[0].split()
-    assert [line.split()[:2] for line in table[1:]] == [["16", "63"], ["20", "77"]]
+    assert [line.split()[:2] for line in table[1:]] == [["16", "106"], ["20", "131"]]
     payload = json.loads(output.read_text(encoding="utf-8"))
     assert sorted(payload["agreement_sweep"]) == ["16", "20"]
     assert payload["agreement_sweep"]["20"]["run"]["agreement_max_rank"] == 20
