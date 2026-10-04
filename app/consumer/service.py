@@ -92,6 +92,10 @@ from app.security.telemetry import redact_sensitive_text
 logger = get_logger(__name__)
 
 DEFAULT_MAX_DOCUMENTS_PER_CASE = 20
+# Evidence citations keep the agreement depth ADR 0019 measured. ADR 0023
+# lowered the legal depth to 10 because lay alias chunks agree with themselves
+# in both channels; the user's own documents have no alias chunks.
+EVIDENCE_AGREEMENT_MAX_RANK = 13
 
 
 class ConsumerCaseNotReadyError(ValueError):
@@ -819,7 +823,9 @@ class ConsumerCaseService:
         traces: list[RetrievalTrace],
         facts: ConsumerCaseFacts,
     ) -> list[EvidenceCitation]:
-        strongly_supported = strongly_supported_chunk_ids(traces)
+        strongly_supported = strongly_supported_chunk_ids(
+            traces, max_rank=EVIDENCE_AGREEMENT_MAX_RANK
+        )
         if not strongly_supported:
             return []
         citations: list[EvidenceCitation] = []

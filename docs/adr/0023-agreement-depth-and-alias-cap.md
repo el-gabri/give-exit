@@ -26,6 +26,9 @@ through an alias.
    slot, and official chunks are never capped. The degraded single-channel path (top 3 in two
    independent queries) is unchanged, since a cap of 3 cannot bind there.
 3. The ground policy version becomes `consumer-notice-scope-eligibility-v6`.
+4. Evidence citations share the gate but keep depth 13 (`EVIDENCE_AGREEMENT_MAX_RANK` in
+   `service.py`). The user's own documents have no alias chunks, and a tighter evidence depth
+   could turn a notice that grounds today into a refusal, unmeasured.
 
 Nothing else changes: the index, the aliases, citations, the eligibility policy, the CDC
 anchor, ground selection and retrieval. Retrieval metrics do not pass through the gate.

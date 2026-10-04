@@ -320,6 +320,49 @@ def test_evidence_references_exclude_hits_without_retrieval_support() -> None:
     ]
 
 
+def test_evidence_citations_keep_the_agreement_depth_of_adr_0019() -> None:
+    """Depth 10 answers alias chunks (ADR 0023); evidence has none and keeps 13."""
+    from app.consumer.legal_policy import AGREEMENT_MAX_RANK
+    from app.consumer.schemas import ConsumerEvidence, EvidenceStatus
+    from app.consumer.service import EVIDENCE_AGREEMENT_MAX_RANK, ConsumerCaseService
+    from app.consumer.store import StoredEvidence
+    from app.schemas.document import ExtractionMethod
+    from app.schemas.rag import Chunk
+
+    stored = StoredEvidence(
+        public=ConsumerEvidence(
+            evidence_id="a" * 32,
+            filename="fatura.pdf",
+            page_count=1,
+            media_type="application/pdf",
+            extraction_method=ExtractionMethod.NATIVE_TEXT,
+            status=EvidenceStatus.ACCEPTED,
+            source_sha256="0" * 64,
+            content_sha256="1" * 64,
+        )
+    )
+    # Agreement at lexical rank 12: citable before ADR 0023, beyond the legal depth.
+    hit = RetrievedChunk(
+        chunk=Chunk(
+            chunk_id="evidence:relevant",
+            doc_id="evidence-doc",
+            text="Compra cobrada na fatura sem autorização.",
+            page_start=1,
+            page_end=1,
+        ),
+        score=1 / 61 + 1 / 72,
+        channel_ranks={"dense": 1, "lexical": 12},
+    )
+    result_sets = [[hit]]
+
+    citations = ConsumerCaseService._evidence_references(
+        result_sets, {1: (stored, 1)}, _evidence_traces(result_sets), _confirmed_facts()
+    )
+
+    assert AGREEMENT_MAX_RANK < 12 <= EVIDENCE_AGREEMENT_MAX_RANK == 13
+    assert [citation.chunk_id for citation in citations] == ["evidence:relevant"]
+
+
 def test_dual_channel_hit_without_confirmed_fact_overlap_is_not_cited() -> None:
     """Channel agreement is not evidence that a retrieved attachment proves a fact."""
     from app.consumer.schemas import ConsumerEvidence, EvidenceStatus
