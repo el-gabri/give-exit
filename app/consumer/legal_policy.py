@@ -42,12 +42,13 @@ from collections.abc import Sequence
 from itertools import combinations
 from typing import TypeVar
 
+from app.consumer.aliases import is_alias_chunk_id
 from app.consumer.schemas import LegalProvision, LegalSource
 from app.consumer.statutes import division_numeral
 from app.schemas.rag import DENSE_CHANNEL, LEXICAL_CHANNEL
 from app.schemas.trace import RetrievalTrace
 
-LEGAL_GROUND_POLICY_VERSION = "consumer-notice-scope-eligibility-v5"
+LEGAL_GROUND_POLICY_VERSION = "consumer-notice-scope-eligibility-v6"
 LEGAL_GROUND_POLICY_REVIEW_STATUS = "requires_legal_review"
 
 # CDC divisions whose subject matter cannot support an individual consumer's
@@ -100,15 +101,23 @@ _EXCLUDED_CIVIL_CODE_DIVISIONS = frozenset({("especial", "i", "vi")})
 # The two hybrid channels whose agreement makes a chunk citable.
 AGREEMENT_CHANNELS = frozenset({DENSE_CHANNEL, LEXICAL_CHANNEL})
 # Both channels must rank a chunk within this depth. Appearing anywhere in the
-# 32-deep candidate lists was near-vacuous: offline it cited 41 grounds, 2 of
-# them known bad. On the configured stack (JUÁ 4B, 22 cases) every exact hit
-# ranked within 12 in both channels: depth 12 cited 31 grounds and no known-bad
-# one, depth 20 cited 57 with one, and exact recall was 0.225 at every depth
-# from 12 to 24. 13 keeps one rank of margin above that (ADR 0019); the
-# offline stack loses its single exact hit below 20, which is a limit of its
-# hashed embedder, not of the gate. Measure other depths with the notice
-# evaluation's --agreement-max-rank sweep.
-AGREEMENT_MAX_RANK = 13
+# 32-deep candidate lists was near-vacuous (ADR 0019). Before the lay alias
+# chunks, every exact hit on the configured stack ranked within 12 in both
+# channels, so 13 kept one rank of margin. Alias chunks are short paraphrases
+# that agree with themselves in both channels: at 13 the configured
+# development split cited 67 grounds, 2 of them known-bad, and precision fell
+# below v4. At 10 it keeps every exact hit (exact recall 0.400 at both depths)
+# and drops 19 unlabelled grounds and one known-bad (ADR 0023). Precision moves
+# sharply between 10 and 12 on 20 paired cases. Measure other depths with the
+# notice evaluation's --agreement-max-rank sweep.
+AGREEMENT_MAX_RANK = 10
+# Each query may contribute at most this many alias chunks to the supported
+# set, best rank first. An alias chunk's two channels score the same short
+# paraphrase, so its agreement is weaker evidence than agreement on statute
+# text. On the configured development split the cap kept every labelled
+# ground, raised precision from 0.457 to 0.491 and removed the last known-bad
+# citation (ADR 0023). Official chunks are never capped.
+ALIAS_SUPPORT_CAP = 3
 # Without both channels, a chunk needs this rank in two independent queries.
 CORROBORATION_RANK = 3
 
@@ -234,7 +243,10 @@ def _division_numeral(label: str | None, keyword: str) -> str:
 
 
 def strongly_supported_chunk_ids(
-    traces: list[RetrievalTrace], *, max_rank: int = AGREEMENT_MAX_RANK
+    traces: list[RetrievalTrace],
+    *,
+    max_rank: int = AGREEMENT_MAX_RANK,
+    alias_cap: int = ALIAS_SUPPORT_CAP,
 ) -> frozenset[str]:
     """Return chunks that clear the retrieval-agreement safety gate.
 
@@ -250,6 +262,11 @@ def strongly_supported_chunk_ids(
     so the notice evaluation can measure other depths; production uses the
     default.
 
+    An alias chunk's two channels score the same lay paraphrase, so each
+    query contributes at most ``alias_cap`` of them, best rank first; an alias
+    whose channels do not agree takes no slot, and official chunks are never
+    capped (ADR 0023).
+
     A trace without both channels (lexical-only degraded mode, dense-only
     configuration) cannot show that agreement. There a chunk must rank in the
     top three for two independent queries, where independent means neither
@@ -258,17 +275,18 @@ def strongly_supported_chunk_ids(
     those two; the complaint and the remedy searched separately can.
     """
 
+    if alias_cap < 0:
+        raise ValueError("alias_cap must not be negative")
     supported: set[str] = set()
     corroborating_queries: dict[str, set[str]] = {}
     for trace in traces:
         if trace.error is not None:
             continue
-        both_channels_ran = trace.retrieval_mode == "hybrid" and trace.degraded_mode is None
+        if trace.retrieval_mode == "hybrid" and trace.degraded_mode is None:
+            supported.update(_agreeing_chunk_ids(trace, max_rank, alias_cap))
+            continue
         for item in trace.results:
-            if both_channels_ran:
-                if _channels_agree(item.channel_ranks, max_rank):
-                    supported.add(item.chunk_id)
-            elif item.rank <= CORROBORATION_RANK:
+            if item.rank <= CORROBORATION_RANK:
                 corroborating_queries.setdefault(item.chunk_id, set()).add(
                     _query_key(trace.query)
                 )
@@ -279,6 +297,22 @@ def strongly_supported_chunk_ids(
         if _has_independent_pair(queries)
     )
     return frozenset(supported)
+
+
+def _agreeing_chunk_ids(trace: RetrievalTrace, max_rank: int, alias_cap: int) -> list[str]:
+    """Chunks both channels ranked within ``max_rank``, at most ``alias_cap`` of them aliases."""
+
+    agreeing: list[str] = []
+    aliases = 0
+    for item in sorted(trace.results, key=lambda result: result.rank):
+        if not _channels_agree(item.channel_ranks, max_rank):
+            continue
+        if is_alias_chunk_id(item.chunk_id):
+            if aliases == alias_cap:
+                continue
+            aliases += 1
+        agreeing.append(item.chunk_id)
+    return agreeing
 
 
 def _channels_agree(channel_ranks: dict[str, int], max_rank: int) -> bool:

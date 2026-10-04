@@ -21,6 +21,7 @@ from app.consumer.aliases import (
     INDEXED_ALIAS_STATUSES,
     AliasEntry,
     AliasSet,
+    alias_chunk_id,
     load_alias_set,
 )
 from app.consumer.legal_policy import alias_exclusion_reason, provision_is_eligible
@@ -792,7 +793,7 @@ class LegalCorpus:
                 continue
             chunks.append(
                 Chunk(
-                    chunk_id=f"{document_id}:legal:{key}:alias-01",
+                    chunk_id=alias_chunk_id(document_id, key),
                     doc_id=document_id,
                     text="\n".join(entry.aliases),
                     section=self._section_label(provision),

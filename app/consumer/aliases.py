@@ -41,6 +41,19 @@ _LEGAL_ID = r"^br-(?:cdc|cf|lgpd|cc)-art-[a-z0-9]+(?:-[a-z0-9]+)*$"
 _LEGAL_REFERENCE = re.compile(
     r"§|\b(?:arts?|artigos?|leis?|incisos?|paragrafos?|alineas?|cdc|lgpd|codigos?)\b"
 )
+# The id of a unit's alias chunk. The retrieval gate sees only trace chunk ids,
+# so it recognises alias chunks by this shape (ADR 0023).
+_ALIAS_CHUNK_ID = re.compile(r":legal:[a-z0-9-]+:alias-\d{2}$")
+
+
+def alias_chunk_id(document_id: str, unit_key: str) -> str:
+    """The chunk id of a unit's alias chunk; it is never quoted (ADR 0022)."""
+    return f"{document_id}:legal:{unit_key}:alias-01"
+
+
+def is_alias_chunk_id(chunk_id: str) -> bool:
+    """Whether a retrieved chunk id names an alias chunk rather than statute text."""
+    return _ALIAS_CHUNK_ID.search(chunk_id) is not None
 
 
 def normalize_alias(text: str) -> str:
