@@ -480,8 +480,8 @@ deletes the other processes' live case evidence.
 ## Evaluation and verification
 
 ```bash
-pytest -q
-pytest --cov --cov-report=term-missing  # coverage, scoped to modules with dedicated tests
+pytest -q -n auto                       # one worker per CPU; drop -n auto to debug one test
+pytest -n auto --cov --cov-report=term-missing  # coverage, scoped to modules with dedicated tests
 lint-imports                            # import architecture (app.core has no upward deps)
 vulture app --min-confidence 90         # dead code
 python -m app.evaluation.consumer_runner

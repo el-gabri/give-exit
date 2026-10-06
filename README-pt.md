@@ -328,7 +328,7 @@ resposta, erros e o fluxo em uma requisição estão em
 ## Testes e avaliação
 
 ```powershell
-pytest -q
+pytest -q -n auto   # um worker por CPU; sem -n auto para depurar um teste
 python -m app.evaluation.consumer_runner
 python -m app.evaluation.security_benchmark
 ```

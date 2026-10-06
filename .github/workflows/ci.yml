@@ -50,11 +50,11 @@ jobs:
       - name: Type check (strict)
         run: mypy app
       - name: Tests and coverage (offline - mock LLM provider)
-        # One run: a failing test fails it as `pytest -q` did. [tool.coverage.run]
-        # source in pyproject.toml lists the modules held to 100%; it grows
-        # module by module as follow-up work adds tests elsewhere, instead of
-        # gating the whole repo at once.
-        run: pytest --cov --cov-report=term-missing
+        # One run, one worker per CPU: a failing test fails it as `pytest -q`
+        # did. [tool.coverage.run] source in pyproject.toml lists the modules
+        # held to 100%; it grows module by module as follow-up work adds tests
+        # elsewhere, instead of gating the whole repo at once.
+        run: pytest -n auto --cov --cov-report=term-missing
       - name: Import architecture (no upward dependencies from app.core)
         run: lint-imports
       - name: Dead code
@@ -220,7 +220,7 @@ jobs:
       - name: Install
         run: pip install -e ".[dev,frontend]"
       - name: Python 3.10 tests
-        run: pytest -q
+        run: pytest -q -n auto
 
   container-build:
     runs-on: ubuntu-latest
