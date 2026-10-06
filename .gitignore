@@ -26,7 +26,16 @@ plan.md
 /output/
 
 # Evaluation results written at the repository root (consumer_runner --output).
-/configured-*.json
+/configured*.json
+/results.json
+
+# Test and tool byproducts.
+.coverage
+.coverage.*
+.import_linter_cache/
+*.tmp
+
+# Local agent workspaces and the retired demo folder.
 /.agents/
 /.claude/
 /demo/
