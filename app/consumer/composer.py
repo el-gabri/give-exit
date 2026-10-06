@@ -16,7 +16,6 @@ from pydantic import BaseModel, Field
 from app.consumer.schemas import ConsumerCaseFacts, EvidenceCitation, LegalGround
 from app.core.config import NoticeComposer, Settings
 from app.llm.base import LLMCallMetadata, LLMClient
-from app.llm.openai_client import OpenAIClient
 from app.llm.retry import RetryingLLMClient
 
 _PROMPT_VERSION = "consumer-notice-grounded-prose:v2"
@@ -119,6 +118,8 @@ def create_notice_composer(settings: Settings) -> NoticeDraftComposer:
     api_key = (settings.openai_api_key or "").strip()
     if not api_key:  # Settings also validates this, for direct factory callers.
         raise ValueError("LITIGATION_OPENAI_API_KEY is required for the OpenAI notice composer")
+    from app.llm.openai_client import OpenAIClient  # its SDK only when this composer is used
+
     return OpenAINoticeComposer(
         RetryingLLMClient(
             OpenAIClient(api_key=api_key, model=settings.notice_composer_model),

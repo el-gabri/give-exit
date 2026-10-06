@@ -13,10 +13,6 @@ import re
 import time
 from typing import Any, Protocol, runtime_checkable
 
-from google import genai
-from google.genai import types
-from openai import AsyncOpenAI
-
 from app.core.logging import get_logger
 from app.llm.base import TokenUsage
 from app.llm.pricing import estimate_cost_usd
@@ -85,6 +81,10 @@ class OpenAIEmbeddingClient:
         query_instruction: str | None = None,
         model_revision: str | None = None,
     ) -> None:
+        # The provider SDKs are imported only by the client that uses them:
+        # importing them all costs about 3 s on every start.
+        from openai import AsyncOpenAI
+
         self._client = AsyncOpenAI(api_key=api_key)
         self._model = model
         self._batch_size = batch_size
@@ -154,7 +154,11 @@ class GeminiEmbeddingClient:
         query_instruction: str | None = None,
         client: Any | None = None,
     ) -> None:
-        self._client = client or genai.Client(api_key=api_key)
+        if not client:
+            from google import genai
+
+            client = genai.Client(api_key=api_key)
+        self._client = client
         self._model = model
         self._dimensions = dimensions
         self._batch_size = batch_size
@@ -196,6 +200,8 @@ class GeminiEmbeddingClient:
         if not texts:
             return []
         vectors: list[list[float]] = []
+        from google.genai import types
+
         for start in range(0, len(texts), self._batch_size):
             batch = texts[start : start + self._batch_size]
             # The SDK accepts this documented list-of-Content shape, but its

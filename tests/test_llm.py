@@ -1,5 +1,7 @@
 """Tests for the LLM abstraction layer."""
 
+import subprocess
+import sys
 from enum import Enum
 
 import pytest
@@ -75,6 +77,19 @@ def test_fresh_settings_run_offline_without_an_api_key() -> None:
 
     assert settings.llm_provider is LLMProvider.MOCK
     assert isinstance(create_llm_client(settings), MockLLMClient)
+
+
+def test_importing_the_app_loads_no_provider_sdk() -> None:
+    # The three SDKs cost about 3 s to import; only the configured one is needed.
+    probe = (
+        "import sys, app.api.main, app.consumer.composer; "
+        "print([m for m in ('openai', 'anthropic', 'google.genai') if m in sys.modules])"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", probe], capture_output=True, text=True, check=True
+    )
+
+    assert result.stdout.strip() == "[]"
 
 
 def test_factory_rejects_openai_without_key() -> None:

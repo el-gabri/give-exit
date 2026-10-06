@@ -1,15 +1,14 @@
 """Composition root for LLM clients.
 
 The ONLY module allowed to know which concrete providers exist. Everything
-else depends on the ``LLMClient`` protocol.
+else depends on the ``LLMClient`` protocol. Each provider's client, and with
+it its SDK, is imported only when that provider is configured: importing all
+three SDKs costs about 3 s on every start.
 """
 
 from app.core.config import LLMProvider, Settings
-from app.llm.anthropic_client import AnthropicClient
 from app.llm.base import LLMClient
-from app.llm.gemini_client import GeminiClient
 from app.llm.mock_client import MockLLMClient
-from app.llm.openai_client import OpenAIClient
 from app.llm.retry import RetryingLLMClient
 
 _DEFAULT_MODELS: dict[LLMProvider, str] = {
@@ -36,10 +35,14 @@ def create_llm_client(settings: Settings) -> LLMClient:
 def _create_provider_client(settings: Settings) -> LLMClient:
     model = _model_for(settings)
     if settings.llm_provider is LLMProvider.OPENAI:
+        from app.llm.openai_client import OpenAIClient
+
         api_key = _required_key(settings.openai_api_key, provider="openai", variable="OPENAI")
         return OpenAIClient(api_key=api_key, model=model)
 
     if settings.llm_provider is LLMProvider.ANTHROPIC:
+        from app.llm.anthropic_client import AnthropicClient
+
         api_key = _required_key(
             settings.anthropic_api_key, provider="anthropic", variable="ANTHROPIC"
         )
@@ -50,6 +53,8 @@ def _create_provider_client(settings: Settings) -> LLMClient:
         )
 
     if settings.llm_provider is LLMProvider.GEMINI:
+        from app.llm.gemini_client import GeminiClient
+
         api_key = _required_key(settings.gemini_api_key, provider="gemini", variable="GEMINI")
         return GeminiClient(
             api_key=api_key,
