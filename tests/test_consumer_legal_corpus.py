@@ -215,6 +215,28 @@ def test_generic_chunker_also_cannot_cross_legal_provisions() -> None:
     assert all(len(corpus.provisions_for_chunk(chunk)) == 1 for chunk in chunks)
 
 
+@pytest.mark.parametrize(
+    ("unit_id", "unit_label"),
+    [
+        # A bare "inciso II" under § 3 would cite the caput's inciso II, another rule.
+        ("br-cdc-art-54-f-paragrafo-3-inciso-ii", "§ 3, inciso II"),
+        ("br-cdc-art-4-inciso-ii-alinea-a", "inciso II, alínea a"),
+        ("br-cc-art-5-paragrafo-unico-inciso-i", "parágrafo único, inciso I"),
+        ("br-cdc-art-54-f-inciso-ii", "inciso II"),
+    ],
+)
+def test_a_cited_unit_names_its_parent_paragraph_and_inciso(unit_id: str, unit_label: str) -> None:
+    corpus = get_default_legal_corpus()
+    chunk = next(
+        item for item in corpus.as_chunks() if item.chunk_id.endswith(f":{unit_id}:part-01")
+    )
+
+    citation = corpus.authority_for_chunk(RetrievedChunk(chunk=chunk, score=0.8))
+
+    assert citation.unit_id == unit_id
+    assert citation.unit_label == unit_label
+
+
 def test_retrieved_chunk_maps_to_legal_authority_not_evidence() -> None:
     corpus = get_default_legal_corpus()
     article_42_chunk = next(

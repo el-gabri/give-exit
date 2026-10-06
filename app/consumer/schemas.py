@@ -246,6 +246,25 @@ class LegalTextUnit(BaseModel):
     status: ProvisionStatus = ProvisionStatus.ACTIVE
     content_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
 
+    @property
+    def pinpoint_label(self) -> str:
+        """The label with its parent paragraph and inciso, as a citation needs it.
+
+        ``label`` stays "inciso II" under § 3 (the index, the alias pins and the
+        corpus manifest use it), but cited alone it names the caput's inciso II,
+        a different rule.
+        """
+        if self.kind not in (LegalUnitKind.INCISO, LegalUnitKind.ALINEA):
+            return self.label
+        parents: list[str] = []
+        if self.paragraph is not None:
+            parents.append(
+                "parágrafo único" if self.paragraph == "unico" else f"§ {self.paragraph}"
+            )
+        if self.kind is LegalUnitKind.ALINEA and self.inciso is not None:
+            parents.append(f"inciso {self.inciso.upper()}")
+        return ", ".join([*parents, self.label])
+
     @model_validator(mode="after")
     def _set_and_validate_hash(self) -> LegalTextUnit:
         expected = sha256_hex(self.text)
@@ -437,7 +456,7 @@ class LegalAuthorityCitation(BaseModel):
             official_text_sha256=provision.official_text_sha256,
             source_snapshot_sha256=provision.source_snapshot_sha256,
             unit_id=unit.unit_id if unit is not None else None,
-            unit_label=unit.label if unit is not None else None,
+            unit_label=unit.pinpoint_label if unit is not None else None,
             official_excerpt=cited_excerpt,
             official_excerpt_sha256=cited_excerpt_sha256,
             chunk_id=chunk_id,
