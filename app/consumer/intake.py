@@ -11,10 +11,16 @@ import re
 
 from app.consumer.schemas import ConsumerCaseFacts, ConsumerIntakeExtraction
 
+_MONTHS = (
+    r"(?:janeiro|fevereiro|mar[çc]o|abril|maio|junho|julho|agosto|setembro|"
+    r"outubro|novembro|dezembro)"
+)
+# A bare four-digit number is not a date: "Viação 1001" names a bus company.
+# A missing date only leaves the field to fill; a wrong one is printed as fact.
 _DATE_RE = re.compile(
-    r"\b(?:\d{1,2}/\d{1,2}/\d{2,4}|"
-    r"(?:janeiro|fevereiro|março|abril|maio|junho|julho|agosto|setembro|"
-    r"outubro|novembro|dezembro)\s+de\s+\d{4}|\d{4})\b",
+    rf"\b(?:\d{{1,2}}/\d{{1,2}}/\d{{2,4}}"
+    rf"|\d{{1,2}}[º°]?\s+de\s+{_MONTHS}(?:\s+de\s+\d{{4}})?"
+    rf"|{_MONTHS}\s+de\s+\d{{4}})\b",
     re.IGNORECASE,
 )
 _BANK_RE = re.compile(

@@ -1,5 +1,7 @@
 """Tests for the supplier-neutral consumer intake."""
 
+import pytest
+
 from app.consumer.intake import (
     extract_explicit_facts,
     next_assistant_message,
@@ -67,6 +69,34 @@ def test_intake_never_asks_for_a_problem_type() -> None:
     message = next_assistant_message(ConsumerCaseFacts(), has_evidence=False)
 
     assert "tipo de problema" not in message.casefold()
+
+
+@pytest.mark.parametrize(
+    ("text", "period"),
+    [
+        ("A cobrança veio no dia 2 de Outubro.", "2 de Outubro"),
+        ("A cobrança veio em 2 de outubro de 2026.", "2 de outubro de 2026"),
+        ("O Nubank debitou R$ 100,00 em julho de 2026.", "julho de 2026"),
+        ("A fatura de 10/03/2026 veio errada.", "10/03/2026"),
+        ("Comprei uma passagem da Viação 1001 e não viajei.", None),
+    ],
+)
+def test_extracts_the_incident_date_but_not_a_bare_number(text: str, period: str | None) -> None:
+    extraction = extract_explicit_facts(text, ConsumerCaseFacts())
+
+    assert extraction.incident_date_or_period == period
+
+
+def test_a_company_number_after_the_date_is_not_the_date() -> None:
+    # The first real prompt-notice test: "1001" names the bus company.
+    extraction = extract_explicit_facts(
+        "Fui vítima de uma compra não reconhecida no valor de R$ 149,99. Uma viagem de "
+        "São Paulo para o Rio de Janeiro no dia 2 de Outubro, pela viação 1001. "
+        "Eu jamais fiz esta compra.",
+        ConsumerCaseFacts(),
+    )
+
+    assert extraction.incident_date_or_period == "2 de Outubro"
 
 
 def test_chat_amount_is_not_promoted_to_confirmed_direct_loss() -> None:
