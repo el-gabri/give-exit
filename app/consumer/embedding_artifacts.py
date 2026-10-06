@@ -19,11 +19,10 @@ from app.schemas.rag import Chunk
 def float32_vector(vector: list[float]) -> list[float]:
     """Canonicalize the manifest's declared float32 storage contract."""
 
-    normalized: list[float] = []
-    for value in vector:
-        converted = struct.unpack("!f", struct.pack("!f", float(value)))[0]
-        normalized.append(0.0 if converted == 0.0 else converted)
-    return normalized
+    # One pack per vector, not per value: the same conversion, done in C.
+    layout = f"!{len(vector)}f"
+    converted = struct.unpack(layout, struct.pack(layout, *map(float, vector)))
+    return [0.0 if value == 0.0 else value for value in converted]
 
 
 def chunk_ids_sha256(chunks: list[Chunk]) -> str:

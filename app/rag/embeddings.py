@@ -9,6 +9,7 @@ offline instead of asserting against arbitrary vectors.
 import asyncio
 import hashlib
 import math
+import operator
 import re
 import time
 from typing import Any, Protocol, runtime_checkable
@@ -467,11 +468,14 @@ def validate_embedding_vectors(
         raise ValueError(
             f"embedding dimension mismatch: expected {expected_dimension}, received {dimension}"
         )
+    # map() runs these loops in C; the checks, their order and the summation
+    # order are the generator expressions' own, so results are unchanged.
     for vector in vectors:
-        if not all(math.isfinite(float(value)) for value in vector):
+        if not all(map(math.isfinite, map(float, vector))):
             raise ValueError("embedding vectors must contain only finite values")
         if require_l2_normalized:
-            norm = math.sqrt(sum(float(value) * float(value) for value in vector))
+            values = list(map(float, vector))
+            norm = math.sqrt(sum(map(operator.mul, values, values)))
             if abs(norm - 1.0) > norm_tolerance:
                 raise ValueError(
                     f"embedding vector is not L2-normalized: norm={norm:.6f}"
