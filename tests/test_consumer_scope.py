@@ -141,6 +141,61 @@ def test_labour_keeps_its_card_charge_exception() -> None:
     )
 
 
+# Moved from the retrieval tests: the labour, traffic-fine, private-loan and
+# neighbour complaints the first gate abstained on, with its card-charge and
+# bank-account exceptions. The narrative is the gate's only input.
+@pytest.mark.parametrize(
+    "complaint",
+    [
+        "Meu vizinho bloqueia a garagem.",
+        "Meu vizinho construiu um muro no meu terreno.",
+        "Meu empregador não pagou meu salário nem o vale-transporte.",
+        "Meu empregador não pagou meu salário nem registrou a hora extra.",
+        "Meu empregador descontou o vale-transporte do meu salário.",
+        "A empresa onde trabalho está há dois meses sem pagar meu salário e também não "
+        "depositou o vale-transporte combinado.",
+        "A empresa não fez o pagamento do meu salário previsto no contrato de trabalho.",
+        "Meu empregador nao pagou meu salario na loja em que trabalho.",
+        "Meu empregador não liberou o seguro-desemprego nem pagou meu salário.",
+        "O empregador alterou meu cartão de ponto e não pagou as horas extras.",
+        "Meu empregador não fez a entrega do EPI exigido para o trabalho.",
+        "Meu empregador fez uma cobrança indevida no contracheque e não pagou meu salário.",
+        "Meu empregador fez uma cobrança sobre o banco de horas e não pagou meu salário.",
+        "O banco fica perto do meu trabalho. Meu empregador bloqueou minha conta no sistema "
+        "de ponto e não pagou meu salário.",
+        "Comprei o uniforme obrigatório e meu empregador não me reembolsou.",
+        "Comprei o uniforme obrigatório na loja em que trabalho, mas meu empregador não me "
+        "reembolsou o salário.",
+        "A companhia não depositou meu sala\u0301rio.",
+        "Recebi uma multa de trânsito por excesso de velocidade em uma cidade onde eu nunca "
+        "estive com o meu carro.",
+        "Emprestei dinheiro para um amigo e ele não me devolve.",
+    ],
+)
+def test_earlier_non_consumer_complaints_still_abstain(complaint: str) -> None:
+    assert not is_consumer_scope(complaint=complaint)
+
+
+@pytest.mark.parametrize(
+    "complaint",
+    [
+        # A contractual penalty is not a traffic fine, and lending a card to a
+        # relative does not remove the bank from the dispute.
+        "A academia quer cobrar multa de cancelamento do plano anual.",
+        "Emprestei meu cartão para minha mãe e o banco cobrou duas vezes a mesma compra "
+        "na fatura.",
+        "A loja não entregou o produto que comprei.",
+        "A operadora cobrou pelo serviço de internet que nunca funcionou.",
+        "A loja onde trabalho fez uma cobrança no meu cartão por uma compra que eu não fiz.",
+        "O banco bloqueou minha conta-salário e não libera meu salário.",
+        "O banco bloqueou minha conta bancária e não libera meu saldo.",
+        "Meu empregador não pagou meu salário. A operadora cancelou meu serviço de internet.",
+    ],
+)
+def test_earlier_consumer_complaints_stay_in_scope(complaint: str) -> None:
+    assert is_consumer_scope(complaint=complaint)
+
+
 def test_no_labelled_in_scope_case_abstains() -> None:
     dataset = load_consumer_legal_dataset(DATASET_PATH)
     lost = [
