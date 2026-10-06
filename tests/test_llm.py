@@ -83,13 +83,16 @@ def test_importing_the_app_loads_no_provider_sdk() -> None:
     # The three SDKs cost about 3 s to import; only the configured one is needed.
     probe = (
         "import sys, app.api.main, app.consumer.composer; "
-        "print([m for m in ('openai', 'anthropic', 'google.genai') if m in sys.modules])"
+        "print('loaded:', [m for m in ('openai', 'anthropic', 'google.genai') if m in sys.modules])"
     )
     result = subprocess.run(
         [sys.executable, "-c", probe], capture_output=True, text=True, check=True
     )
 
-    assert result.stdout.strip() == "[]"
+    # Only the probe's own line: libraries may print notices on import
+    # (PyMuPDF 1.28.2 prints a `fitz` deprecation notice to stdout).
+    [loaded] = [line for line in result.stdout.splitlines() if line.startswith("loaded:")]
+    assert loaded == "loaded: []"
 
 
 def test_factory_rejects_openai_without_key() -> None:
