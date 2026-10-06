@@ -114,11 +114,12 @@ class SectionAwareChunker:
         sections = (
             _page_sections(document) if self._page_preserving else _split_sections(document)
         )
+        # ``document.doc_id`` hashes the whole text on every read: read it once,
+        # not once per section (quadratic on a long document).
+        doc_id = doc_id or document.doc_id
         chunks: list[Chunk] = []
         for section in sections:
-            chunks.extend(
-                self._chunk_section(doc_id or document.doc_id, section, len(chunks))
-            )
+            chunks.extend(self._chunk_section(doc_id, section, len(chunks)))
         return chunks
 
     def _chunk_section(

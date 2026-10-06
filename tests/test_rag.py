@@ -96,6 +96,32 @@ def test_chunker_respects_sections_and_provenance() -> None:
     assert all(c.chunk_id.startswith(c.doc_id) for c in chunks)
 
 
+def test_chunker_hashes_the_document_once_not_once_per_section(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # doc_id hashes the whole text; read per section, chunking the legal
+    # corpus as one document took 20 s.
+    import app.schemas.document as document_module
+
+    calls = 0
+    real_sha256_hex = document_module.sha256_hex
+
+    def counting_sha256_hex(text: str) -> str:
+        nonlocal calls
+        calls += 1
+        return real_sha256_hex(text)
+
+    document = _petition()
+    expected = document.doc_id
+    monkeypatch.setattr(document_module, "sha256_hex", counting_sha256_hex)
+
+    chunks = SectionAwareChunker(page_preserving=False).chunk(document)
+
+    assert len({chunk.section for chunk in chunks}) == 3
+    assert {chunk.doc_id for chunk in chunks} == {expected}
+    assert calls == 1
+
+
 def test_chunker_splits_oversized_sections_with_overlap() -> None:
     long_text = " ".join(f"paragrafo numero {i} do documento juridico." for i in range(200))
     doc = ParsedDocument(
