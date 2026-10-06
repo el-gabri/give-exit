@@ -736,9 +736,11 @@ def _restore_postgres_chunk(chunk_id: object, text: object, payload: object) -> 
 
 
 def _cosine(a: list[float], b: list[float]) -> float:
-    dot = sum(x * y for x, y in zip(a, b, strict=True))
-    norm_a = math.sqrt(sum(x * x for x in a)) or 1.0
-    norm_b = math.sqrt(sum(y * y for y in b)) or 1.0
+    # math.fsum is correctly rounded on every Python version; sum() of floats
+    # changed in 3.12, so tied scores used to rank differently on 3.10.
+    dot = math.fsum(x * y for x, y in zip(a, b, strict=True))
+    norm_a = math.sqrt(math.fsum(x * x for x in a)) or 1.0
+    norm_b = math.sqrt(math.fsum(y * y for y in b)) or 1.0
     return dot / (norm_a * norm_b)
 
 

@@ -233,6 +233,14 @@ async def test_mock_embeddings_are_deterministic_and_semanticish() -> None:
     assert _cosine(a1, related) > _cosine(a1, unrelated)  # shared vocab ranks higher
 
 
+def test_cosine_is_the_same_on_every_python_version() -> None:
+    # sum() of floats changed in Python 3.12. Summed plainly, as on 3.10, these
+    # parallel vectors score 0.9999999999999997; mock-embedder scores that tie
+    # mathematically then ranked differently on 3.10 than on 3.12+ (CI's 3.10 job).
+    assert _cosine([0.1] * 10, [1.0] * 10) == 1.0
+    assert _cosine([0.1] * 10, [0.3] * 10) == 1.0
+
+
 async def test_pipeline_indexes_and_retrieves_relevant_section() -> None:
     pipeline = RagPipeline(
         embedder=MockEmbeddingClient(),
