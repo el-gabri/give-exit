@@ -49,12 +49,11 @@ jobs:
             --ignore-vuln CVE-2026-45831
       - name: Type check (strict)
         run: mypy app
-      - name: Tests (offline - mock LLM provider)
-        run: pytest -q
-      - name: Coverage (scoped to modules with dedicated tests)
-        # [tool.coverage.run] source in pyproject.toml lists the modules held
-        # to 100%; it grows module by module as follow-up work adds tests
-        # elsewhere, instead of gating the whole repo at once.
+      - name: Tests and coverage (offline - mock LLM provider)
+        # One run: a failing test fails it as `pytest -q` did. [tool.coverage.run]
+        # source in pyproject.toml lists the modules held to 100%; it grows
+        # module by module as follow-up work adds tests elsewhere, instead of
+        # gating the whole repo at once.
         run: pytest --cov --cov-report=term-missing
       - name: Import architecture (no upward dependencies from app.core)
         run: lint-imports
