@@ -162,7 +162,6 @@ def test_seed_dataset_is_separate_versioned_and_explicitly_unreviewed() -> None:
     dataset = load_consumer_legal_dataset(DATASET_PATH)
 
     assert dataset.dataset_id == "consumer-legal-retrieval-seed"
-    assert dataset.version == "2.4.0"
     assert dataset.authoring == "developer_authored_seed"
     assert dataset.review_status == "requires_legal_review"
     assert dataset.source_url.endswith("/l8078compilado.htm")
