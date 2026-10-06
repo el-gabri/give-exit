@@ -11,6 +11,7 @@ from app.rag.embeddings import (
     _with_instruction,
     instruct_query,
     query_task_description,
+    validate_embedding_vectors,
 )
 
 
@@ -151,3 +152,25 @@ def test_api_providers_keep_the_plain_instruction_prefix() -> None:
     assert _with_instruction("cobranca indevida", "Represent this legal query") == (
         "Represent this legal query cobranca indevida"
     )
+
+
+def test_vector_validation_keeps_its_checks_order_and_messages() -> None:
+    # Pinned so a faster validation cannot accept, reject or report differently.
+    assert validate_embedding_vectors([[0.6, 0.8], [1.0, 0.0]], expected_count=2) == 2
+    assert (
+        validate_embedding_vectors([[0.3, 0.4]], expected_count=1, require_l2_normalized=False)
+        == 2
+    )
+    not_normalized = r"^embedding vector is not L2-normalized: norm=0\.500000$"
+    with pytest.raises(ValueError, match=not_normalized):
+        validate_embedding_vectors([[0.3, 0.4]], expected_count=1)
+    # Vectors are checked in order, each for finiteness before its norm.
+    with pytest.raises(ValueError, match=not_normalized):
+        validate_embedding_vectors([[0.3, 0.4], [float("nan"), 1.0]], expected_count=2)
+    with pytest.raises(ValueError, match="only finite values"):
+        validate_embedding_vectors([[float("nan"), 1.0], [0.3, 0.4]], expected_count=2)
+    with pytest.raises(ValueError, match="only finite values"):
+        validate_embedding_vectors([[float("inf"), 0.0]], expected_count=1)
+    assert validate_embedding_vectors([[1.04, 0.0]], expected_count=1) == 2
+    with pytest.raises(ValueError, match=r"norm=1\.060000$"):
+        validate_embedding_vectors([[1.06, 0.0]], expected_count=1)

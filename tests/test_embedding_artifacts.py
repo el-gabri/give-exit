@@ -25,6 +25,25 @@ def test_float32_canonicalization_is_idempotent_and_drops_negative_zero() -> Non
     assert float32_vector(values) == values
 
 
+def test_float32_canonicalization_keeps_its_rounding_underflow_and_overflow() -> None:
+    # Pinned so a faster conversion cannot change a stored vector or checksum.
+    values = float32_vector([1 / 3, 1e-46, -1e-46, 3.4028234663852886e38, 2, -0.5])
+
+    assert values == [0.3333333432674408, 0.0, 0.0, 3.4028234663852886e38, 2.0, -0.5]
+    assert [str(value) for value in values[1:3]] == ["0.0", "0.0"]
+    assert all(type(value) is float for value in values)
+    with pytest.raises(OverflowError):
+        float32_vector([1e39])
+
+
+def test_vector_checksum_is_pinned() -> None:
+    vectors = [[(row * 7 + column) % 13 / 13 - 0.5 for column in range(8)] for row in range(5)]
+
+    assert vectors_sha256(vectors) == (
+        "00f57378106bfd41d17284eef022a86fc42fda3ecbc7911e3a9113e6711c66a2"
+    )
+
+
 def test_canonical_json_is_sorted_compact_utf8_and_rejects_nan() -> None:
     assert canonical_json_bytes({"b": 1, "a": "ç"}) == '{"a":"ç","b":1}'.encode()
     with pytest.raises(ValueError):
