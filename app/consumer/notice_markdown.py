@@ -43,6 +43,22 @@ def render_notice_markdown(
 ) -> str:
     name = facts.consumer_name or "[PREENCHER NOME DO(A) CONSUMIDOR(A)]"
     supplier = facts.bank_name or "[PREENCHER EMPRESA, FORNECEDOR OU INSTITUIÇÃO]"
+    supplier_address = (
+        _single_line(facts.supplier_address)
+        if facts.supplier_address
+        else "[PREENCHER ENDEREÇO DA NOTIFICADA]"
+    )
+    consumer_identification = _consumer_identification_line(facts)
+    location_date = (
+        _single_line(facts.notice_location_date)
+        if facts.notice_location_date
+        else "[PREENCHER LOCAL], [PREENCHER DATA]."
+    )
+    signature_document = (
+        f"CPF: {_single_line(facts.consumer_document)}"
+        if facts.consumer_document
+        else "[PREENCHER CPF DO(A) NOTIFICANTE]"
+    )
     protocols = (
         ", ".join(_single_line(item) for item in facts.prior_protocols)
         or "nenhum protocolo informado"
@@ -53,10 +69,10 @@ def render_notice_markdown(
         "**À**",
         "",
         f"{_single_line(supplier)}",
-        "[PREENCHER ENDEREÇO DA NOTIFICADA]",
+        supplier_address,
         "",
         f"**Notificante:** {_single_line(name)}",
-        "[PREENCHER CPF E ENDEREÇO DO(A) NOTIFICANTE]",
+        consumer_identification,
         "",
         "## 1. Finalidade",
         "",
@@ -146,26 +162,37 @@ def render_notice_markdown(
             "A ausência de acordo não altera direitos, defesas ou prazos legais de qualquer parte.",
         ]
     )
-    # Place, date and signature are left as fields to fill rather than
-    # generated: the notice is sent on a day the renderer cannot know, and a
-    # plausible-looking wrong date on an extrajudicial notice is worse than a
-    # blank one.
+    # Place, date and signature are left as fields to fill when not supplied:
+    # the notice is sent on a day the renderer cannot know unless the consumer
+    # explicitly confirms it.
     lines.extend(
         [
             "",
             "---",
             "",
-            "[PREENCHER LOCAL], [PREENCHER DATA].",
+            location_date,
             "",
             "___________________________________________",
             "",
             f"{_single_line(name)}",
-            "[PREENCHER CPF DO(A) NOTIFICANTE]",
+            signature_document,
         ]
     )
     # The private reservation value is intentionally unavailable to this
     # renderer, so it cannot leak into an exported notice by accident.
     return "\n".join(lines)
+
+
+def _consumer_identification_line(facts: ConsumerCaseFacts) -> str:
+    doc = _single_line(facts.consumer_document) if facts.consumer_document else None
+    addr = _single_line(facts.consumer_address) if facts.consumer_address else None
+    if doc and addr:
+        return f"CPF: {doc} — Endereço: {addr}"
+    if doc:
+        return f"CPF: {doc} — [PREENCHER ENDEREÇO DO(A) NOTIFICANTE]"
+    if addr:
+        return f"[PREENCHER CPF DO(A) NOTIFICANTE] — Endereço: {addr}"
+    return "[PREENCHER CPF E ENDEREÇO DO(A) NOTIFICANTE]"
 
 
 def markdown_inline(text: str) -> str:

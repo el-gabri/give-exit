@@ -13,6 +13,8 @@ from pathlib import Path
 from pydantic import AliasChoices, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+_REASONING_EFFORTS = frozenset({"none", "low", "medium", "high", "xhigh", "max"})
+
 
 class LLMProvider(str, Enum):
     """Supported LLM backends. Adding a provider = new enum value + new client."""
@@ -28,6 +30,7 @@ class NoticeComposer(str, Enum):
 
     DETERMINISTIC = "deterministic"
     OPENAI = "openai"
+    LLM = "llm"
 
 
 class GroundVerifierMode(str, Enum):
@@ -117,7 +120,7 @@ class Settings(BaseSettings):
     llm_retry_max_attempts: int = Field(default=3, ge=1)
     # Notice composition is separate from the document-security LLM. It stays
     # offline by default; enabling it sends only the already-grounded case
-    # packet to the configured OpenAI endpoint.
+    # packet to the configured OpenAI or provider-agnostic LLM endpoint.
     notice_composer: NoticeComposer = NoticeComposer.DETERMINISTIC
     notice_composer_model: str = "gpt-5.6-terra"
     notice_composer_reasoning_effort: str = "low"
@@ -128,11 +131,15 @@ class Settings(BaseSettings):
     # confirmed facts, using the configured LLM provider. Off by default: the
     # draft stays fully deterministic unless an operator opts in.
     ground_verifier: GroundVerifierMode = GroundVerifierMode.NONE
+    ground_verifier_model: str | None = None
+    ground_verifier_reasoning_effort: str = "low"
     ground_verifier_max_output_tokens: int = Field(default=2_000, ge=256, le=16_384)
     # Optional, drop-only check that a complaint describes a consumer
     # relationship, using the configured LLM provider (ADR 0024). Off by
     # default: the deterministic relationship-class gate decides alone.
     scope_verifier: ScopeVerifierMode = ScopeVerifierMode.NONE
+    scope_verifier_model: str | None = None
+    scope_verifier_reasoning_effort: str = "low"
     scope_verifier_max_output_tokens: int = Field(default=1_000, ge=256, le=16_384)
     embedding_provider: EmbeddingProvider = EmbeddingProvider.AUTO
     # Optional override. AUTO resolves a provider-specific default instead of
@@ -303,18 +310,15 @@ class Settings(BaseSettings):
                 "LITIGATION_OPENAI_API_KEY is required when "
                 "LITIGATION_NOTICE_COMPOSER=openai"
             )
-        if self.notice_composer_reasoning_effort not in {
-            "none",
-            "low",
-            "medium",
-            "high",
-            "xhigh",
-            "max",
-        }:
-            raise ValueError(
-                "LITIGATION_NOTICE_COMPOSER_REASONING_EFFORT must be one of "
-                "none, low, medium, high, xhigh or max"
-            )
+        for env_name, effort in (
+            ("LITIGATION_NOTICE_COMPOSER_REASONING_EFFORT", self.notice_composer_reasoning_effort),
+            ("LITIGATION_GROUND_VERIFIER_REASONING_EFFORT", self.ground_verifier_reasoning_effort),
+            ("LITIGATION_SCOPE_VERIFIER_REASONING_EFFORT", self.scope_verifier_reasoning_effort),
+        ):
+            if effort not in _REASONING_EFFORTS:
+                raise ValueError(
+                    f"{env_name} must be one of none, low, medium, high, xhigh or max"
+                )
         return self
 
     @property

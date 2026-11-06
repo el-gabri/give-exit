@@ -89,7 +89,10 @@ class ConsumerFactsPatch(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     consumer_name: str | None = Field(default=None, max_length=200)
+    consumer_document: str | None = Field(default=None, max_length=100)
+    consumer_address: str | None = Field(default=None, max_length=500)
     bank_name: str | None = Field(default=None, max_length=200)
+    supplier_address: str | None = Field(default=None, max_length=500)
     complaint_summary: str | None = Field(default=None, max_length=10_000)
     incident_date_or_period: str | None = Field(default=None, max_length=500)
     prior_protocols: list[str] | None = None
@@ -100,6 +103,7 @@ class ConsumerFactsPatch(BaseModel):
     unsuccessful_scenario_cost_amount: Decimal | None = Field(default=None, ge=0)
     desired_resolution: str | None = Field(default=None, max_length=2_000)
     response_deadline_business_days: int | None = Field(default=None, ge=1, le=60)
+    notice_location_date: str | None = Field(default=None, max_length=200)
     facts_confirmed: bool | None = None
 
 

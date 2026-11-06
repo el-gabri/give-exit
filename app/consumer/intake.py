@@ -33,7 +33,17 @@ _GENERIC_BANK_RE = re.compile(
     r"(?:\s+[A-ZÁÀÂÃÉÊÍÓÔÕÚÇ][\wÀ-ÿ.-]*){0,3})"
 )
 _GENERIC_SUPPLIER_PREFIX_RE = re.compile(
-    r"\b(?:empresa|loja|fornecedor(?:a)?|operadora|plataforma|site|aplicativo)\s+",
+    r"\b(?:empresa|loja|fornecedor(?:a)?|operadora|plataforma|site|aplicativo|"
+    r"concession[aá]ria|companhia(?:\s+a[eé]rea)?|seguradora)\s+",
+    re.IGNORECASE,
+)
+_CORPORATE_SUFFIX_RE = re.compile(
+    r"\b([A-ZÁÀÂÃÉÊÍÓÔÕÚÇ][\wÀ-ÿ&.-]*(?:\s+(?:de|da|do|das|dos|e|[A-ZÁÀÂÃÉÊÍÓÔÕÚÇ][\wÀ-ÿ&.-]*)){0,3}"
+    r"\s+(?:S\.?A\.?|Ltda\.?|Linhas\s+A[eé]reas|Telecom|Seguros|Energia))(?!\w)"
+)
+_PROTOCOL_RE = re.compile(
+    r"\bprotocolo(?:\s+(?:n[º°o.]?|de\s+atendimento))?\s*[:#-]?\s*"
+    r"([A-Za-z0-9][A-Za-z0-9./-]{2,39})\b",
     re.IGNORECASE,
 )
 _SUPPLIER_TOKEN_RE = re.compile(r"[0-9A-Za-zÀ-ÿ&]+(?:[.-][0-9A-Za-zÀ-ÿ&]+)*")
@@ -133,10 +143,16 @@ def extract_explicit_facts(text: str, current: ConsumerCaseFacts) -> ConsumerInt
     period = None
     if current.incident_date_or_period is None and (match := _DATE_RE.search(normalized)):
         period = match.group(0)
+    protocols: list[str] | None = None
+    if not current.prior_protocols:
+        extracted_protocols = _extract_protocols(normalized)
+        if extracted_protocols:
+            protocols = extracted_protocols
     return ConsumerIntakeExtraction(
         bank_name=bank_name,
         complaint_summary=(account if current.complaint_summary is None else None),
         incident_date_or_period=period,
+        prior_protocols=protocols,
         desired_resolution=(request if current.desired_resolution is None else None),
     )
 
@@ -207,7 +223,23 @@ def _extract_supplier(text: str) -> str | None:
         return f"Banco {match.group(1).strip()}"
     if match := _GENERIC_SUPPLIER_PREFIX_RE.search(text):
         return _supplier_name_after_prefix(text, match.end())
+    if match := _CORPORATE_SUFFIX_RE.search(text):
+        return match.group(1).strip()
     return None
+
+
+def _extract_protocols(text: str) -> list[str]:
+    protocols: list[str] = []
+    seen: set[str] = set()
+    for match in _PROTOCOL_RE.finditer(text):
+        candidate = match.group(1).rstrip(".,;:")
+        if not any(ch.isdigit() for ch in candidate):
+            continue
+        key = candidate.casefold()
+        if key not in seen:
+            seen.add(key)
+            protocols.append(candidate)
+    return protocols
 
 
 def _supplier_name_after_prefix(text: str, start: int) -> str | None:

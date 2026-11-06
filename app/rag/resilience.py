@@ -18,6 +18,8 @@ from app.rag.embeddings import (
 
 logger = get_logger(__name__)
 
+DEFAULT_MAX_BACKGROUND_TASKS = 16
+
 
 class EmbeddingUnavailableError(RuntimeError):
     """Semantic retrieval is temporarily unavailable and may use a safe fallback."""
@@ -44,7 +46,10 @@ class QueryEmbeddingGuard:
         cache_ttl_seconds: float,
         cache_max_entries: int,
         expected_dimension: int | None,
+        max_background_tasks: int = DEFAULT_MAX_BACKGROUND_TASKS,
     ) -> None:
+        if max_background_tasks < 1:
+            raise ValueError("max_background_tasks must be positive")
         self._embedder = embedder
         self._timeout_seconds = timeout_seconds
         self._slots = asyncio.Semaphore(max_concurrency)
@@ -54,6 +59,7 @@ class QueryEmbeddingGuard:
         self._cache_ttl_seconds = cache_ttl_seconds
         self._cache_max_entries = cache_max_entries
         self._expected_dimension = expected_dimension
+        self._max_background_tasks = max_background_tasks
         self._cache: OrderedDict[str, tuple[float, list[float]]] = OrderedDict()
         self._consecutive_failures = 0
         self._circuit_open_until = 0.0
@@ -146,6 +152,8 @@ class QueryEmbeddingGuard:
         return [[float(value) for value in vector] for vector in encoded]
 
     def _track_background_task(self, task: asyncio.Task[list[list[float]]]) -> None:
+        if len(self._background_tasks) >= self._max_background_tasks:
+            task.cancel()
         self._background_tasks.add(task)
 
         def _completed(done: asyncio.Task[list[list[float]]]) -> None:
