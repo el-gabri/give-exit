@@ -28,7 +28,7 @@ security review exist.
 
 ## Time-bounded Chroma advisory exception
 
-Reviewed: **2026-11-05**  
+Reviewed: **2026-11-05**
 Review again by: **2026-12-31**, or immediately when Chroma publishes a
 patched release.
 
