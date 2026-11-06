@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field
 from app.consumer.schemas import ConsumerCaseFacts, EvidenceCitation, LegalGround
 from app.core.config import NoticeComposer, Settings
 from app.llm.base import LLMCallMetadata, LLMClient
+from app.llm.factory import create_llm_client
 from app.llm.retry import RetryingLLMClient
 
 _PROMPT_VERSION = "consumer-notice-grounded-prose:v2"
@@ -65,8 +66,8 @@ class DeterministicNoticeComposer:
         return NoticeComposition(mode=NoticeComposer.DETERMINISTIC)
 
 
-class OpenAINoticeComposer:
-    """OpenAI structured-output composer with a narrow, auditable surface."""
+class LLMNoticeComposer:
+    """Structured-output composer with a narrow, auditable surface across LLM providers."""
 
     def __init__(
         self,
@@ -74,10 +75,12 @@ class OpenAINoticeComposer:
         *,
         reasoning_effort: str,
         max_output_tokens: int,
+        mode: NoticeComposer = NoticeComposer.OPENAI,
     ) -> None:
         self._client = client
         self._reasoning_effort = reasoning_effort
         self._max_output_tokens = max_output_tokens
+        self._mode = mode
 
     async def compose(
         self,
@@ -105,16 +108,26 @@ class OpenAINoticeComposer:
         )
         _validate_prose(result.data, source_packet=user_input)
         return NoticeComposition(
-            mode=NoticeComposer.OPENAI,
+            mode=self._mode,
             prose=result.data,
             metadata=result.meta,
         )
+
+
+OpenAINoticeComposer = LLMNoticeComposer
 
 
 def create_notice_composer(settings: Settings) -> NoticeDraftComposer:
     """Create the independently configured final-draft composer."""
     if settings.notice_composer is NoticeComposer.DETERMINISTIC:
         return DeterministicNoticeComposer()
+    if settings.notice_composer is NoticeComposer.LLM:
+        return LLMNoticeComposer(
+            create_llm_client(settings, model_override=settings.notice_composer_model),
+            reasoning_effort=settings.notice_composer_reasoning_effort,
+            max_output_tokens=settings.notice_composer_max_output_tokens,
+            mode=NoticeComposer.LLM,
+        )
     api_key = (settings.openai_api_key or "").strip()
     if not api_key:  # Settings also validates this, for direct factory callers.
         raise ValueError("LITIGATION_OPENAI_API_KEY is required for the OpenAI notice composer")
@@ -127,6 +140,7 @@ def create_notice_composer(settings: Settings) -> NoticeDraftComposer:
         ),
         reasoning_effort=settings.notice_composer_reasoning_effort,
         max_output_tokens=settings.notice_composer_max_output_tokens,
+        mode=NoticeComposer.OPENAI,
     )
 
 

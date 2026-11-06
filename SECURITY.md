@@ -15,10 +15,21 @@ user identity, tenant isolation or RBAC. A network-facing or multi-tenant
 deployment remains out of scope until those controls and a different storage
 security review exist.
 
+## In-process denial-of-service & rate-limiting controls
+
+- **Rate-limiter quota preservation**: `SlidingWindowRateLimiter` bounds its
+  tracked-key map (`MAX_TRACKED_RATE_LIMIT_KEYS`) and evicts expired or
+  non-throttled (`len(events) < limit`) buckets before actively throttled ones,
+  so a burst of single-request keys cannot evict a rate-limited caller and
+  reset its quota inside the active window.
+- **Bounded shielded embedding tasks**: `QueryEmbeddingGuard` caps concurrent
+  shielded background tasks (`max_background_tasks`) so timed-out or cancelled
+  embedding calls cannot accumulate unbounded tasks in memory.
+
 ## Time-bounded Chroma advisory exception
 
-Reviewed: **2026-08-24**  
-Review again by: **2026-09-30**, or immediately when Chroma publishes a
+Reviewed: **2026-11-05**  
+Review again by: **2026-12-31**, or immediately when Chroma publishes a
 patched release.
 
 `chromadb 1.5.9` currently has four advisories without patched versions:

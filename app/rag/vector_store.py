@@ -612,7 +612,8 @@ _BM25_B = 0.75
 
 # BM25 exactly as ``_bm25_rank`` computes it: the corpus statistics cover every
 # chunk of the document, term frequencies come from the stored token arrays,
-# and ties break on chunk id.
+# and ties break on chunk id. Only the top-k scored chunks join back to read
+# full ``content`` and ``chunk_payload`` JSONB.
 _POSTGRES_BM25_SQL = f"""
 WITH corpus AS (
     SELECT count(*)::float8 AS documents,
@@ -625,7 +626,7 @@ query_terms AS (
     FROM unnest(%s::text[], %s::int[]) AS query(term, query_frequency)
 ),
 candidates AS (
-    SELECT chunk_id, content, chunk_payload, lexical_tokens,
+    SELECT namespace, chunk_id, lexical_tokens,
            cardinality(lexical_tokens)::float8 AS length
     FROM {PostgresVectorStore.TABLE}
     WHERE namespace = %s AND doc_id = %s AND lexical_tokens && %s::text[]
@@ -658,12 +659,20 @@ scores AS (
     JOIN candidates USING (chunk_id)
     CROSS JOIN corpus
     GROUP BY term_frequencies.chunk_id
+),
+top_scores AS (
+    SELECT candidates.namespace, candidates.chunk_id, scores.score
+    FROM scores
+    JOIN candidates USING (chunk_id)
+    WHERE scores.score > 0
+    ORDER BY scores.score DESC, candidates.chunk_id ASC
+    LIMIT %s
 )
-SELECT candidates.chunk_id, candidates.content, candidates.chunk_payload, scores.score
-FROM scores JOIN candidates USING (chunk_id)
-WHERE scores.score > 0
-ORDER BY scores.score DESC, candidates.chunk_id ASC
-LIMIT %s
+SELECT chunks.chunk_id, chunks.content, chunks.chunk_payload, top_scores.score
+FROM top_scores
+JOIN {PostgresVectorStore.TABLE} AS chunks
+  ON chunks.namespace = top_scores.namespace AND chunks.chunk_id = top_scores.chunk_id
+ORDER BY top_scores.score DESC, top_scores.chunk_id ASC
 """
 
 
@@ -824,33 +833,41 @@ _PORTUGUESE_STOPWORDS = frozenset(
 
 
 class _SearchTokenizer:
-    """Tokenizes the chunks of one lexical search, reusing cached tokens."""
+    """Tokenizes the chunks of one lexical search, reusing cached tokens and term counts."""
 
-    def __init__(self, cached: Mapping[str, tuple[str, ...]], writes: int) -> None:
+    def __init__(
+        self,
+        cached: Mapping[str, tuple[tuple[str, ...], Counter[str]]],
+        writes: int,
+    ) -> None:
         self._cached = cached
         self.writes = writes
-        self.used: dict[str, tuple[str, ...]] = {}
+        self.used: dict[str, tuple[tuple[str, ...], Counter[str]]] = {}
 
     def __call__(self, chunk: Chunk) -> tuple[str, ...]:
-        tokens = self._cached.get(chunk.text)
-        if tokens is None:
+        return self.tokens_and_counts(chunk)[0]
+
+    def tokens_and_counts(self, chunk: Chunk) -> tuple[tuple[str, ...], Counter[str]]:
+        entry = self._cached.get(chunk.text)
+        if entry is None:
             tokens = tuple(portuguese_lexical_tokens(chunk.text))
-        self.used[chunk.text] = tokens
-        return tokens
+            entry = (tokens, Counter(tokens))
+        self.used[chunk.text] = entry
+        return entry
 
 
 class _LexicalTokenCache:
-    """Chunk tokens one store keeps between lexical searches, per document.
+    """Chunk tokens and term counts one store keeps between lexical searches, per document.
 
-    Tokenizing every chunk dominated each lexical query. Tokens are keyed by
-    chunk text, so they cannot go stale. Every write through the store drops
-    the documents it wrote, so text a case deletion removed from the index
-    does not outlive it here, and a search that raced any write does not
-    store its tokens.
+    Tokenizing every chunk dominated each lexical query. Tokens and their term
+    frequencies are keyed by chunk text, so they cannot go stale. Every write
+    through the store drops the documents it wrote, so text a case deletion
+    removed from the index does not outlive it here, and a search that raced
+    any write does not store its tokens.
     """
 
     def __init__(self) -> None:
-        self._documents: dict[str, dict[str, tuple[str, ...]]] = {}
+        self._documents: dict[str, dict[str, tuple[tuple[str, ...], Counter[str]]]] = {}
         self._writes = 0
 
     def tokenizer(self, doc_id: str) -> _SearchTokenizer:
@@ -880,28 +897,32 @@ def _bm25_rank(
     if not query_terms:
         return []
 
-    documents = [tokenize(chunk) for chunk in chunks]
-    vocabularies = [set(document) for document in documents]
+    if isinstance(tokenize, _SearchTokenizer):
+        doc_entries = [tokenize.tokens_and_counts(chunk) for chunk in chunks]
+    else:
+        doc_entries = [
+            (tokens := tuple(tokenize(chunk)), Counter(tokens)) for chunk in chunks
+        ]
     document_frequency = {
-        term: sum(term in vocabulary for vocabulary in vocabularies) for term in query_terms
+        term: sum(term in counts for _, counts in doc_entries) for term in query_terms
     }
-    average_length = sum(len(document) for document in documents) / len(documents)
+    average_length = sum(len(tokens) for tokens, _ in doc_entries) / len(doc_entries)
     k1 = 1.5
     b = 0.75
     ranked: list[RetrievedChunk] = []
-    for chunk, document in zip(chunks, documents, strict=True):
-        frequencies = Counter(document)
+    for chunk, (tokens, frequencies) in zip(chunks, doc_entries, strict=True):
         score = 0.0
+        doc_len = len(tokens)
         for term, query_frequency in query_terms.items():
-            frequency = frequencies[term]
+            frequency = frequencies.get(term, 0)
             if frequency == 0:
                 continue
             doc_frequency = document_frequency[term]
             inverse_document_frequency = math.log(
-                1 + (len(documents) - doc_frequency + 0.5) / (doc_frequency + 0.5)
+                1 + (len(doc_entries) - doc_frequency + 0.5) / (doc_frequency + 0.5)
             )
             length_normalization = frequency + k1 * (
-                1 - b + b * len(document) / (average_length or 1.0)
+                1 - b + b * doc_len / (average_length or 1.0)
             )
             score += (
                 query_frequency

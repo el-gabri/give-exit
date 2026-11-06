@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Literal, Protocol
+from typing import Any, Literal, Protocol
 
 from pydantic import BaseModel
 
@@ -59,20 +59,30 @@ class NoScopeVerifier:
 class LLMScopeVerifier:
     """Structured-output scope check whose quote is verified before it counts."""
 
-    def __init__(self, client: LLMClient, *, max_output_tokens: int) -> None:
+    def __init__(
+        self,
+        client: LLMClient,
+        *,
+        max_output_tokens: int,
+        reasoning_effort: str | None = None,
+    ) -> None:
         self._client = client
         self._max_output_tokens = max_output_tokens
+        self._reasoning_effort = reasoning_effort
 
     async def verify(self, complaint: str) -> ScopeVerification:
         digest = sha256_hex(complaint)
+        call_kwargs: dict[str, Any] = {
+            "system": _SYSTEM_PROMPT,
+            "user": json.dumps({"relato": complaint}, ensure_ascii=False),
+            "schema": _ModelScope,
+            "prompt_version": PROMPT_VERSION,
+            "max_output_tokens": self._max_output_tokens,
+        }
+        if self._reasoning_effort is not None:
+            call_kwargs["reasoning_effort"] = self._reasoning_effort
         try:
-            result = await self._client.parse(
-                system=_SYSTEM_PROMPT,
-                user=json.dumps({"relato": complaint}, ensure_ascii=False),
-                schema=_ModelScope,
-                prompt_version=PROMPT_VERSION,
-                max_output_tokens=self._max_output_tokens,
-            )
+            result = await self._client.parse(**call_kwargs)
         except Exception as exc:
             return ScopeVerification(
                 mode=ScopeVerifierMode.LLM,
@@ -110,8 +120,9 @@ def create_scope_verifier(settings: Settings) -> ScopeVerifier:
     if settings.scope_verifier is ScopeVerifierMode.NONE:
         return NoScopeVerifier()
     return LLMScopeVerifier(
-        create_llm_client(settings),
+        create_llm_client(settings, model_override=settings.scope_verifier_model),
         max_output_tokens=settings.scope_verifier_max_output_tokens,
+        reasoning_effort=settings.scope_verifier_reasoning_effort,
     )
 
 

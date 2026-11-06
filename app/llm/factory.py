@@ -18,7 +18,11 @@ _DEFAULT_MODELS: dict[LLMProvider, str] = {
 }
 
 
-def create_llm_client(settings: Settings) -> LLMClient:
+def create_llm_client(
+    settings: Settings,
+    *,
+    model_override: str | None = None,
+) -> LLMClient:
     """Build the configured LLM client.
 
     Raises:
@@ -27,13 +31,17 @@ def create_llm_client(settings: Settings) -> LLMClient:
     if settings.llm_provider is LLMProvider.MOCK:
         return MockLLMClient()
     return RetryingLLMClient(
-        _create_provider_client(settings),
+        _create_provider_client(settings, model_override=model_override),
         max_attempts=settings.llm_retry_max_attempts,
     )
 
 
-def _create_provider_client(settings: Settings) -> LLMClient:
-    model = _model_for(settings)
+def _create_provider_client(
+    settings: Settings,
+    *,
+    model_override: str | None = None,
+) -> LLMClient:
+    model = _model_for(settings, model_override=model_override)
     if settings.llm_provider is LLMProvider.OPENAI:
         from app.llm.openai_client import OpenAIClient
 
@@ -65,7 +73,10 @@ def _create_provider_client(settings: Settings) -> LLMClient:
     raise ValueError(f"Unsupported LLM provider: {settings.llm_provider}")
 
 
-def _model_for(settings: Settings) -> str:
+def _model_for(settings: Settings, *, model_override: str | None = None) -> str:
+    explicit = (model_override or "").strip()
+    if explicit:
+        return explicit
     override = (settings.llm_model or "").strip()
     if override:
         return override

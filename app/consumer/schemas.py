@@ -113,10 +113,25 @@ class ConsumerCaseFacts(BaseModel):
     """
 
     consumer_name: str | None = Field(default=None, max_length=200)
+    consumer_document: str | None = Field(
+        default=None,
+        max_length=100,
+        description="Optional CPF or identification document confirmed by the consumer",
+    )
+    consumer_address: str | None = Field(
+        default=None,
+        max_length=500,
+        description="Optional postal or electronic address of the consumer",
+    )
     bank_name: str | None = Field(
         default=None,
         max_length=200,
         description="Legacy API name for the supplier, company or institution",
+    )
+    supplier_address: str | None = Field(
+        default=None,
+        max_length=500,
+        description="Optional address or contact channel of the supplier",
     )
     complaint_summary: str | None = Field(default=None, max_length=10_000)
     incident_date_or_period: str | None = Field(default=None, max_length=500)
@@ -144,6 +159,11 @@ class ConsumerCaseFacts(BaseModel):
     )
     desired_resolution: str | None = Field(default=None, max_length=2_000)
     response_deadline_business_days: int = Field(default=10, ge=1, le=60)
+    notice_location_date: str | None = Field(
+        default=None,
+        max_length=200,
+        description="Optional location and date line for the notice signature block",
+    )
 
     @field_validator("prior_protocols")
     @classmethod
@@ -176,7 +196,10 @@ class ConsumerIntakeExtraction(BaseModel):
     """Schema-constrained extraction result; every field is optional."""
 
     consumer_name: str | None = None
+    consumer_document: str | None = None
+    consumer_address: str | None = None
     bank_name: str | None = None
+    supplier_address: str | None = None
     complaint_summary: str | None = None
     incident_date_or_period: str | None = None
     prior_protocols: list[str] | None = None
@@ -186,6 +209,7 @@ class ConsumerIntakeExtraction(BaseModel):
     article_42_double_repayment_requested: bool | None = None
     unsuccessful_scenario_cost_amount: Decimal | None = Field(default=None, ge=0)
     desired_resolution: str | None = None
+    notice_location_date: str | None = None
 
 
 class EvidenceMonetaryReference(BaseModel):

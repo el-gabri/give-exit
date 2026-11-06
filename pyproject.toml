@@ -84,10 +84,13 @@ branch = true
 # repo-wide 100% would block on the ~787 statements already uncovered
 # across the codebase, most of which predate this gate.
 source = [
+    "app.api.security",
     "app.consumer.alias_generation",
     "app.consumer.aliases",
     "app.consumer.embedding_artifacts",
     "app.consumer.ground_selection",
+    "app.consumer.ground_verifier",
+    "app.consumer.legal_policy",
     "app.consumer.scope",
     "app.consumer.scope_verifier",
     "app.consumer.statutes",
@@ -96,6 +99,7 @@ source = [
     "app.evaluation.intervals",
     "app.evaluation.query_vectors",
     "app.rag.reranking",
+    "app.rag.resilience",
 ]
 
 [tool.coverage.report]
@@ -109,6 +113,20 @@ root_package = "app"
 name = "core has no internal dependencies"
 type = "layers"
 layers = ["app.api", "app.core"]
+
+[[tool.importlinter.contracts]]
+name = "domain and infrastructure layers do not depend on api"
+type = "forbidden"
+source_modules = [
+    "app.consumer",
+    "app.rag",
+    "app.security",
+    "app.llm",
+    "app.ingestion",
+    "app.reporting",
+    "app.core",
+]
+forbidden_modules = ["app.api"]
 
 [tool.vulture]
 paths = ["app"]

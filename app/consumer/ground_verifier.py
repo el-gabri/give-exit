@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Literal, Protocol
+from typing import Any, Literal, Protocol
 
 from pydantic import BaseModel, Field
 
@@ -83,9 +83,16 @@ class NoGroundVerifier:
 class LLMGroundVerifier:
     """Structured-output verifier whose quotes are checked before they count."""
 
-    def __init__(self, client: LLMClient, *, max_output_tokens: int) -> None:
+    def __init__(
+        self,
+        client: LLMClient,
+        *,
+        max_output_tokens: int,
+        reasoning_effort: str | None = None,
+    ) -> None:
         self._client = client
         self._max_output_tokens = max_output_tokens
+        self._reasoning_effort = reasoning_effort
 
     async def verify(
         self, facts: ConsumerCaseFacts, grounds: list[LegalGround]
@@ -94,14 +101,17 @@ class LLMGroundVerifier:
             return GroundVerificationResult(
                 grounds=grounds, summary=GroundVerificationSummary(mode=GroundVerifierMode.LLM)
             )
+        call_kwargs: dict[str, Any] = {
+            "system": _SYSTEM_PROMPT,
+            "user": _build_user_input(facts, grounds),
+            "schema": _ModelVerification,
+            "prompt_version": PROMPT_VERSION,
+            "max_output_tokens": self._max_output_tokens,
+        }
+        if self._reasoning_effort is not None:
+            call_kwargs["reasoning_effort"] = self._reasoning_effort
         try:
-            result = await self._client.parse(
-                system=_SYSTEM_PROMPT,
-                user=_build_user_input(facts, grounds),
-                schema=_ModelVerification,
-                prompt_version=PROMPT_VERSION,
-                max_output_tokens=self._max_output_tokens,
-            )
+            result = await self._client.parse(**call_kwargs)
         except Exception as exc:
             return GroundVerificationResult(
                 grounds=grounds,
@@ -128,8 +138,9 @@ def create_ground_verifier(settings: Settings) -> GroundVerifier:
     if settings.ground_verifier is GroundVerifierMode.NONE:
         return NoGroundVerifier()
     return LLMGroundVerifier(
-        create_llm_client(settings),
+        create_llm_client(settings, model_override=settings.ground_verifier_model),
         max_output_tokens=settings.ground_verifier_max_output_tokens,
+        reasoning_effort=settings.ground_verifier_reasoning_effort,
     )
 
 

@@ -113,6 +113,8 @@ _SELF_REFERENCE_CUES = re.compile(
     r"you\s+(?:were|are)\s+(?:given|told|instructed)|"
     r"\bpersona\b|assuma\s+o\s+papel|assumir\s+a\s+persona|incorpore\s+a\s+persona|"
     r"esta\s+conversa|this\s+conversation|start\s+of\s+this|"
+    r"deixe\s+de\s+lado\s+(?:aquilo|tudo|o)\s+que\s+foi\s+dito|"
+    r"antes\s+desta\s+(?:linha|mensagem)|"
     r"palavra\s+por\s+palavra|word\s+for\s+word|verbatim|"
     r"rotina\s+interna|internal\s+routine|"
     r"texto\s+de\s+configuracao|configuration\s+text|"

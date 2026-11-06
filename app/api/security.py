@@ -155,7 +155,8 @@ class SlidingWindowRateLimiter:
         if self._limit < 1:
             return True
         now = self._clock()
-        self._evict_expired(now)
+        if key not in self._events:
+            self._evict_expired(now)
         events = self._events[key]
         while events and now - events[0] >= self._window:
             events.popleft()
@@ -165,22 +166,26 @@ class SlidingWindowRateLimiter:
         return True
 
     def _evict_expired(self, now: float) -> None:
-        """Drop buckets whose whole window has passed, oldest activity first."""
+        """Drop buckets whose whole window has passed, oldest non-throttled activity first."""
         if len(self._events) < self._max_tracked_keys:
             return
-        stale = [
-            key
-            for key, events in self._events.items()
-            if not events or now - events[-1] >= self._window
-        ]
+        stale: list[str] = []
+        for key, events in self._events.items():
+            while events and now - events[0] >= self._window:
+                events.popleft()
+            if not events:
+                stale.append(key)
         for key in stale:
             del self._events[key]
         if len(self._events) < self._max_tracked_keys:
             return
-        # Every tracked client is still inside its window. Drop the least
-        # recently active buckets so the map stays bounded; the worst case is
-        # that a quiet client gets a fresh allowance.
-        ordered = sorted(self._events.items(), key=lambda item: item[1][-1])
+        # Every tracked client is still inside its window. Evict non-throttled
+        # (under-limit) buckets before throttled ones so a flood of single-request
+        # keys cannot evict an actively rate-limited caller and reset its quota.
+        ordered = sorted(
+            self._events.items(),
+            key=lambda item: (len(item[1]) >= self._limit, item[1][-1]),
+        )
         for key, _ in ordered[: len(self._events) - self._max_tracked_keys + 1]:
             del self._events[key]
 
@@ -220,7 +225,9 @@ def client_identifier(request: Request, *, trusted_proxy_hops: int = 0) -> str:
     return hops[index] if index < len(hops) else hops[0]
 
 
-def enforce_rate_limit(name: str) -> Callable[[Request], None]:
+def enforce_rate_limit(
+    name: str, *, include_case_id: bool = False
+) -> Callable[[Request], None]:
     """Build a dependency throttling one class of expensive endpoints."""
 
     def dependency(request: Request) -> None:
@@ -228,7 +235,9 @@ def enforce_rate_limit(name: str) -> Callable[[Request], None]:
         identity = client_identifier(
             request, trusted_proxy_hops=request.app.state.trusted_proxy_hops
         )
-        if not registry.get(name).allow(f"{name}:{identity}"):
+        case_id = request.path_params.get("case_id") if include_case_id else None
+        bucket = f"{name}:{identity}:{case_id}" if case_id else f"{name}:{identity}"
+        if not registry.get(name).allow(bucket):
             raise HTTPException(
                 status_code=429,
                 detail="Limite de requisições atingido; aguarde um minuto e tente novamente.",

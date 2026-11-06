@@ -8,6 +8,8 @@ evaluator run exactly the same selection.
 
 from __future__ import annotations
 
+import re
+import unicodedata
 from collections.abc import Callable
 
 from app.consumer.legal_corpus import LegalCorpus
@@ -36,6 +38,19 @@ from app.schemas.trace import RetrievalTrace
 MAX_GROUND_CANDIDATES = 8
 MIN_GROUND_SCORE_RATIO = 0.5
 MAX_LEGAL_GROUNDS = 8
+
+_CDC_ART_42_ID = "br-cdc-art-42"
+_CDC_ART_42_CAPUT_ID = "br-cdc-art-42-caput"
+_CDC_ART_42_PARAGRAFO_UNICO_ID = "br-cdc-art-42-paragrafo-unico"
+
+_COLLECTION_HARASSMENT_RE = re.compile(
+    r"\b(?:ameac\w*|expor|exposicao|expuser\w*|constrang\w*|ridiculo|humilh\w*)\b"
+)
+_UNDUE_PAYMENT_OR_REFUND_RE = re.compile(
+    r"\b(?:paguei|pago|pagou|descont\w*|debit\w*|devol\w*|estorn\w*|reembols\w*|"
+    r"ressarc\w*|em\s+dobro|duplicidade|cobrou\s+duas\s+vezes|cobrancas?\s+indevidas?|"
+    r"nao\s+reconhecid\w*)\b"
+)
 
 SupportGate = Callable[[list[RetrievalTrace]], frozenset[str]]
 
@@ -66,9 +81,15 @@ def select_legal_grounds(
     if not merged:
         return []
     score_floor = _score_floor(merged, traces or [])
+    eligible = _disambiguate_cdc_art_42_candidates(
+        corpus,
+        facts,
+        merged,
+        _eligible_candidates(corpus, merged, strongly_supported),
+    )
     provision_candidates = _provision_candidates(
         corpus,
-        _eligible_candidates(corpus, merged, strongly_supported),
+        eligible,
         chunk_query_occurrences(traces or []),
     )
 
@@ -145,6 +166,67 @@ def _eligible_candidates(
                 (rank, result)
             )
     return candidates_by_provision
+
+
+def _disambiguate_cdc_art_42_candidates(
+    corpus: LegalCorpus,
+    facts: ConsumerCaseFacts,
+    merged: list[RetrievedChunk],
+    candidates_by_provision: dict[str, list[tuple[int, RetrievedChunk]]],
+) -> dict[str, list[tuple[int, RetrievedChunk]]]:
+    """Prevent CDC art. 42, sole paragraph from replacing caput on unpaid-debt harassment.
+
+    CDC art. 42 has two distinct rules: the caput forbids threats, ridicule or
+    embarrassment when collecting an unpaid debt, while the sole paragraph grants
+    double repayment of an undue amount already paid. When a narrative describes
+    debt-collection harassment without any allegation of an undue payment or
+    refund, the sole paragraph is inapplicable; if the caput was also retrieved
+    in ``merged``, it takes the provision's candidate slot.
+    """
+
+    art_42_candidates = candidates_by_provision.get(_CDC_ART_42_ID)
+    if not art_42_candidates or not _is_unpaid_collection_harassment(facts):
+        return candidates_by_provision
+
+    kept = [
+        (rank, result)
+        for rank, result in art_42_candidates
+        if (unit := corpus.unit_for_chunk(result)) is None
+        or unit.unit_id != _CDC_ART_42_PARAGRAFO_UNICO_ID
+    ]
+    if not kept:
+        best_rank = min(rank for rank, _ in art_42_candidates)
+        best_score = max(item.score for _, item in art_42_candidates)
+        for _, result in enumerate(merged, start=1):
+            unit = corpus.unit_for_chunk(result)
+            if unit is not None and unit.unit_id == _CDC_ART_42_CAPUT_ID:
+                kept.append(
+                    (
+                        best_rank,
+                        result.model_copy(update={"score": max(result.score, best_score)}),
+                    )
+                )
+                break
+
+    updated = dict(candidates_by_provision)
+    if kept:
+        updated[_CDC_ART_42_ID] = kept
+    else:
+        updated.pop(_CDC_ART_42_ID, None)
+    return updated
+
+
+def _is_unpaid_collection_harassment(facts: ConsumerCaseFacts) -> bool:
+    if facts.article_42_double_repayment_requested:
+        return False
+    if facts.improper_payment_amount is not None and facts.improper_payment_amount > 0:
+        return False
+    narrative = f"{facts.complaint_summary or ''} {facts.desired_resolution or ''}".casefold()
+    decomposed = unicodedata.normalize("NFKD", narrative)
+    folded = "".join(char for char in decomposed if not unicodedata.combining(char))
+    return bool(_COLLECTION_HARASSMENT_RE.search(folded)) and not bool(
+        _UNDUE_PAYMENT_OR_REFUND_RE.search(folded)
+    )
 
 
 def _provision_candidates(
