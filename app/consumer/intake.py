@@ -38,7 +38,8 @@ _GENERIC_SUPPLIER_PREFIX_RE = re.compile(
     re.IGNORECASE,
 )
 _CORPORATE_SUFFIX_RE = re.compile(
-    r"\b([A-ZÁÀÂÃÉÊÍÓÔÕÚÇ][\wÀ-ÿ&.-]*(?:\s+(?:de|da|do|das|dos|e|[A-ZÁÀÂÃÉÊÍÓÔÕÚÇ][\wÀ-ÿ&.-]*)){0,3}"
+    r"\b([A-ZÁÀÂÃÉÊÍÓÔÕÚÇ][\wÀ-ÿ&.-]*"
+    r"(?:\s+(?:de|da|do|das|dos|e|[A-ZÁÀÂÃÉÊÍÓÔÕÚÇ][\wÀ-ÿ&.-]*)){0,3}"
     r"\s+(?:S\.?A\.?|Ltda\.?|Linhas\s+A[eé]reas|Telecom|Seguros|Energia))(?!\w)"
 )
 _PROTOCOL_RE = re.compile(

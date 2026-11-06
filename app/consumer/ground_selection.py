@@ -193,20 +193,7 @@ def _disambiguate_cdc_art_42_candidates(
         for rank, result in art_42_candidates
         if (unit := corpus.unit_for_chunk(result)) is None
         or unit.unit_id != _CDC_ART_42_PARAGRAFO_UNICO_ID
-    ]
-    if not kept:
-        best_rank = min(rank for rank, _ in art_42_candidates)
-        best_score = max(item.score for _, item in art_42_candidates)
-        for _, result in enumerate(merged, start=1):
-            unit = corpus.unit_for_chunk(result)
-            if unit is not None and unit.unit_id == _CDC_ART_42_CAPUT_ID:
-                kept.append(
-                    (
-                        best_rank,
-                        result.model_copy(update={"score": max(result.score, best_score)}),
-                    )
-                )
-                break
+    ] or _fallback_art_42_caput(corpus, merged, art_42_candidates)
 
     updated = dict(candidates_by_provision)
     if kept:
@@ -216,10 +203,29 @@ def _disambiguate_cdc_art_42_candidates(
     return updated
 
 
+def _fallback_art_42_caput(
+    corpus: LegalCorpus,
+    merged: list[RetrievedChunk],
+    art_42_candidates: list[tuple[int, RetrievedChunk]],
+) -> list[tuple[int, RetrievedChunk]]:
+    best_rank = min(rank for rank, _ in art_42_candidates)
+    best_score = max(item.score for _, item in art_42_candidates)
+    for result in merged:
+        unit = corpus.unit_for_chunk(result)
+        if unit is not None and unit.unit_id == _CDC_ART_42_CAPUT_ID:
+            return [
+                (
+                    best_rank,
+                    result.model_copy(update={"score": max(result.score, best_score)}),
+                )
+            ]
+    return []
+
+
 def _is_unpaid_collection_harassment(facts: ConsumerCaseFacts) -> bool:
-    if facts.article_42_double_repayment_requested:
-        return False
-    if facts.improper_payment_amount is not None and facts.improper_payment_amount > 0:
+    if facts.article_42_double_repayment_requested or (
+        facts.improper_payment_amount is not None and facts.improper_payment_amount > 0
+    ):
         return False
     narrative = f"{facts.complaint_summary or ''} {facts.desired_resolution or ''}".casefold()
     decomposed = unicodedata.normalize("NFKD", narrative)

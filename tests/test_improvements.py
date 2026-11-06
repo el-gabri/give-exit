@@ -61,6 +61,38 @@ def test_verifier_settings_validate_reasoning_effort_and_wire_model_overrides() 
     assert sv._client._inner._model == "claude-haiku-4-5"  # type: ignore[attr-defined]
 
 
+async def test_verifiers_forward_reasoning_effort_when_configured() -> None:
+    corpus = get_default_legal_corpus()
+    chunks = corpus.as_chunks()
+    caput_chunk = next(
+        c for c in chunks if c.metadata.get("unit_id") == "br-cdc-art-42-caput"
+    )
+    results = [[RetrievedChunk(chunk=caput_chunk, score=0.030)]]
+    facts = ConsumerCaseFacts(
+        complaint_summary="Cobrança com ameaça de exposição no trabalho.",
+        desired_resolution="Cessar ameaças.",
+    )
+    grounds = select_legal_grounds(
+        corpus, facts, results, [], support_gate=lambda _traces: frozenset({caput_chunk.chunk_id})
+    )
+    mock_settings = Settings(
+        llm_provider=LLMProvider.MOCK,
+        ground_verifier=GroundVerifierMode.LLM,
+        ground_verifier_reasoning_effort="low",
+        scope_verifier=ScopeVerifierMode.LLM,
+        scope_verifier_reasoning_effort="low",
+        _env_file=None,
+    )
+    gv = create_ground_verifier(mock_settings)
+    sv = create_scope_verifier(mock_settings)
+
+    gv_result = await gv.verify(facts, grounds)
+    sv_result = await sv.verify("Comprei uma geladeira com defeito.")
+
+    assert gv_result.summary.mode is GroundVerifierMode.LLM
+    assert sv_result.mode is ScopeVerifierMode.LLM
+
+
 def test_scope_gate_abstains_on_b2b_invoice_issuer_and_residential_security_deposit() -> None:
     b2b = assess_scope(
         complaint=(
@@ -149,6 +181,42 @@ def test_cdc_art_42_disambiguates_caput_from_sole_paragraph_on_harassment() -> N
     grounds = select_legal_grounds(corpus, facts, results, [trace])
 
     assert [g.authority.unit_id for g in grounds] == ["br-cdc-art-42-caput"]
+
+    # When both sole paragraph and caput are already in candidates, caput is kept directly.
+    both_supported = select_legal_grounds(
+        corpus,
+        facts,
+        results,
+        [trace],
+        support_gate=lambda _traces: frozenset({sole_chunk.chunk_id, caput_chunk.chunk_id}),
+    )
+    assert [g.authority.unit_id for g in both_supported] == ["br-cdc-art-42-caput"]
+
+    # When only sole paragraph was retrieved and caput is absent from merged, art. 42 is dropped.
+    sole_only = select_legal_grounds(
+        corpus,
+        facts,
+        [[RetrievedChunk(chunk=sole_chunk, score=0.030)]],
+        [trace],
+        support_gate=lambda _traces: frozenset({sole_chunk.chunk_id}),
+    )
+    assert sole_only == []
+
+    # When improper_payment_amount > 0, sole paragraph is preserved.
+    paid_facts = ConsumerCaseFacts(
+        complaint_summary=facts.complaint_summary,
+        desired_resolution=facts.desired_resolution,
+        disputed_amount=Decimal("100.00"),
+        improper_payment_amount=Decimal("50.00"),
+    )
+    paid_grounds = select_legal_grounds(
+        corpus,
+        paid_facts,
+        [[RetrievedChunk(chunk=sole_chunk, score=0.030)]],
+        [trace],
+        support_gate=lambda _traces: frozenset({sole_chunk.chunk_id}),
+    )
+    assert [g.authority.unit_id for g in paid_grounds] == ["br-cdc-art-42-paragrafo-unico"]
 
 
 def test_rate_limiter_preserves_throttled_keys_against_single_request_floods() -> None:
