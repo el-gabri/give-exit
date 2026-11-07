@@ -73,7 +73,7 @@ async def test_verifiers_forward_reasoning_effort_when_configured() -> None:
         desired_resolution="Cessar ameaças.",
     )
     grounds = select_legal_grounds(
-        corpus, facts, results, [], support_gate=lambda _traces: frozenset({caput_chunk.chunk_id})
+        corpus, facts, results, [], support=lambda _traces: frozenset({caput_chunk.chunk_id})
     )
     mock_settings = Settings(
         llm_provider=LLMProvider.MOCK,
@@ -188,7 +188,7 @@ def test_cdc_art_42_disambiguates_caput_from_sole_paragraph_on_harassment() -> N
         facts,
         results,
         [trace],
-        support_gate=lambda _traces: frozenset({sole_chunk.chunk_id, caput_chunk.chunk_id}),
+        support=lambda _traces: frozenset({sole_chunk.chunk_id, caput_chunk.chunk_id}),
     )
     assert [g.authority.unit_id for g in both_supported] == ["br-cdc-art-42-caput"]
 
@@ -198,7 +198,7 @@ def test_cdc_art_42_disambiguates_caput_from_sole_paragraph_on_harassment() -> N
         facts,
         [[RetrievedChunk(chunk=sole_chunk, score=0.030)]],
         [trace],
-        support_gate=lambda _traces: frozenset({sole_chunk.chunk_id}),
+        support=lambda _traces: frozenset({sole_chunk.chunk_id}),
     )
     assert sole_only == []
 
@@ -214,7 +214,7 @@ def test_cdc_art_42_disambiguates_caput_from_sole_paragraph_on_harassment() -> N
         paid_facts,
         [[RetrievedChunk(chunk=sole_chunk, score=0.030)]],
         [trace],
-        support_gate=lambda _traces: frozenset({sole_chunk.chunk_id}),
+        support=lambda _traces: frozenset({sole_chunk.chunk_id}),
     )
     assert [g.authority.unit_id for g in paid_grounds] == ["br-cdc-art-42-paragrafo-unico"]
 

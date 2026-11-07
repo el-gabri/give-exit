@@ -39,3 +39,4 @@ plan.md
 /.agents/
 /.claude/
 /demo/
+.mcp.json

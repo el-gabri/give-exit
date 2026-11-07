@@ -1,7 +1,7 @@
 {
   "mcpServers": {
     "pycharm": {
-      "url": "http://127.0.0.1:64462/stream",
+      "url": "http://127.0.0.1:64503/stream",
       "type": "http"
     }
   }
