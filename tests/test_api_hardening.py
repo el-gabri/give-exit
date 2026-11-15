@@ -155,6 +155,29 @@ def test_idle_cases_expire_and_release_their_identifiers() -> None:
     assert store.indexed_document_ids() == set()
 
 
+def test_cases_expired_while_creating_a_new_one_are_still_handed_over() -> None:
+    """create() reclaims idle cases too, and it cannot delete their vectors.
+
+    It used to drop the list, so the caller that owns the cleanup never saw
+    those cases and their evidence stayed in the vector store.
+    """
+    from app.consumer.store import ConsumerCaseStore
+
+    now = [0.0]
+    store = ConsumerCaseStore(idle_ttl_seconds=100.0, clock=lambda: now[0])
+    idle, _ = store.create()
+    idle.indexed_document_ids.add("doc-1")
+
+    now[0] = 150.0
+    store.create()
+    expired = store.expire_idle_cases()
+
+    assert [item.case_id for item in expired] == [idle.case_id]
+    assert expired[0].indexed_document_ids == {"doc-1"}
+    # Handed over exactly once: a second sweep must not delete the same case again.
+    assert store.expire_idle_cases() == []
+
+
 def test_active_cases_are_not_expired() -> None:
     from app.consumer.store import ConsumerCaseStore
 

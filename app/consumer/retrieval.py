@@ -28,6 +28,10 @@ from app.schemas.rag import RetrievedChunk
 from app.schemas.trace import RetrievalTrace
 
 MAX_QUERY_CHARS = 2_000
+# How much of the complaint and of the requested remedy the narrative keeps.
+# Space is reserved for both, so a long complaint cannot push the remedy out.
+_NARRATIVE_COMPLAINT_CHARS = 1_050
+_NARRATIVE_RESOLUTION_CHARS = 500
 # Legal candidates per ranking query; the notice cites at most this many grounds.
 LEGAL_REQUESTED_K = 8
 LEGAL_RETRIEVAL_AGENT = "consumer_legal_authorities"
@@ -46,10 +50,8 @@ def build_legal_queries(facts: ConsumerCaseFacts) -> list[str]:
 def build_legal_queries_for_case(*, complaint: str, desired_resolution: str) -> list[str]:
     """Build the same production queries for a golden-dataset case."""
 
-    # Reserve space for every signal instead of allowing a long complaint to
-    # truncate the requested remedy.
-    bounded_complaint = _bounded_component(complaint, 1_050)
-    bounded_resolution = _bounded_component(desired_resolution, 500)
+    bounded_complaint = _bounded_component(complaint, _NARRATIVE_COMPLAINT_CHARS)
+    bounded_resolution = _bounded_component(desired_resolution, _NARRATIVE_RESOLUTION_CHARS)
     narrative = _join_non_empty(bounded_complaint, bounded_resolution)
     queries = [
         _bounded(
@@ -68,12 +70,18 @@ def build_corroboration_queries(facts: ConsumerCaseFacts) -> list[str]:
 
     Neither text contains the other, so a chunk both rank highly has support
     from two formulations of the case rather than two framings of one.
+
+    Each is cut exactly where the narrative cuts it. The support gate tells a
+    ranking query from independent corroboration by containment, so every
+    ranking query must contain both of these. A longer complaint searched
+    whole was not part of the narrative any more and passed for a second,
+    independent signal.
     """
 
     return _unique_non_empty(
         [
-            _bounded_component(facts.complaint_summary, MAX_QUERY_CHARS),
-            _bounded_component(facts.desired_resolution, MAX_QUERY_CHARS),
+            _bounded_component(facts.complaint_summary, _NARRATIVE_COMPLAINT_CHARS),
+            _bounded_component(facts.desired_resolution, _NARRATIVE_RESOLUTION_CHARS),
         ]
     )
 
@@ -117,10 +125,17 @@ def build_evidence_queries(facts: ConsumerCaseFacts) -> list[str]:
     Generic framing such as "Evidência que comprova..." is deliberately absent:
     it matched every uploaded page lexically and made the retrieval-agreement
     gate hold for any attachment.
+
+    These are not ranking queries, so the account and the remedy are searched
+    whole, beyond what the narrative keeps of them.
     """
 
     return _unique_non_empty(
-        [*build_corroboration_queries(facts), _bounded(" ".join(_case_identifiers(facts)))]
+        [
+            _bounded_component(facts.complaint_summary, MAX_QUERY_CHARS),
+            _bounded_component(facts.desired_resolution, MAX_QUERY_CHARS),
+            _bounded(" ".join(_case_identifiers(facts))),
+        ]
     )
 
 

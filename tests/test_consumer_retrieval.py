@@ -1,6 +1,7 @@
 import asyncio
 from typing import cast
 
+from app.consumer.legal_policy import strongly_supported_chunk_ids
 from app.consumer.retrieval import (
     LEGAL_CORROBORATION_AGENT,
     LEGAL_RETRIEVAL_AGENT,
@@ -15,6 +16,7 @@ from app.consumer.service import ConsumerCaseService
 from app.ingestion.service import DocumentIngestionService
 from app.llm.mock_client import MockLLMClient
 from app.rag.pipeline import RagPipeline
+from app.schemas.trace import RetrievalTrace, RetrievedItemTrace
 from app.security.prompt_injection import PromptInjectionDetector
 
 
@@ -94,6 +96,96 @@ def test_corroboration_queries_are_independent_formulations() -> None:
 
     assert complaint not in resolution and resolution not in complaint
     assert build_corroboration_queries(_facts(desired_resolution=None)) == [complaint]
+
+
+def _lexical_only_trace(query: str, index: int, chunk_ids: list[str]) -> RetrievalTrace:
+    """A degraded trace whose top results are ``chunk_ids``, in rank order."""
+    return RetrievalTrace(
+        batch_id="batch",
+        agent="consumer_legal_authorities",
+        doc_id="legal-doc",
+        query_index=index,
+        query=query,
+        query_sha256="0" * 64,
+        requested_k=8,
+        returned_count=len(chunk_ids),
+        retrieval_mode="hybrid",
+        degraded_mode="lexical_only",
+        embedding_model="test",
+        vector_store="memory",
+        index_version="test",
+        score_type="bm25_score",
+        results=[
+            RetrievedItemTrace(
+                rank=rank,
+                chunk_id=chunk_id,
+                doc_id="legal-doc",
+                page_start=1,
+                page_end=1,
+                score=1.0 / rank,
+                channel_ranks={"lexical": rank},
+                content_sha256="0" * 64,
+            )
+            for rank, chunk_id in enumerate(chunk_ids, start=1)
+        ],
+    )
+
+
+def test_a_long_complaint_is_not_corroborated_by_the_narrative_that_repeats_it() -> None:
+    """Without the dense channel, only the complaint and the remedy corroborate.
+
+    The narrative keeps the first 1,050 characters of the complaint. A longer
+    complaint searched alone was no longer contained in the narrative, so the
+    gate took two copies of nearly the same text for independent queries and a
+    lexical-only notice cited articles the remedy never ranked.
+    """
+    facts = _facts(
+        complaint_summary=("O banco cobrou uma tarifa que nunca contratei na conta. " * 30)
+    )
+    assert len(facts.complaint_summary or "") > 1_500
+    framed, bare = build_legal_queries(facts)
+    complaint, remedy = build_corroboration_queries(facts)
+
+    supported = strongly_supported_chunk_ids(
+        [
+            _lexical_only_trace(framed, 0, ["only-the-complaint-ranks-it", "both-rank-it"]),
+            _lexical_only_trace(bare, 1, ["only-the-complaint-ranks-it", "both-rank-it"]),
+            _lexical_only_trace(complaint, 2, ["only-the-complaint-ranks-it", "both-rank-it"]),
+            _lexical_only_trace(remedy, 3, ["both-rank-it"]),
+        ]
+    )
+
+    assert supported == {"both-rank-it"}
+
+
+def test_a_long_remedy_is_not_corroborated_by_the_narrative_that_repeats_it() -> None:
+    """The narrative keeps the first 500 characters of the remedy; same rule."""
+    facts = _facts(
+        desired_resolution=("Quero o estorno integral e a correção do cadastro. " * 20)
+    )
+    assert len(facts.desired_resolution or "") > 900
+    framed, bare = build_legal_queries(facts)
+    complaint, remedy = build_corroboration_queries(facts)
+
+    supported = strongly_supported_chunk_ids(
+        [
+            _lexical_only_trace(framed, 0, ["only-the-remedy-ranks-it", "both-rank-it"]),
+            _lexical_only_trace(bare, 1, ["only-the-remedy-ranks-it", "both-rank-it"]),
+            _lexical_only_trace(complaint, 2, ["both-rank-it"]),
+            _lexical_only_trace(remedy, 3, ["only-the-remedy-ranks-it", "both-rank-it"]),
+        ]
+    )
+
+    assert supported == {"both-rank-it"}
+
+
+def test_evidence_queries_keep_the_account_beyond_the_narrative_budget() -> None:
+    """Evidence lookups are not ranking queries: they search the whole account."""
+    late_detail = "protocolo de atendimento registrado na ouvidoria"
+    facts = _facts(complaint_summary=("relato do problema " * 70) + late_detail)
+    assert (facts.complaint_summary or "").index(late_detail) > 1_050
+
+    assert late_detail in build_evidence_queries(facts)[0]
 
 
 def test_narrative_join_does_not_double_the_consumer_period() -> None:

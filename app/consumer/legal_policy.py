@@ -272,7 +272,9 @@ def strongly_supported_chunk_ids(
     top three for two independent queries, where independent means neither
     query's text contains the other's. The narrative ranking queries contain
     the complaint and the remedy, so they never corroborate each other or
-    those two; the complaint and the remedy searched separately can.
+    those two; the complaint and the remedy searched separately can. That
+    containment is the query builder's to keep: it cuts the two corroboration
+    queries exactly where the narrative cuts them, at any length.
     """
 
     if alias_cap < 0:

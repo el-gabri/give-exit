@@ -583,7 +583,7 @@ class ConsumerCaseService:
         started = perf_counter()
         reused = await self._ensure_evidence_indexed(record, evidence_document)
         return _IndexedEvidence(
-            doc_id=evidence_document.doc_id,
+            doc_id=record.active_evidence_document_id,
             page_sources=page_sources,
             index_ms=(perf_counter() - started) * 1000,
             index_reused=reused,
@@ -594,7 +594,7 @@ class ConsumerCaseService:
     ) -> bool:
         """Index a changed evidence set once; return whether a cached index was reused."""
         async with record.evidence_index_lock:
-            current_id = evidence_document.doc_id
+            current_id = _case_evidence_doc_id(record.case_id, evidence_document)
             if (
                 record.active_evidence_document_id == current_id
                 and current_id in record.indexed_document_ids
@@ -606,7 +606,7 @@ class ConsumerCaseService:
                 )
                 return True
 
-            chunks = await self._rag.index_document(evidence_document)
+            chunks = await self._rag.index_document(evidence_document, doc_id=current_id)
             if not chunks:
                 raise ConsumerRetrievalError("accepted evidence produced no retrievable text")
 
@@ -893,6 +893,17 @@ class ConsumerCaseService:
             if len(citations) >= 8:
                 break
         return citations
+
+
+def _case_evidence_doc_id(case_id: str, evidence_document: ParsedDocument) -> str:
+    """The index id of one case's evidence set: the case and its content together.
+
+    The content hash alone gave two cases that uploaded the same file one
+    shared index entry, so deleting, expiring or re-indexing either case
+    removed the other's vectors. The content part still changes with the
+    evidence set, which is what lets an unchanged set be reused.
+    """
+    return sha256_hex(f"{case_id}:{evidence_document.doc_id}")[:16]
 
 
 def _sha256_file(path: Path) -> str:

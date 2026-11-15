@@ -63,9 +63,10 @@ class ConsumerCaseRecord:
     # (ADR 0024); readiness reads it while that text is unchanged.
     scope_verification: ScopeVerification | None = None
     indexed_document_ids: set[str] = field(default_factory=set)
-    # The combined evidence document is content-addressed. Retaining its id
-    # prevents re-embedding unchanged uploads every time a user regenerates a
-    # notice; the lock also collapses accidental double-clicks into one job.
+    # The combined evidence document's index id is derived from this case and
+    # its content, so no other case shares it. Retaining the id prevents
+    # re-embedding unchanged uploads every time a user regenerates a notice;
+    # the lock also collapses accidental double-clicks into one job.
     active_evidence_document_id: str | None = None
     evidence_index_lock: asyncio.Lock = field(default_factory=asyncio.Lock, repr=False)
     # Serializes the whole read-modify-write of a notice (and of an upload) for
@@ -118,6 +119,11 @@ class ConsumerCaseStore:
         if idle_ttl_seconds <= 0:
             raise ValueError("idle_ttl_seconds must be positive")
         self._cases: dict[str, ConsumerCaseRecord] = {}
+        # Cases retired for idleness whose owner has not collected them yet.
+        # create() retires cases too and cannot delete their evidence vectors,
+        # so they wait here for the next expire_idle_cases() instead of being
+        # dropped with their vectors still in the store.
+        self._retired: list[ConsumerCaseRecord] = []
         self._max_active_cases = max_active_cases
         self._idle_ttl_seconds = idle_ttl_seconds
         self._max_messages_per_case = max_messages_per_case
@@ -139,7 +145,7 @@ class ConsumerCaseStore:
         a genuinely full store refuses the new case rather than evicting another
         consumer's confirmed facts and indexed evidence.
         """
-        self.expire_idle_cases()
+        self._retire_idle_cases()
         if len(self._cases) >= self._max_active_cases:
             raise ConsumerCaseCapacityError(
                 "the in-process consumer case store is at capacity"
@@ -159,16 +165,24 @@ class ConsumerCaseStore:
 
         The caller owns follow-up cleanup (evidence vectors), because this
         repository deliberately knows nothing about retrieval infrastructure.
+        Every expired case is returned exactly once, including the ones
+        create() retired to make room since the last call.
         """
+        self._retire_idle_cases()
+        expired, self._retired = self._retired, []
+        return expired
+
+    def _retire_idle_cases(self) -> None:
+        """Take idle cases out of service; they stay queued until collected."""
         now = self._clock()
-        expired = [
+        idle = [
             record
             for record in self._cases.values()
             if now - record.last_seen_monotonic >= self._idle_ttl_seconds
         ]
-        for record in expired:
+        for record in idle:
             self._cases.pop(record.case_id, None)
-        return expired
+        self._retired.extend(idle)
 
     def indexed_document_ids(self) -> set[str]:
         """Every doc_id still owned by a live case (whatever the token)."""

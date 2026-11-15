@@ -152,3 +152,35 @@ async def test_expired_cases_release_their_evidence_vectors() -> None:
 
     assert purged == 1
     assert stray.doc_id not in await rag.list_document_ids()
+
+
+async def test_a_case_expired_by_a_new_case_still_releases_its_evidence_vectors() -> None:
+    """A new case arriving before the sweeper must not strand the expired one's evidence.
+
+    Creating a case expires idle ones first. Those cases were dropped without
+    cleanup, so the sweeper never found them and their document text stayed in
+    the vector store past the retention period.
+    """
+    from app.consumer.store import ConsumerCaseStore
+
+    now = [0.0]
+    rag = RagPipeline(MockEmbeddingClient(), InMemoryVectorStore())
+    store = ConsumerCaseStore(idle_ttl_seconds=10.0, clock=lambda: now[0])
+    service = ConsumerCaseService(
+        ingestion=DocumentIngestionService(),
+        detector=PromptInjectionDetector(MockLLMClient()),
+        rag=rag,
+        store=store,
+        legal_corpus=get_default_legal_corpus(),
+    )
+    record, _ = store.create()
+    stray = _stray_document()
+    await rag.index_document(stray)
+    record.indexed_document_ids.add(stray.doc_id)
+
+    now[0] = 100.0
+    service.create_case()
+    purged = await service.purge_expired_cases()
+
+    assert purged == 1
+    assert stray.doc_id not in await rag.list_document_ids()

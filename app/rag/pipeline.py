@@ -264,18 +264,26 @@ class RagPipeline:
         self,
         document: ParsedDocument,
         security_assessment: PromptInjectionAssessment | None = None,
+        *,
+        doc_id: str | None = None,
     ) -> list[Chunk]:
-        """Chunk, embed and store a document. Idempotent per doc_id."""
+        """Chunk, embed and store a document. Idempotent per doc_id.
+
+        ``doc_id`` replaces the content-addressed id for a caller that owns its
+        documents' lifecycle. Two owners holding the same text must not share
+        one index entry: deleting it for one would delete it for the other.
+        """
+        index_id = doc_id or document.doc_id
         safe_document = sanitized_document(document, security_assessment)
-        chunks = self._chunker.chunk(safe_document, doc_id=document.doc_id)
+        chunks = self._chunker.chunk(safe_document, doc_id=index_id)
         if not chunks:
-            await self._store.delete_document(document.doc_id)
-            logger.warning("index_empty_document", doc_id=document.doc_id)
+            await self._store.delete_document(index_id)
+            logger.warning("index_empty_document", doc_id=index_id)
             return []
         await self.index_chunks(chunks)
         logger.info(
             "document_indexed",
-            doc_id=document.doc_id,
+            doc_id=index_id,
             chunks=len(chunks),
             sections=len({c.section for c in chunks}),
         )
