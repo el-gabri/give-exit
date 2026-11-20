@@ -151,12 +151,14 @@ Ordem TDD: **escrever teste falhando → mínimo código/config se necessário �
 
 ## 7. Comandos
 
+Documentados também nos READMEs de cada app.
+
 ```bash
-# Java
+# Java (ver README.md)
 cd /opt/give-exit && ./mvnw -Dtest='com.lab.give_exit.regression.**' test
 
-# Python
-cd /opt/give-exit-python/give-exit && python -m pytest tests/regression -q
+# Python (ver README.md / README-pt.md)
+cd /opt/give-exit-python/give-exit && .venv/bin/python -m pytest tests/regression -q
 ```
 
 ---

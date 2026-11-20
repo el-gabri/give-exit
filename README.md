@@ -479,6 +479,20 @@ deletes the other processes' live case evidence.
 
 ## Evaluation and verification
 
+### Regression suite (chat ↔ API contracts)
+
+Fast gates for health, prompt-notices, uvicorn HTTP/1.1 (`h11`), API-key gate and `.env` isolation. Spec: [`docs/specs/SPEC-TestesRegressaoGabriel.md`](docs/specs/SPEC-TestesRegressaoGabriel.md).
+
+```bash
+python -m pytest tests/regression -q
+# or, with the project venv:
+.venv/bin/python -m pytest tests/regression -q
+```
+
+These tests use `LLMProvider.MOCK` + in-memory vector store (see `tests/conftest.py`) and do **not** need JUÁ weights or a live Docker stack.
+
+### Full suite and tooling
+
 ```bash
 pytest -q -n auto                       # one worker per CPU; drop -n auto to debug one test
 pytest -n auto --cov --cov-report=term-missing  # coverage, scoped to modules with dedicated tests

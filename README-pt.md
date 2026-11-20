@@ -327,7 +327,21 @@ resposta, erros e o fluxo em uma requisição estão em
 
 ## Testes e avaliação
 
-```powershell
+### Suíte de regressão (contratos chat ↔ API)
+
+Gates rápidos de `/health`, `prompt-notices`, uvicorn HTTP/1.1 (`h11`), API key e isolamento do `.env`. Spec: [`docs/specs/SPEC-TestesRegressaoGabriel.md`](docs/specs/SPEC-TestesRegressaoGabriel.md).
+
+```bash
+python -m pytest tests/regression -q
+# ou, com o venv do projeto:
+.venv/bin/python -m pytest tests/regression -q
+```
+
+Usam `LLMProvider.MOCK` + vector store em memória (`tests/conftest.py`) e **não** precisam dos pesos JUÁ nem do Docker no ar.
+
+### Suíte completa e ferramentas
+
+```bash
 pytest -q -n auto   # um worker por CPU; sem -n auto para depurar um teste
 python -m app.evaluation.consumer_runner
 python -m app.evaluation.security_benchmark
