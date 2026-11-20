@@ -1,0 +1,28 @@
+# Local boot policy. Docker Compose loads this file automatically.
+# legal-index stays a one-shot job (restart: "no" in compose.yaml).
+services:
+  api:
+    restart: unless-stopped
+    # Alinha com o HttpClient Java em HTTP/1.1 (evita upgrade h2c rejeitado).
+    command:
+      - uvicorn
+      - app.api.main:app
+      - --host
+      - "0.0.0.0"
+      - --port
+      - "8000"
+      - --http
+      - h11
+  frontend:
+    restart: unless-stopped
+  # The JUÁ vectors are already in give_exit_vet. Adopt them into the local
+  # generation manifest instead of re-embedding the corpus on every boot.
+  legal-index:
+    command:
+      - python
+      - -m
+      - app.consumer.preindex_legal
+      - --adopt-source-index
+      - give-exit-consumer-br-consumer-law-2026-09-12-v4-6b18d3db4b-6648b139826d
+      - --attest-source-revision
+      - 57f491c1718171c0ad71d723c4f6b2030684c4eb

@@ -31,7 +31,8 @@ ENTRYPOINT ["/app/docker-entrypoint.sh"]
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s \
     CMD python -c "import urllib.request as u; u.urlopen('http://localhost:8000/health')"
-CMD ["uvicorn", "app.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# HTTP/1.1 explícito (h11): o front Java e clientes locais não usam h2c.
+CMD ["uvicorn", "app.api.main:app", "--host", "0.0.0.0", "--port", "8000", "--http", "h11"]
 
 # ---------------------------------------------------------------- frontend
 FROM base AS frontend
