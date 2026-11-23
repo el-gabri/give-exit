@@ -221,3 +221,4 @@ production claims.
 - [0023](adr/0023-agreement-depth-and-alias-cap.md) — agreement depth 10 and an alias support cap
 - [0024](adr/0024-relationship-class-scope-gate.md) — relationship-class scope gate and optional LLM scope check
 - [0025](adr/0025-consumer-cited-provisions-and-actionable-refusals.md) — consumer-cited provisions, request verbs, query-model warm-up and actionable refusals
+- [0026](adr/0026-long-complaints-in-sentence-windows.md) — long complaints in sentence windows, with corroborated window hits

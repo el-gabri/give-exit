@@ -103,6 +103,12 @@ Com `?format=markdown`, o corpo é só o texto da notificação
   de elegibilidade (ADR 0025). Valem, por exemplo, "art. 35, inciso I, do CDC",
   "§ 1º do art. 18 da Lei 8.078/90", "art. 18 da LGPD" e "art. 186 do Código
   Civil". Esse fundamento tem `cited_by_consumer: true`.
+- Um relato com mais de 1.050 caracteres é lido em trechos de frases
+  inteiras, de até 600 caracteres, mais o pedido em uma busca própria
+  (ADR 0026). Os trechos somam até 2.400 caracteres; num relato maior, ficam
+  o começo e o último trecho. Um dispositivo encontrado só por trechos
+  precisa ser confirmado pela busca do pedido ou por um segundo trecho, a
+  menos que um trecho tenha encontrado o texto oficial.
 
 ### Erros
 
@@ -135,7 +141,7 @@ explica o motivo em vez de pedir uma nova tentativa às cegas:
 |---|---|
 | `semantic_retrieval_unavailable` | A busca semântica estava indisponível. A resposta é `503`, e tentar de novo pode resolver |
 | `no_requested_resolution` | Nenhuma frase diz o que o consumidor pede |
-| `narrative_truncated` | O relato (mais de 1.050 caracteres) ou o pedido (mais de 500) é maior que o trecho lido pela busca jurídica |
+| `narrative_truncated` | A busca jurídica não leu o texto inteiro: o relato passou dos 2.400 caracteres lidos em trechos (ficam o começo e o fim) ou o pedido passou de 500 |
 | `no_retrieval_agreement` | Nenhum dispositivo foi apontado pelas duas buscas ao mesmo tempo |
 | `no_eligible_ground` | O que foi encontrado não pode fundamentar a notificação, como normas penais ou processuais |
 | `grounds_removed_by_verifier` | O verificador opcional removeu todos os fundamentos |
