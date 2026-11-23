@@ -60,7 +60,7 @@ _INACTIVE_STATUSES = {
     "vetoed",
 }
 _UNKNOWN_STATUSES = {"", "desconhecido", "unknown"}
-QUERY_BUILDER_VERSION = "consumer-legal-narrative-v7"
+QUERY_BUILDER_VERSION = "consumer-legal-narrative-v8"
 _CONFIGURED_RETRIEVER = "app.evaluation.consumer_retrievers:configured_hybrid_retriever"
 
 

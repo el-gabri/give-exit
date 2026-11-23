@@ -194,6 +194,19 @@ jobs:
             --evaluate-notice \
             --split holdout \
             --output consumer-notice-holdout.json
+      - name: Consumer long-complaint report (not gated)
+        # Long versions of labelled development cases (ADR 0026): complaints
+        # past the narrative's 1,050 characters, read in sentence windows. The
+        # offline stack is no quality signal for them; the report keeps the
+        # path exercised and its outputs comparable across builds.
+        run: |
+          python -m app.evaluation.consumer_runner \
+            eval_data/consumer_long_complaints \
+            --output consumer-legal-retrieval-long.json
+          python -m app.evaluation.consumer_runner \
+            eval_data/consumer_long_complaints \
+            --evaluate-notice \
+            --output consumer-notice-long.json
       - name: Upload consumer evaluation evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -204,6 +217,8 @@ jobs:
             consumer-notice-results.json
             consumer-legal-retrieval-holdout.json
             consumer-notice-holdout.json
+            consumer-legal-retrieval-long.json
+            consumer-notice-long.json
       - name: Security gate benchmark
         # Thresholds are asserted in tests/test_security_benchmark.py; this
         # step publishes the per-category numbers in the build log.

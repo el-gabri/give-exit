@@ -1,0 +1,313 @@
+{
+  "dataset_id": "consumer-long-complaints",
+  "version": "1.0.0",
+  "description": "Long versions (1,750-2,320 characters) of ten labelled development cases of consumer-legal-retrieval-seed 2.4.0, for long-complaint retrieval (ADR 0026). Each keeps its source case's remedy, relevant labels, hard negatives and split; only the account grows, with invented detail, and its key facts sit early, mid or late relative to the 1,050 characters a short complaint's narrative reads (slice placement:*). No complaint cites an article. Development only: the combining rule for sentence windows was chosen on these cases. Not part of the gated golden set until reviewed.",
+  "source_url": "https://www.planalto.gov.br/ccivil_03/leis/l8078compilado.htm",
+  "authoring": "developer_authored_seed",
+  "review_status": "requires_legal_review",
+  "target_corpus_release_id": "br-consumer-law-2026-10-03-v5",
+  "target_corpus_sha256": "0080608e52af1ba75d664647b3aaa2dcad3bc0be0b63ccd54541a9e909ff4db4",
+  "cases": [
+    {
+      "case_id": "produto_duravel_com_vicio_longo",
+      "category": "product_defect",
+      "slices": [
+        "supplier:retail",
+        "remedy:refund",
+        "wording:lay",
+        "length:long",
+        "placement:early"
+      ],
+      "complaint": "Comprei uma geladeira nova numa loja de eletrodomésticos e, depois de dez dias de uso, ela parou de gelar. A assistência técnica autorizada ficou mais de trinta dias com o aparelho e não resolveu: quando devolveram, ela continuou sem gelar. Vou contar tudo em detalhes porque já perdi a conta de quantas vezes repeti esta história. A compra foi feita numa sexta-feira de março, à noite, porque a geladeira antiga tinha quinze anos e fazia um barulho que não deixava ninguém dormir. Pesquisei bastante, comparei preços em três lojas e escolhi essa porque o vendedor garantiu que era o modelo mais vendido da marca e que quase não dava problema. Paguei em dez parcelas no cartão e ainda aceitei a garantia estendida oferecida no caixa. A entrega atrasou dois dias, mas o aparelho chegou bem embalado e funcionou normalmente na primeira semana. Quando parou de gelar, perdi toda a comida da semana, inclusive carne, verduras e o leite das crianças. Liguei para o atendimento do fabricante e fiquei quarenta minutos esperando até a ligação cair. Na segunda tentativa abriram um chamado e me passaram um número de protocolo. O técnico marcou a visita para uma terça-feira, não apareceu, e só veio na quinta, sem avisar. Ele disse que provavelmente era o sensor e que precisava levar a geladeira para a oficina. Durante todo esse tempo usei uma caixa de isopor e comprei gelo quase todos os dias, um gasto que eu não tinha previsto no orçamento da casa. Cada vez que eu ligava, uma atendente diferente dizia que a peça estava a caminho e que eu precisava ter paciência. Pedi para falar com um supervisor e disseram que não havia nenhum disponível. Mandei e-mail, mensagem pelo aplicativo da loja e registrei reclamação num site de reclamações, e a única resposta foi uma mensagem automática pedindo desculpas pelo transtorno. Quando a geladeira finalmente voltou, o técnico disse que tinha trocado a placa eletrônica, mas na mesma noite o congelador já estava com o gelo derretendo. A loja agora diz que a responsabilidade é do fabricante, e o fabricante diz que preciso aguardar uma nova visita, ainda sem data. Não tenho mais confiança nesse aparelho e não quero passar outro mês sem geladeira.",
+      "desired_resolution": "Quero devolver a geladeira e receber de volta tudo o que paguei.",
+      "relevant": [
+        {
+          "article_id": "br-cdc-art-18",
+          "unit_id": "br-cdc-art-18-paragrafo-1-inciso-ii",
+          "grade": 3,
+          "rationale": "Após o vício não ser sanado em trinta dias, o consumidor pode escolher a restituição imediata do preço."
+        },
+        {
+          "article_id": "br-cdc-art-26",
+          "unit_id": "br-cdc-art-26-inciso-ii",
+          "grade": 1,
+          "rationale": "Produto durável tem prazo legal de noventa dias para reclamação por vício aparente."
+        }
+      ],
+      "hard_negatives": [
+        "br-cdc-art-14",
+        "br-cdc-art-49"
+      ],
+      "split": "development"
+    },
+    {
+      "case_id": "servico_de_reparo_malfeito_longo",
+      "category": "service_failure",
+      "slices": [
+        "supplier:service",
+        "remedy:refund",
+        "wording:lay",
+        "length:long",
+        "placement:middle"
+      ],
+      "complaint": "Uso meu notebook todos os dias para estudar e organizar as contas da casa. Ele tem quatro anos, sempre funcionou bem e eu faço limpeza e atualizações com frequência. No começo do mês ele passou a desligar sozinho depois de uns vinte minutos de uso, principalmente quando eu abria mais de um programa. Pesquisei assistências técnicas no bairro, li avaliações e escolhi uma loja que tinha boas notas e ficava perto de casa. Antes de levar, fiz cópia de parte dos arquivos num pen drive emprestado, porque me avisaram que talvez fosse preciso formatar o sistema. Também perguntei se o conserto tinha garantia, e o atendente disse que sim, por escrito. O atendente fez um diagnóstico rápido no balcão e disse que era a placa de vídeo superaquecendo. O orçamento foi de oitocentos e cinquenta reais, que paguei à vista por Pix, com prazo de cinco dias úteis e garantia de noventa dias no recibo. Paguei a assistência para consertar o notebook, mas ele voltou com o mesmo problema: no segundo dia já desligava sozinho de novo e, na semana seguinte, parou de ligar de vez. Levei de volta, e a loja diz que o serviço já foi feito, que a garantia não cobre um defeito diferente e que, se eu quiser, eles fazem um novo orçamento. Pedi o laudo do que foi trocado e as peças antigas, e responderam que as peças já tinham sido descartadas. Liguei várias vezes, mandei mensagens pelo aplicativo de conversa da loja e fui pessoalmente duas vezes; numa delas fiquei mais de uma hora esperando o técnico responsável, que no fim nem apareceu. Outro técnico que consultei, de outra loja, disse que a placa parece ter sido danificada durante o reparo, porque há marcas de solda malfeita em volta do componente. Perdi arquivos de trabalhos da faculdade que estavam só no computador e precisei pegar um notebook emprestado para terminar as atividades do semestre. Até agora ninguém da loja assumiu responsabilidade, e a resposta é sempre que o serviço contratado foi executado conforme o orçamento.",
+      "desired_resolution": "Quero cancelar o serviço e recuperar o valor pago.",
+      "relevant": [
+        {
+          "article_id": "br-cdc-art-20",
+          "unit_id": "br-cdc-art-20-inciso-ii",
+          "grade": 3,
+          "rationale": "O vício de qualidade do serviço permite escolher a restituição imediata do valor pago."
+        },
+        {
+          "article_id": "br-cdc-art-20",
+          "unit_id": "br-cdc-art-20-paragrafo-2",
+          "grade": 2,
+          "rationale": "O serviço inadequado ao resultado razoavelmente esperado é impróprio."
+        }
+      ],
+      "hard_negatives": [
+        "br-cdc-art-18",
+        "br-cdc-art-49"
+      ],
+      "split": "development"
+    },
+    {
+      "case_id": "oferta_nao_entregue_longo",
+      "category": "non_delivery",
+      "slices": [
+        "supplier:ecommerce",
+        "remedy:performance",
+        "wording:lay",
+        "length:long",
+        "placement:late"
+      ],
+      "complaint": "Meu celular antigo caiu no chão em outubro e a tela parou de responder ao toque, então comecei a procurar um aparelho novo. Como não tenho muito dinheiro sobrando, decidi esperar uma data de promoções e acompanhei durante semanas o preço do modelo que eu queria em vários sites. Cadastrei meu e-mail nos alertas de preço, baixei o aplicativo da loja e criei uma conta com todos os meus dados, inclusive endereço de entrega e cartão. Também comparei avaliações, assisti a análises do aparelho e conversei com amigos que já tinham o mesmo modelo, que elogiaram muito a bateria e a câmera. Na semana da promoção, fiquei acordado até meia-noite porque a loja anunciou que os descontos começariam naquele horário e que os estoques eram limitados. Usei um cupom de primeira compra, escolhi a entrega mais rápida e paguei mais caro pelo frete para receber antes do aniversário da minha mãe, que ia ficar com o celular antigo depois do conserto. Enquanto esperava, recebi vários e-mails da loja oferecendo capinhas, películas e um seguro contra roubo, que não contratei. Também acompanhei o pedido pelo aplicativo, que mostrava a etapa de separação no estoque. No dia seguinte, a loja mandou um e-mail de confirmação com o número do pedido e a previsão de entrega em três dias úteis, e eu avisei a minha família que o presente chegaria a tempo. Também separei o carregador e a capinha antiga para entregar junto com o celular velho. Comprei um celular numa promoção do site, o pagamento foi aprovado na mesma hora, mas dois dias depois a loja cancelou o pedido alegando falta de estoque. No mesmo dia, entrei no site e o mesmo aparelho continuava anunciado, com entrega imediata, só que bem mais caro do que o preço que eu tinha pago. Liguei para o atendimento e a atendente disse que o cancelamento era automático e que não havia nada a fazer, a não ser comprar de novo pelo preço atual. Pedi que me vendessem pelo valor da promoção, já que o produto estava disponível, e ela respondeu que a oferta tinha acabado. O estorno no cartão só apareceu na fatura seguinte, e fiquei sem celular por quase um mês, usando um aparelho emprestado com a tela rachada. Registrei reclamação no site da loja e num site de reclamações, e guardei os prints do anúncio, do pedido aprovado e do anúncio mais caro publicado depois do cancelamento.",
+      "desired_resolution": "Quero receber o celular pelo preço anunciado.",
+      "relevant": [
+        {
+          "article_id": "br-cdc-art-35",
+          "unit_id": "br-cdc-art-35-inciso-i",
+          "grade": 3,
+          "rationale": "A recusa no cumprimento da oferta permite exigir seu cumprimento forçado."
+        },
+        {
+          "article_id": "br-cdc-art-30",
+          "grade": 2,
+          "rationale": "A informação publicitária suficientemente precisa vincula o fornecedor."
+        }
+      ],
+      "hard_negatives": [
+        "br-cdc-art-18",
+        "br-cdc-art-49"
+      ],
+      "split": "development"
+    },
+    {
+      "case_id": "arrependimento_compra_online_longo",
+      "category": "right_of_withdrawal",
+      "slices": [
+        "supplier:ecommerce",
+        "remedy:withdrawal",
+        "wording:lay",
+        "length:long",
+        "placement:early"
+      ],
+      "complaint": "Recebi há cinco dias um tênis que comprei pela internet. Ele serviu, mas não gostei do modelo quando vi pessoalmente, e a loja diz que só aceita troca ou devolução se houver defeito. A compra foi feita pelo aplicativo da loja numa madrugada, depois de ver uma propaganda nas redes sociais com um influenciador usando o mesmo tênis. Nas fotos ele parecia de um tom de azul mais escuro e com acabamento de couro, mas o que chegou tem uma cor bem mais clara e o material parece plástico. A caixa chegou amassada, mas o produto em si está perfeito, sem nenhum uso além de experimentar dentro de casa, com a etiqueta ainda presa. Entrei em contato pelo chat no mesmo dia em que recebi e a atendente pediu fotos do produto, da caixa e da nota fiscal, o que enviei logo em seguida. Depois de dois dias, recebi uma resposta dizendo que a política da loja só permite troca quando há vício de fabricação e que, como o tênis serviu e não tem defeito, eu não teria direito a nada. Tentei explicar que não queria trocar por outro modelo, e sim desistir da compra, mas a resposta foi copiada e colada de novo, com o mesmo texto. Liguei para o telefone que aparece no rodapé do site, esperei mais de meia hora e fui transferido três vezes, até que a ligação caiu. Mandei e-mail para o endereço de atendimento e para a ouvidoria, e não tive retorno até agora. Paguei o tênis em três vezes no cartão, e a primeira parcela já veio na fatura deste mês. Também paguei frete, porque a entrega grátis só valia para compras acima de um valor maior. Não acho justo ficar com um produto que não corresponde ao que eu vi nas fotos e ainda pagar por ele, principalmente porque a compra foi feita pela internet, sem que eu pudesse ver o produto antes. Tenho todos os prints das conversas, das fotos do anúncio e do comprovante de entrega com a data de recebimento.",
+      "desired_resolution": "Quero desistir da compra e receber o dinheiro de volta.",
+      "relevant": [
+        {
+          "article_id": "br-cdc-art-49",
+          "unit_id": "br-cdc-art-49-caput",
+          "grade": 3,
+          "rationale": "Contratação fora do estabelecimento pode ser desfeita em sete dias."
+        },
+        {
+          "article_id": "br-cdc-art-49",
+          "unit_id": "br-cdc-art-49-paragrafo-unico",
+          "grade": 3,
+          "rationale": "O exercício do arrependimento exige devolução imediata e atualizada dos valores pagos."
+        }
+      ],
+      "hard_negatives": [
+        "br-cdc-art-18",
+        "br-cdc-art-26"
+      ],
+      "split": "development"
+    },
+    {
+      "case_id": "publicidade_enganosa_por_omissao_longo",
+      "category": "misleading_advertising",
+      "slices": [
+        "supplier:education",
+        "issue:omission",
+        "wording:lay",
+        "length:long",
+        "placement:middle"
+      ],
+      "complaint": "Estou tentando mudar de área e, no começo do ano, resolvi fazer um curso online de análise de dados para melhorar o currículo. Passei semanas comparando escolas, assistindo a aulas gratuitas no canal de cada uma e lendo depoimentos de ex-alunos. Escolhi essa escola porque as aulas de demonstração eram boas e porque a página de vendas tinha uma contagem regressiva dizendo que o desconto acabaria naquele dia. Paguei o valor em doze parcelas no cartão e recebi um e-mail de boas-vindas com login e senha da plataforma. Nas primeiras semanas, assisti às aulas à noite, depois de cuidar dos meus filhos, e fiz todos os exercícios propostos. Gostei da didática dos professores e dos materiais extras, como apostilas e uma comunidade de alunos num aplicativo de mensagens, onde tirávamos dúvidas uns dos outros, e recomendei o curso para dois amigos logo no primeiro mês. A propaganda do curso dizia acesso ilimitado e certificado incluído, e foi exatamente por isso que escolhi essa escola, porque outras cobravam o certificado à parte. Depois da matrícula, descobri que o certificado custa à parte e que o acesso termina em três meses, informação que só aparece num documento de termos de uso que nunca me mostraram antes do pagamento. Quando tentei emitir o certificado de um módulo, a plataforma pediu um pagamento extra, e o suporte confirmou que o certificado não estava incluído no plano que comprei. Também avisaram que meu acesso será bloqueado no fim do terceiro mês, embora o anúncio dissesse acesso ilimitado em letras grandes. Guardei prints da página de vendas e dos anúncios patrocinados, onde aparece claramente a expressão acesso ilimitado com certificado. Escrevi para o suporte três vezes e recebi respostas automáticas indicando os termos de uso. Pedi para falar com o setor financeiro, e responderam que o cancelamento só seria possível com multa de quarenta por cento do valor restante. Sinto que fui enganado, porque a informação mais importante para a minha decisão estava escondida, e o anúncio continua no ar do mesmo jeito para novos alunos.",
+      "desired_resolution": "Quero as condições anunciadas ou cancelar sem multa.",
+      "relevant": [
+        {
+          "article_id": "br-cdc-art-37",
+          "unit_id": "br-cdc-art-37-paragrafo-3",
+          "grade": 3,
+          "rationale": "Omissão de dado essencial caracteriza publicidade enganosa por omissão."
+        },
+        {
+          "article_id": "br-cdc-art-38",
+          "grade": 2,
+          "rationale": "Cabe ao patrocinador provar a veracidade e correção da publicidade."
+        }
+      ],
+      "hard_negatives": [
+        "br-cdc-art-37-paragrafo-2",
+        "br-cdc-art-42"
+      ],
+      "split": "development"
+    },
+    {
+      "case_id": "venda_casada_seguro_longo",
+      "category": "abusive_practice",
+      "slices": [
+        "supplier:retail",
+        "issue:tied_sale",
+        "wording:lay",
+        "length:long",
+        "placement:late"
+      ],
+      "complaint": "Depois de muitos anos economizando, consegui juntar o valor da entrada para trocar meu carro, que já tinha mais de doze anos e vivia na oficina. Visitei várias concessionárias da cidade durante dois fins de semana, fiz test drive em três modelos e anotei os preços, as condições de pagamento e os opcionais de cada versão. Escolhi um modelo compacto, mais econômico, porque uso o carro principalmente para levar meus filhos à escola e para ir ao mercado. O vendedor foi atencioso no começo, ofereceu café, mostrou a ficha técnica e fez uma simulação de financiamento em sessenta meses com a taxa de juros da campanha do mês. Ele também insistiu bastante em acessórios como película, tapetes e alarme, que acabei recusando por causa do preço. Na semana seguinte voltei com os documentos, assinei a proposta e deixei o carro antigo como parte do pagamento, depois de uma avaliação que considerei baixa, mas aceitei para não perder a taxa da campanha. A análise de crédito demorou mais do que o prometido e precisei voltar à loja duas vezes para entregar comprovantes de renda e de endereço. Enquanto isso, a loja ligava quase todo dia para confirmar meu interesse e oferecer revisões programadas com desconto. Cheguei a pensar em desistir e procurar outra loja, mas o vendedor garantiu que a aprovação sairia logo e que eu não perderia a taxa. Na compra do carro, a concessionária falou que só aprovaria o financiamento se eu contratasse também o seguro indicado por ela, de uma seguradora parceira, com pagamento embutido nas parcelas. Perguntei se podia fazer o seguro com outra empresa, porque eu já tinha um orçamento mais barato da minha corretora, e o gerente respondeu que sem aquele seguro o financiamento não seria liberado. Como o carro antigo já tinha ficado com eles e eu dependia do carro novo para a rotina da família, acabei aceitando. Só depois, lendo o contrato em casa, vi que o valor do seguro aumentou bastante o custo total do financiamento. Pedi por e-mail o cancelamento do seguro e a devolução do que já foi pago, e a concessionária disse que o assunto é com a seguradora, enquanto a seguradora diz que o contrato foi vendido pela concessionária.",
+      "desired_resolution": "Quero retirar o seguro que fui obrigado a contratar e recuperar o valor.",
+      "relevant": [
+        {
+          "article_id": "br-cdc-art-39",
+          "unit_id": "br-cdc-art-39-inciso-i",
+          "grade": 3,
+          "rationale": "É vedado condicionar um produto ou serviço à contratação de outro."
+        }
+      ],
+      "hard_negatives": [
+        "br-cdc-art-39-inciso-iii",
+        "br-cdc-art-49"
+      ],
+      "split": "development"
+    },
+    {
+      "case_id": "cobranca_indevida_ja_paga_longo",
+      "category": "unauthorized_charge",
+      "slices": [
+        "supplier:telecom",
+        "issue:paid_charge",
+        "wording:lay",
+        "length:long",
+        "placement:early"
+      ],
+      "complaint": "A operadora de telefonia colocou na minha fatura um pacote de serviços que eu nunca pedi. Eu paguei a conta para não cortarem a linha e só depois, conferindo com calma, percebi a cobrança extra de um pacote de entretenimento com assinatura de vídeos e jornais. Uso essa operadora há mais de oito anos, sempre com o mesmo plano de celular e internet, e nunca tive problema com as contas. Pago tudo por débito automático e, por isso, raramente olho a fatura detalhada. Neste mês o valor veio um pouco mais alto, mas achei que era reajuste anual, porque tinha recebido um aviso sobre isso meses antes. Só quando fui organizar as contas da casa numa planilha é que abri a fatura e vi a linha do pacote, com a data de ativação de um dia em que eu estava viajando, sem sinal no celular. Liguei para o atendimento e, depois de passar por várias opções do menu, uma atendente disse que o pacote tinha sido contratado por mensagem de texto e que eu deveria ter recusado. Eu nunca respondi a mensagem nenhuma e pedi a gravação ou o comprovante da contratação, que não foi enviado até hoje. Ela cancelou o pacote para os próximos meses, mas disse que o valor já pago não seria devolvido, porque o serviço ficou disponível durante o período. Abri outro protocolo pedindo revisão, e a resposta foi a mesma, com o texto idêntico. Verifiquei no aplicativo e não existe nenhum histórico de uso desses serviços na minha conta, nem um único acesso. Conversei com outras pessoas da minha família que também usam a mesma operadora e duas delas tiveram o mesmo pacote ativado sem pedir, no mesmo mês. Não me importo tanto com o valor, mas com a forma como a empresa age, empurrando serviços que ninguém pediu e depois se recusando a devolver o dinheiro de quem pagou sem perceber.",
+      "desired_resolution": "Quero receber de volta o que paguei indevidamente.",
+      "relevant": [
+        {
+          "article_id": "br-cdc-art-42",
+          "unit_id": "br-cdc-art-42-paragrafo-unico",
+          "grade": 3,
+          "rationale": "Pagamento de quantia indevida pode gerar repetição em dobro, salvo engano justificável."
+        }
+      ],
+      "hard_negatives": [
+        "br-cdc-art-42-caput",
+        "br-cdc-art-43"
+      ],
+      "split": "development"
+    },
+    {
+      "case_id": "negativacao_sem_aviso_longo",
+      "category": "negative_credit_record",
+      "slices": [
+        "supplier:credit_bureau",
+        "issue:no_notice",
+        "wording:lay",
+        "length:long",
+        "placement:late"
+      ],
+      "complaint": "Neste ano decidi sair da casa dos meus pais e passei meses planejando a mudança, separando dinheiro e pesquisando bairros perto do meu curso. Visitei vários imóveis com a minha irmã e montei uma planilha com os valores, a distância do metrô e o estado de cada apartamento. Depois de muito procurar, encontrei um apartamento pequeno, bem iluminado e com um preço que cabia no meu orçamento, e a imobiliária pediu os documentos para fazer a análise cadastral. Juntei comprovante de renda, extratos bancários, carteira de identidade e uma carta de referência do meu curso. A atendente da imobiliária foi muito simpática e disse que a análise sairia em dois dias úteis. Enquanto esperava, já comecei a cotar fretes e a comprar algumas coisas para a casa nova, como cortinas e um colchão, que deixei guardados com a minha irmã. Também fiz uma lista dos móveis que eu poderia levar da casa dos meus pais e pedi orçamentos para instalar a internet no endereço novo. Minha irmã me emprestou uma estante, a minha mãe separou panelas e pratos que não usava mais, e eu já tinha escolhido a cor da tinta para o quarto. No terceiro dia, como a resposta não vinha, liguei para a imobiliária para saber o que tinha acontecido. Descobri que meu nome foi colocado no cadastro de inadimplentes quando tentei alugar um apartamento: a imobiliária recusou a ficha por causa de um registro em nome de uma financeira com a qual eu nem lembrava de ter tido contrato. Nunca recebi carta, e-mail, mensagem ou qualquer aviso antes disso, nem do credor nem do órgão de proteção ao crédito. Consultei o meu CPF no site do cadastro e vi que o registro foi incluído há quatro meses, referente a um suposto crediário de uma loja de móveis. Liguei para a financeira e não souberam explicar de onde vinha a dívida; pediram para eu enviar documentos por e-mail e aguardar trinta dias. Perdi o apartamento, que foi fechado com outra pessoa no dia seguinte, e agora preciso recomeçar a procura com esse registro no meu nome. Também tive um cartão de crédito recusado numa loja na mesma semana, o que me deixou muito constrangido na frente de outras pessoas.",
+      "desired_resolution": "Quero a retirada do registro e esclarecimentos sobre a dívida.",
+      "relevant": [
+        {
+          "article_id": "br-cdc-art-43",
+          "unit_id": "br-cdc-art-43-paragrafo-2",
+          "grade": 3,
+          "rationale": "A abertura de cadastro não solicitado deve ser comunicada por escrito ao consumidor."
+        }
+      ],
+      "hard_negatives": [
+        "br-cdc-art-42",
+        "br-cdc-art-43-paragrafo-5"
+      ],
+      "split": "development"
+    },
+    {
+      "case_id": "interrupcao_servico_essencial_longo",
+      "category": "public_utility",
+      "slices": [
+        "supplier:utility",
+        "issue:continuity",
+        "wording:lay",
+        "length:long",
+        "placement:middle"
+      ],
+      "complaint": "Moro numa rua residencial afastada do centro, com casas antigas e muitas famílias com crianças pequenas e idosos. Nas últimas semanas a pressão da água já vinha caindo à noite, mas sempre voltava pela manhã, então ninguém se preocupou muito. Em casa somos cinco pessoas, incluindo a minha mãe, que tem oitenta e dois anos, e um bebê de seis meses, então a água é indispensável o tempo todo. A caixa-d'água da nossa casa é pequena e dura no máximo um dia com uso controlado. Também temos um quintal com horta, que a minha mãe cuida todos os dias e que depende de rega pela manhã. Já tínhamos reclamado da pressão baixa no ano passado, e na época a empresa mandou um técnico que disse que estava tudo normal na rede, por isso ninguém imaginava que fosse demorar tanto. A concessionária deixou minha rua sem água por quatro dias, sem nenhum aviso e sem enviar carro-pipa, mesmo depois de muitos pedidos dos moradores. As contas estão todas pagas, inclusive a do mês corrente, e os protocolos que abri por telefone e pelo aplicativo não tiveram resposta. No primeiro dia, achamos que seria um reparo rápido. No segundo, começamos a comprar galões de água no mercado e a pedir ajuda para parentes de outros bairros, que nos deixaram tomar banho na casa deles. No terceiro dia, a minha mãe precisou de cuidados de higiene que ficaram muito difíceis sem água, e o bebê ficou com assaduras. Liguei cinco vezes para a central, e em todas a gravação dizia que não havia manutenção programada para o meu endereço. Os moradores fizeram um abaixo-assinado e chamaram a imprensa local, e só no quarto dia apareceu uma equipe, que trocou um trecho de cano em menos de duas horas. Gastei com galões, com lavanderia e com deslocamento até a casa dos parentes, e fui pessoalmente à sede da empresa, onde me disseram para aguardar o retorno do protocolo. Até hoje não recebi nenhuma explicação sobre a falta de aviso nem sobre o motivo de não terem mandado carro-pipa.",
+      "desired_resolution": "Quero o restabelecimento imediato e reparação dos prejuízos.",
+      "relevant": [
+        {
+          "article_id": "br-cdc-art-22",
+          "unit_id": "br-cdc-art-22-caput",
+          "grade": 3,
+          "rationale": "Serviços públicos essenciais devem ser adequados, eficientes, seguros e contínuos."
+        },
+        {
+          "article_id": "br-cdc-art-22",
+          "unit_id": "br-cdc-art-22-paragrafo-unico",
+          "grade": 2,
+          "rationale": "O descumprimento permite exigir cumprimento e reparação dos danos."
+        }
+      ],
+      "hard_negatives": [
+        "br-cdc-art-20",
+        "br-cdc-art-49"
+      ],
+      "split": "development"
+    },
+    {
+      "case_id": "pedido_de_exclusao_de_dados_ignorado_longo",
+      "category": "personal_data",
+      "slices": [
+        "supplier:app",
+        "remedy:deletion",
+        "wording:lay",
+        "law:lgpd",
+        "length:long",
+        "placement:late"
+      ],
+      "complaint": "Durante quase dois anos usei um aplicativo de entrega de comida e de compras de mercado, que eu achava prático porque tinha muitas lojas do meu bairro. Cadastrei meu nome, CPF, telefone, e-mail, dois endereços e um cartão de crédito, e ativei as notificações para acompanhar os pedidos. No começo as mensagens eram só sobre o andamento das entregas, mas com o tempo passaram a chegar promoções todos os dias, várias vezes por dia, inclusive de madrugada. No ano passado mudei de cidade, as lojas da nova região quase não aparecem no aplicativo e as taxas de entrega ficaram muito altas, então deixei de usar. Também fiquei preocupado depois de ler notícias sobre vazamentos em empresas parecidas, e decidi reduzir o número de cadastros com meus dados. Antes de sair, tentei encontrar no próprio aplicativo uma opção para excluir a conta, mas o menu só permitia desativar as notificações, que continuavam voltando a cada atualização. Procurei na página de ajuda, que mandava abrir um chamado pelo chat, mas o chat só atendia problemas com pedidos em andamento. Mandei também uma mensagem pelo formulário de contato do site, que nunca respondeu, e cheguei a desinstalar o aplicativo por um tempo, mas as mensagens continuaram chegando, inclusive com cupons para lojas que eu nunca tinha usado. Cancelei minha conta no aplicativo pelo único caminho que encontrei e pedi por e-mail, ao endereço de privacidade que aparece na política da empresa, para excluir meus dados pessoais. Três meses depois continuo recebendo mensagens de marketing por e-mail, por SMS e por notificação, e a empresa não responde aos meus e-mails, nem sequer com uma confirmação de recebimento. Na semana passada recebi uma mensagem com o meu nome completo oferecendo um cupom para voltar a usar o aplicativo, o que mostra que os meus dados continuam guardados e sendo usados. Enviei mais dois e-mails, com o número do pedido de exclusão no assunto, e tentei falar pelas redes sociais da empresa, que me pediram para enviar mensagem privada e depois pararam de responder. Não sei com quem esses dados foram compartilhados nem por quanto tempo vão ficar guardados.",
+      "desired_resolution": "Quero que apaguem meus dados e confirmem a exclusão por escrito.",
+      "relevant": [
+        {
+          "article_id": "br-lgpd-art-18",
+          "unit_id": "br-lgpd-art-18-inciso-vi",
+          "grade": 3,
+          "rationale": "O titular tem direito à eliminação dos dados pessoais tratados com o seu consentimento."
+        },
+        {
+          "article_id": "br-lgpd-art-18",
+          "unit_id": "br-lgpd-art-18-inciso-ix",
+          "grade": 2,
+          "rationale": "O titular pode revogar o consentimento dado ao tratamento dos seus dados."
+        }
+      ],
+      "hard_negatives": [
+        "br-lgpd-art-55-j",
+        "br-cdc-art-42"
+      ],
+      "split": "development"
+    }
+  ]
+}
