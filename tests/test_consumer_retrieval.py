@@ -1,7 +1,7 @@
 import asyncio
 from typing import cast
 
-from app.consumer.legal_policy import strongly_supported_chunk_ids
+from app.consumer.legal_policy import LEGAL_WINDOW_AGENT, strongly_supported_chunk_ids
 from app.consumer.retrieval import (
     LEGAL_CORROBORATION_AGENT,
     LEGAL_RETRIEVAL_AGENT,
@@ -9,7 +9,10 @@ from app.consumer.retrieval import (
     build_corroboration_queries,
     build_evidence_queries,
     build_legal_queries,
+    build_legal_query_plan,
+    legal_query_windows,
     retrieve_legal_candidates,
+    truncated_narrative_fields,
 )
 from app.consumer.schemas import ConsumerCaseFacts
 from app.consumer.service import ConsumerCaseService
@@ -56,15 +59,78 @@ def test_retrieval_queries_are_bounded_and_whitespace_normalized() -> None:
     assert all("  " not in query for query in queries)
 
 
-def test_long_complaint_does_not_remove_resolution() -> None:
+def test_a_long_complaint_keeps_the_remedy_as_its_own_query() -> None:
+    """A long complaint can never push the remedy out of the search (ADR 0026)."""
     facts = _facts(
         complaint_summary=("relato muito longo " * 500),
         desired_resolution="Quero devolução integral comprovada.",
     )
 
-    queries = build_legal_queries(facts)
+    plan = build_legal_query_plan(facts)
 
-    assert all("devolução integral comprovada" in query for query in queries)
+    assert plan.ranking == ("Quero devolução integral comprovada.",)
+    assert plan.windows
+    assert build_legal_queries(facts) == [*plan.ranking, *plan.windows]
+
+
+def _sentences(count: int, *, start: int = 0) -> str:
+    return " ".join(
+        f"Frase número {number} do relato sobre a compra feita na loja."
+        for number in range(start, start + count)
+    )
+
+
+def test_a_complaint_that_fits_keeps_the_two_narrative_queries() -> None:
+    fits = _facts(complaint_summary=("a" * 1_049) + ".")
+    longer = _facts(complaint_summary=("a" * 1_050) + ".")
+
+    assert build_legal_query_plan(fits).windows == ()
+    assert len(build_legal_query_plan(fits).ranking) == 2
+    assert build_legal_query_plan(longer).windows == (("a" * 1_050) + ".",)
+
+
+def test_a_long_complaint_is_read_in_sentence_windows() -> None:
+    late = "A loja cancelou o pedido e manteve o anúncio mais caro."
+    complaint = f"{_sentences(20)} {late}"
+    assert complaint.index(late) > 1_050
+
+    windows = legal_query_windows(complaint)
+
+    assert any(late in window for window in windows)
+    assert all(len(window) <= 600 for window in windows)
+    assert all(window.endswith(".") for window in windows)
+    assert " ".join(windows) == complaint
+
+
+def test_windows_keep_the_start_and_the_end_within_the_budget() -> None:
+    complaint = _sentences(70)
+    assert len(complaint) > 3_000  # well past the 2,400-character budget
+
+    windows = legal_query_windows(complaint)
+
+    assert sum(map(len, windows)) <= 2_400
+    assert windows[0].startswith("Frase número 0 ")
+    assert windows[-1].endswith("Frase número 69 do relato sobre a compra feita na loja.")
+    # The kept windows are the start of the complaint and its last window.
+    assert complaint.startswith(" ".join(windows[:-1]))
+    assert complaint.endswith(windows[-1])
+
+
+def test_one_overlong_sentence_is_one_bounded_window() -> None:
+    complaint = "palavra " * 400 + "fim."
+
+    windows = legal_query_windows(complaint)
+
+    assert len(windows) == 1
+    assert len(windows[0]) <= MAX_QUERY_CHARS
+
+
+def test_a_repeated_paragraph_is_searched_once() -> None:
+    """Two identical windows would corroborate each other with one formulation."""
+    paragraph = _sentences(9)
+    windows = legal_query_windows(f"{paragraph} {paragraph}")
+
+    assert len(windows) == len(set(windows))
 
 
 
@@ -131,31 +197,26 @@ def _lexical_only_trace(query: str, index: int, chunk_ids: list[str]) -> Retriev
     )
 
 
-def test_a_long_complaint_is_not_corroborated_by_the_narrative_that_repeats_it() -> None:
-    """Without the dense channel, only the complaint and the remedy corroborate.
+def test_a_long_complaints_windows_corroborate_each_other_but_not_themselves() -> None:
+    """Without the dense channel, two windows are two independent formulations.
 
-    The narrative keeps the first 1,050 characters of the complaint. A longer
-    complaint searched alone was no longer contained in the narrative, so the
-    gate took two copies of nearly the same text for independent queries and a
-    lexical-only notice cited articles the remedy never ranked.
+    Windows partition the complaint, so neither contains the other; one window
+    ranking a chunk is still a single formulation.
     """
-    facts = _facts(
-        complaint_summary=("O banco cobrou uma tarifa que nunca contratei na conta. " * 30)
-    )
-    assert len(facts.complaint_summary or "") > 1_500
-    framed, bare = build_legal_queries(facts)
-    complaint, remedy = build_corroboration_queries(facts)
+    facts = _facts(complaint_summary=_sentences(30))
+    plan = build_legal_query_plan(facts)
+    first, second = plan.windows[:2]
+    (remedy,) = plan.ranking
 
     supported = strongly_supported_chunk_ids(
         [
-            _lexical_only_trace(framed, 0, ["only-the-complaint-ranks-it", "both-rank-it"]),
-            _lexical_only_trace(bare, 1, ["only-the-complaint-ranks-it", "both-rank-it"]),
-            _lexical_only_trace(complaint, 2, ["only-the-complaint-ranks-it", "both-rank-it"]),
-            _lexical_only_trace(remedy, 3, ["both-rank-it"]),
+            _lexical_only_trace(first, 0, ["only-one-window-ranks-it", "two-windows-rank-it"]),
+            _lexical_only_trace(second, 1, ["two-windows-rank-it"]),
+            _lexical_only_trace(remedy, 2, ["unrelated"]),
         ]
     )
 
-    assert supported == {"both-rank-it"}
+    assert supported == {"two-windows-rank-it"}
 
 
 def test_a_long_remedy_is_not_corroborated_by_the_narrative_that_repeats_it() -> None:
@@ -263,6 +324,61 @@ async def test_degraded_retrieval_without_a_remedy_has_nothing_to_corroborate() 
 
     assert [agent for agent, _ in rag.batches] == [LEGAL_RETRIEVAL_AGENT]
     assert len(traces) == len(build_legal_queries(_facts(desired_resolution=None)))
+
+
+async def test_long_complaint_retrieval_runs_windows_as_their_own_batch() -> None:
+    rag = _TraceRecordingRag(degraded=False)
+    facts = _facts(complaint_summary=_sentences(30))
+    plan = build_legal_query_plan(facts)
+
+    result_sets, traces = await retrieve_legal_candidates(
+        cast(RagPipeline, rag), facts, doc_id="legal-doc", k=8
+    )
+
+    assert rag.batches == [
+        (LEGAL_RETRIEVAL_AGENT, list(plan.ranking)),
+        (LEGAL_WINDOW_AGENT, list(plan.windows)),
+    ]
+    assert len(result_sets) == len(traces) == 1 + len(plan.windows)
+
+
+async def test_degraded_long_complaint_adds_no_corroboration_queries() -> None:
+    """Its windows and remedy already are independent formulations."""
+    rag = _TraceRecordingRag(degraded=True)
+    facts = _facts(complaint_summary=_sentences(30))
+
+    await retrieve_legal_candidates(cast(RagPipeline, rag), facts, doc_id="legal-doc", k=8)
+
+    assert [agent for agent, _ in rag.batches] == [LEGAL_RETRIEVAL_AGENT, LEGAL_WINDOW_AGENT]
+
+
+async def test_long_complaint_without_remedy_searches_windows_only() -> None:
+    rag = _TraceRecordingRag(degraded=True)
+    facts = _facts(complaint_summary=_sentences(30), desired_resolution=None)
+
+    await retrieve_legal_candidates(cast(RagPipeline, rag), facts, doc_id="legal-doc", k=8)
+
+    assert [agent for agent, _ in rag.batches] == [LEGAL_WINDOW_AGENT]
+
+
+def test_truncated_fields_report_what_is_searched() -> None:
+    within_budget = _sentences(30)
+    beyond_budget = _sentences(70)
+    kept = sum(map(len, legal_query_windows(beyond_budget)))
+    overlong = "palavra " * 400 + "fim."
+
+    assert truncated_narrative_fields(_facts()) == {}
+    assert len(within_budget) > 1_050
+    assert truncated_narrative_fields(_facts(complaint_summary=within_budget)) == {}
+    assert truncated_narrative_fields(_facts(complaint_summary=beyond_budget)) == {
+        "complaint_summary": (len(beyond_budget), kept)
+    }
+    assert truncated_narrative_fields(_facts(desired_resolution="b " * 300)) == {
+        "desired_resolution": (599, 500)
+    }
+    assert truncated_narrative_fields(_facts(complaint_summary=overlong)) == {
+        "complaint_summary": (len(overlong.strip()), len(legal_query_windows(overlong)[0]))
+    }
 
 
 async def test_notice_source_retrieval_does_not_compete_for_one_embedding_slot() -> None:

@@ -86,8 +86,11 @@ def test_a_notice_with_the_support_it_needs_is_not_refused() -> None:
 
 
 def test_no_channel_agreement_on_a_long_complaint_without_a_remedy() -> None:
-    long_account = " ".join([ACCOUNT] * 30)  # about 1,500 characters
-    refusal = _refusal(_outcome(), facts=ConsumerCaseFacts(complaint_summary=long_account))
+    # About 3,000 characters: past the windows' 2,400-character budget.
+    long_account = " ".join([ACCOUNT] * 60)
+    facts = ConsumerCaseFacts(complaint_summary=long_account)
+    (length, searched) = truncated_narrative_fields(facts)["complaint_summary"]
+    refusal = _refusal(_outcome(), facts=facts)
 
     assert refusal is not None
     assert refusal.reasons == [
@@ -98,7 +101,7 @@ def test_no_channel_agreement_on_a_long_complaint_without_a_remedy() -> None:
     assert refusal.retryable is False
     assert len(refusal.hints) == 3
     assert "Quero" in refusal.hints[0]
-    assert f"1.050 dos {len(long_account):,}".replace(",", ".") in refusal.hints[1]
+    assert f"{searched:,} dos {length:,}".replace(",", ".") in refusal.hints[1]
     assert "art. 35, inciso I, do CDC" in refusal.hints[2]
     assert refusal.message.startswith(
         "Não foi possível gerar o rascunho com segurança porque a recuperação não "
@@ -178,16 +181,6 @@ def test_the_refusal_keeps_the_audit_and_the_corpus_identity() -> None:
     assert refusal.retrievals == legal
     assert refusal.corpus_release_id == "release-1"
     assert refusal.legal_ground_policy_version.startswith("consumer-notice-scope-eligibility-")
-
-
-def test_truncated_narrative_fields_name_what_the_narrative_cuts() -> None:
-    facts = ConsumerCaseFacts(complaint_summary="a" * 1_200, desired_resolution="b " * 300)
-
-    assert truncated_narrative_fields(facts) == {
-        "complaint_summary": (1_200, 1_050),
-        "desired_resolution": (599, 500),
-    }
-    assert truncated_narrative_fields(ConsumerCaseFacts(complaint_summary=ACCOUNT)) == {}
 
 
 def test_a_long_remedy_is_named_in_the_truncation_hint() -> None:
