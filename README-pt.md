@@ -307,7 +307,7 @@ ou de citação.
 
 | Método | Rota | Finalidade |
 |---|---|---|
-| `GET` | `/health` | Vida da API e prontidão do corpus legal |
+| `GET` | `/health` | Vida da API, prontidão do corpus legal e do modelo de consulta |
 | `POST` | `/consumer/prompt-notices` | Uma requisição: texto livre e arquivo opcional viram notificação, caso e token |
 | `POST` | `/consumer/cases` | Criar caso efêmero e token |
 | `GET` | `/consumer/cases/{id}` | Consultar caso autorizado |
@@ -318,6 +318,7 @@ ou de citação.
 | `GET` | `/consumer/cases/{id}/notice` | Ler saída estruturada |
 | `GET` | `/consumer/cases/{id}/notice.{md,pdf,docx}` | Exportar notificação |
 | `GET` | `/consumer/cases/{id}/notice/retrievals` | Auditar recuperação |
+| `GET` | `/consumer/cases/{id}/notice/refusal` | Por que a última tentativa foi recusada, com a auditoria |
 | `DELETE` | `/consumer/cases/{id}` | Apagar caso e vetores de evidência |
 
 Todas as operações do caso exigem o token opaco devolvido na criação. O modo

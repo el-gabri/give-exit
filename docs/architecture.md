@@ -171,6 +171,9 @@ filters and explicit PII minimization in exported artifacts.
 - Missing OCR fails closed for image evidence.
 - High-risk or critical prompt injection prevents automated use of the file.
 - Retrieval failure or insufficient eligible evidence prevents notice creation.
+  The refusal names its reasons with a hint each, is a `422` when generating
+  again would refuse again and a `503` when retrieval ran degraded, and stays
+  under the case with its retrieval audit (ADR 0025).
 - A semantic embedding timeout may use lexical-only retrieval, but the trace is
   marked degraded and the normal evidence-corroboration policy may still abstain.
 - Missing facts, confirmation, consumer relationship or accepted evidence
@@ -179,7 +182,8 @@ filters and explicit PII minimization in exported artifacts.
   tenancy, employment, family, private parties, the complainant as supplier)
   and, optionally, by a drop-only LLM scope check (ADR 0024).
 - No generated citation or legal assertion is allowed to bypass the
-  deterministic source and policy gates.
+  deterministic source and policy gates. A provision the consumer cites in
+  their own account skips only the retrieval-agreement gate (ADR 0025).
 
 ## Evaluation
 
@@ -216,3 +220,4 @@ production claims.
 - [0022](adr/0022-lay-language-alias-chunks.md) — lay-language alias chunks
 - [0023](adr/0023-agreement-depth-and-alias-cap.md) — agreement depth 10 and an alias support cap
 - [0024](adr/0024-relationship-class-scope-gate.md) — relationship-class scope gate and optional LLM scope check
+- [0025](adr/0025-consumer-cited-provisions-and-actionable-refusals.md) — consumer-cited provisions, request verbs, query-model warm-up and actionable refusals
