@@ -47,6 +47,7 @@ from app.consumer.legal_policy import (
 )
 from app.consumer.monetary import extract_brl_mentions
 from app.consumer.notice_markdown import notice_requests, render_notice_markdown
+from app.consumer.refusals import GroundingOutcome, notice_refusal
 from app.consumer.retrieval import (
     LEGAL_REQUESTED_K,
     build_evidence_queries,
@@ -67,6 +68,7 @@ from app.consumer.schemas import (
     MonetarySourceType,
     NoticeGenerationMode,
     NoticeGenerationTiming,
+    NoticeRefusal,
     SettlementComponentSource,
     SettlementInputs,
 )
@@ -124,6 +126,18 @@ class ConsumerEvidenceLimitError(ValueError):
 
 class ConsumerPromptNoticeError(ValueError):
     """A one-request notice was refused for a reason the client can correct."""
+
+
+class ConsumerNoticeRefusedError(RuntimeError):
+    """Retrieval ran but found no verifiable support; the refusal says why.
+
+    The refusal is also kept under the case with its retrieval audit, so it
+    can be read after the request that raised it (ADR 0025).
+    """
+
+    def __init__(self, refusal: NoticeRefusal) -> None:
+        self.refusal = refusal
+        super().__init__(refusal.message)
 
 
 class ConsumerCaseService:
@@ -436,20 +450,24 @@ class ConsumerCaseService:
             }
         )
 
-        verification = await self._ground_verifier.verify(
-            record.facts, self._legal_grounds(legal_results, record.facts, legal_traces)
-        )
+        selected = self._legal_grounds(legal_results, record.facts, legal_traces)
+        verification = await self._ground_verifier.verify(record.facts, selected)
         legal_grounds = verification.grounds
         evidence_references = self._evidence_references(
             evidence_results, evidence.page_sources, evidence_traces, record.facts
         )
-        _require_grounding(
-            record.case_id,
-            legal_grounds,
-            evidence_references,
-            legal_traces,
-            evidence_traces,
-            require_evidence=mode is NoticeGenerationMode.CASE,
+        self._refuse_without_support(
+            record,
+            mode=mode,
+            legal_traces=legal_traces,
+            evidence_traces=evidence_traces,
+            outcome=GroundingOutcome(
+                supported_legal_chunks=len(strongly_supported_chunk_ids(legal_traces)),
+                selected_grounds=len(selected),
+                verified_grounds=len(legal_grounds),
+                evidence_required=mode is NoticeGenerationMode.CASE,
+                evidence_cited=len(evidence_references),
+            ),
         )
         legal_traces = _annotate_composer_selection(
             legal_traces,
@@ -522,6 +540,7 @@ class ConsumerCaseService:
             ],
         )
         record.notice = notice
+        record.last_refusal = None
         record.touch()
         logger.info(
             "consumer_notice_generated",
@@ -529,6 +548,48 @@ class ConsumerCaseService:
             **notice.generation_timing.model_dump(),
         )
         return notice
+
+    def _refuse_without_support(
+        self,
+        record: ConsumerCaseRecord,
+        *,
+        mode: NoticeGenerationMode,
+        legal_traces: list[RetrievalTrace],
+        evidence_traces: list[RetrievalTrace],
+        outcome: GroundingOutcome,
+    ) -> None:
+        """Refuse a notice without the grounds and excerpts its mode requires."""
+        refusal = notice_refusal(
+            case_id=record.case_id,
+            mode=mode,
+            facts=record.facts,
+            legal_traces=legal_traces,
+            evidence_traces=evidence_traces,
+            outcome=outcome,
+            corpus_release_id=self._legal_corpus.release_id,
+            corpus_sha256=self._legal_corpus.corpus_sha256,
+        )
+        if refusal is None:
+            return
+        record.last_refusal = refusal
+        record.touch()
+        logger.warning(
+            "consumer_grounding_insufficient",
+            case_id=record.case_id,
+            reasons=[reason.value for reason in refusal.reasons],
+            legal_grounds=outcome.verified_grounds,
+            evidence_references=outcome.evidence_cited,
+            legal_retrieval_degraded=any(trace.degraded_mode for trace in legal_traces),
+            evidence_retrieval_degraded=any(trace.degraded_mode for trace in evidence_traces),
+        )
+        raise ConsumerNoticeRefusedError(refusal)
+
+    def get_notice_refusal(self, case_id: str, token: str) -> NoticeRefusal:
+        """The case's latest refused attempt, with its retrieval audit."""
+        record = self._store.get_authorized(case_id, token)
+        if record.last_refusal is None:
+            raise ConsumerCaseNotReadyError(["notice_refusal"])
+        return record.last_refusal
 
     async def _retrieve_notice_support(
         self,
@@ -1078,40 +1139,6 @@ def _evidence_status(action: SecurityAction) -> EvidenceStatus:
         SecurityAction.HUMAN_REVIEW: EvidenceStatus.REVIEW_REQUIRED,
         SecurityAction.BLOCK: EvidenceStatus.BLOCKED,
     }[action]
-
-
-def _require_grounding(
-    case_id: str,
-    legal_grounds: list[LegalGround],
-    evidence_references: list[EvidenceCitation],
-    legal_traces: list[RetrievalTrace],
-    evidence_traces: list[RetrievalTrace],
-    *,
-    require_evidence: bool = True,
-) -> None:
-    """Refuse a notice without a legal ground, or without a documentary citation
-    when the generation path requires one."""
-    if legal_grounds and (evidence_references or not require_evidence):
-        return
-    missing_support: list[str] = []
-    if not legal_grounds:
-        missing_support.append("fundamentos jurídicos")
-    if require_evidence and not evidence_references:
-        missing_support.append("trechos dos documentos enviados")
-    logger.warning(
-        "consumer_grounding_insufficient",
-        case_id=case_id,
-        legal_grounds=len(legal_grounds),
-        evidence_references=len(evidence_references),
-        legal_retrieval_degraded=any(trace.degraded_mode for trace in legal_traces),
-        evidence_retrieval_degraded=any(trace.degraded_mode for trace in evidence_traces),
-    )
-    raise ConsumerRetrievalError(
-        "Não foi possível gerar o rascunho com segurança porque a recuperação "
-        f"não encontrou suporte verificável em {' e '.join(missing_support)}. "
-        "Tente novamente; se o problema persistir, revise o relato e os "
-        "documentos enviados."
-    )
 
 
 def _cited_chunk_ids(grounds: list[LegalGround]) -> set[str]:

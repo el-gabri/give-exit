@@ -352,3 +352,118 @@ async def test_a_prompt_out_of_scope_without_its_request_sentence_is_422(
 
     assert response.status_code == 422
     assert "relação de consumo" in response.json()["detail"]
+
+
+# The shape of the first real long prompt complaint, in invented words: the
+# remedy is phrased with "Gostaria" and the consumer's own citation falls after
+# the 1,050 characters legal retrieval reads.
+LONG_COMPLAINT = (
+    "Em 3 de março de 2026 comprei um notebook da Marca Exemplo, anunciado com 16 GB "
+    "de memória e 512 GB de armazenamento, na loja oficial da Loja Exemplo dentro de um "
+    "marketplace. Paguei R$ 4.200,00 à vista por Pix. A confirmação do pedido e a nota "
+    "fiscal vieram com a descrição de um modelo de 8 GB e 256 GB, e foi esse o aparelho "
+    "entregue. Entrei em contato pelo chat no mesmo dia e a atendente reconheceu a "
+    "divergência, mas disse que só poderia oferecer o cancelamento da compra. Abri uma "
+    "reclamação no Procon, que notificou as duas empresas. Na resposta, elas propuseram "
+    "que eu devolvesse o notebook, recebesse o reembolso e fizesse uma nova compra pelo "
+    "preço atual, que já é mais alto. Recusei, porque o anúncio continua no ar com a "
+    "configuração que eu comprei e pelo mesmo preço. Depois disso, um atendente prometeu "
+    "por mensagem que a troca seria feita em até dez dias, o que não aconteceu. Na semana "
+    "seguinte, o marketplace creditou um valor parcial na minha conta sem que eu tivesse "
+    "pedido ou autorizado, como se o problema estivesse resolvido, e encerrou o "
+    "atendimento. Desde então ninguém respondeu às novas mensagens que enviei pelo chat "
+    "e pelo e-mail de suporte. Meu pedido inicial sempre foi o cumprimento forçado da "
+    "oferta, nos termos dos artigos 30 e 35, inciso I, do Código de Defesa do Consumidor "
+    "(CDC), e não a devolução do dinheiro. Gostaria simplesmente de receber o produto "
+    "que comprei e paguei."
+)
+
+
+def _empty_gate(traces: object, **kwargs: object) -> frozenset[str]:
+    return frozenset()
+
+
+async def test_the_long_complaint_cites_what_the_consumer_named(
+    api: tuple[httpx.AsyncClient, FastAPI],
+) -> None:
+    client, _ = api
+    assert LONG_COMPLAINT.index("artigos 30") > 1_050
+
+    response = await client.post("/consumer/prompt-notices", data={"text": LONG_COMPLAINT})
+
+    assert response.status_code == 201, response.text
+    notice = response.json()["notice"]
+    cited = [
+        ground["authority"]["unit_id"]
+        for ground in notice["legal_grounds"]
+        if ground["cited_by_consumer"]
+    ]
+    assert cited == ["br-cdc-art-30-caput", "br-cdc-art-35-inciso-i"]
+    assert notice["requests"][0] == (
+        "Gostaria simplesmente de receber o produto que comprei e paguei."
+    )
+
+
+async def test_a_refused_prompt_keeps_the_case_and_says_why(
+    api: tuple[httpx.AsyncClient, FastAPI], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client, app = api
+    monkeypatch.setattr("app.consumer.service.strongly_supported_chunk_ids", _empty_gate)
+
+    response = await client.post("/consumer/prompt-notices", data={"text": NUBANK})
+
+    assert response.status_code == 422, response.text
+    detail = response.json()["detail"]
+    assert detail["reasons"] == ["no_retrieval_agreement"]
+    assert detail["hints"] and "art. 35, inciso I, do CDC" in detail["hints"][0]
+    assert "mesmo resultado" in detail["message"]
+    case_id, token = detail["case_id"], detail["case_token"]
+    assert response.headers["X-Consumer-Case-Id"] == case_id
+    assert response.headers["X-Consumer-Case-Token"] == token
+    assert detail["refusal_url"] == f"/consumer/cases/{case_id}/notice/refusal"
+    assert _open_cases(app) == 1
+    headers = {"X-Consumer-Case-Token": token}
+    refusal = (await client.get(detail["refusal_url"], headers=headers)).json()
+    assert refusal["reasons"] == ["no_retrieval_agreement"]
+    assert refusal["generation_mode"] == "prompt"
+    assert refusal["retryable"] is False
+    assert {trace["agent"] for trace in refusal["retrievals"]} == {"consumer_legal_authorities"}
+    notice = await client.get(f"/consumer/cases/{case_id}/notice", headers=headers)
+    assert notice.status_code == 404
+    deleted = await client.delete(f"/consumer/cases/{case_id}", headers=headers)
+    assert deleted.status_code == 204
+
+
+async def test_a_case_without_a_refusal_has_none_to_read(
+    api: tuple[httpx.AsyncClient, FastAPI],
+) -> None:
+    client, _ = api
+    created = (await client.post("/consumer/cases")).json()
+
+    response = await client.get(
+        f"/consumer/cases/{created['case_id']}/notice/refusal",
+        headers={"X-Consumer-Case-Token": created["case_token"]},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Refusal not found"
+
+
+async def test_a_notice_drafted_later_clears_the_recorded_refusal(
+    api: tuple[httpx.AsyncClient, FastAPI], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.consumer.service import ConsumerCaseNotReadyError, ConsumerNoticeRefusedError
+
+    _, app = api
+    service = app.state.consumer_service
+    case_id, token = service.start_prompt_case(NUBANK)
+    with monkeypatch.context() as patch:
+        patch.setattr("app.consumer.service.strongly_supported_chunk_ids", _empty_gate)
+        with pytest.raises(ConsumerNoticeRefusedError):
+            await service.generate_prompt_notice(case_id, token)
+    assert service.get_notice_refusal(case_id, token).reasons
+
+    await service.generate_prompt_notice(case_id, token)
+
+    with pytest.raises(ConsumerCaseNotReadyError):
+        service.get_notice_refusal(case_id, token)

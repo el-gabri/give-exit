@@ -668,6 +668,45 @@ class ConsumerNotice(BaseModel):
     warnings: list[str] = Field(default_factory=list)
 
 
+class NoticeRefusalReason(str, Enum):
+    """Why a notice was refused (ADR 0025), in the order a refusal lists them."""
+
+    # Semantic retrieval was unavailable: the same request may succeed later.
+    SEMANTIC_RETRIEVAL_UNAVAILABLE = "semantic_retrieval_unavailable"
+    # No sentence said what the consumer wants from the supplier.
+    NO_REQUESTED_RESOLUTION = "no_requested_resolution"
+    # The complaint or the remedy is longer than legal retrieval reads.
+    NARRATIVE_TRUNCATED = "narrative_truncated"
+    # No legal chunk had the agreement or corroboration the gate requires.
+    NO_RETRIEVAL_AGREEMENT = "no_retrieval_agreement"
+    # Supported chunks were found, but none is an eligible, in-force provision.
+    NO_ELIGIBLE_GROUND = "no_eligible_ground"
+    # The optional ground verifier removed every ground.
+    GROUNDS_REMOVED_BY_VERIFIER = "grounds_removed_by_verifier"
+    # No excerpt of the accepted evidence supports the confirmed facts.
+    NO_EVIDENCE_SUPPORT = "no_evidence_support"
+
+
+class NoticeRefusal(BaseModel):
+    """A refused notice attempt: why, what to change, and its retrieval audit."""
+
+    case_id: str
+    generation_mode: NoticeGenerationMode
+    refused_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    message: str = Field(min_length=1)
+    reasons: list[NoticeRefusalReason] = Field(min_length=1)
+    # One per reason, in the consumer's language.
+    hints: list[str] = Field(default_factory=list)
+    # True when retrieval ran degraded, so the same request may succeed later;
+    # otherwise generating again from the same facts refuses again.
+    retryable: bool
+    corpus_release_id: str
+    corpus_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    legal_ground_policy_version: str = Field(min_length=1)
+    retrievals: list[RetrievalTrace] = Field(default_factory=list)
+    retrieval_degraded_modes: list[str] = Field(default_factory=list)
+
+
 class ConsumerPromptNotice(BaseModel):
     """A notice drafted from one request, and the credentials to audit it.
 

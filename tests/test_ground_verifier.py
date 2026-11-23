@@ -286,12 +286,20 @@ async def test_notice_abstains_when_the_verifier_rejects_every_ground(
                     "complaint_summary": "A loja fez cobranca em duplicidade da compra.",
                     "incident_date_or_period": "10/03/2026",
                     "prior_protocols": ["ABC-123"],
-                    "desired_resolution": "Quero a devolucao da cobranca em duplicidade.",
+                    # The consumer's own citation guarantees a ground for the
+                    # verifier to reject, whatever the offline retrieval finds.
+                    "desired_resolution": (
+                        "Quero a devolucao da cobranca em duplicidade, nos termos do "
+                        "art. 42, paragrafo unico, do CDC."
+                    ),
                     "facts_confirmed": True,
                 },
             )
 
             response = await client.post(f"/consumer/cases/{case_id}/notice", headers=headers)
 
-    assert response.status_code == 503
-    assert "fundamentos jurídicos" in response.json()["detail"]
+    # The same facts would be judged the same way again: no retry helps.
+    assert response.status_code == 422
+    detail = response.json()["detail"]
+    assert "fundamentos jurídicos" in detail["message"]
+    assert detail["reasons"] == ["grounds_removed_by_verifier"]
