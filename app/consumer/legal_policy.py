@@ -37,6 +37,9 @@ Provisions the consumer cites in their own account (ADR 0025, policy v7) are
 cited without the retrieval-agreement gate below, because that gate decides
 when the system's own search may cite an article. Everything else in this
 module still applies to them.
+
+A long complaint's sentence windows (ADR 0026, policy v8) pass that gate only
+with corroboration: see ``strongly_supported_chunk_ids``.
 """
 
 from __future__ import annotations
@@ -53,7 +56,7 @@ from app.consumer.statutes import division_numeral
 from app.schemas.rag import DENSE_CHANNEL, LEXICAL_CHANNEL
 from app.schemas.trace import RetrievalTrace
 
-LEGAL_GROUND_POLICY_VERSION = "consumer-notice-scope-eligibility-v7"
+LEGAL_GROUND_POLICY_VERSION = "consumer-notice-scope-eligibility-v8"
 LEGAL_GROUND_POLICY_REVIEW_STATUS = "requires_legal_review"
 
 # CDC divisions whose subject matter cannot support an individual consumer's
@@ -125,6 +128,8 @@ AGREEMENT_MAX_RANK = 10
 ALIAS_SUPPORT_CAP = 3
 # Without both channels, a chunk needs this rank in two independent queries.
 CORROBORATION_RANK = 3
+# The trace agent of a long complaint's sentence windows (ADR 0026).
+LEGAL_WINDOW_AGENT = "consumer_legal_window"
 
 _Candidate = TypeVar("_Candidate")
 
@@ -280,17 +285,25 @@ def strongly_supported_chunk_ids(
     those two; the complaint and the remedy searched separately can. That
     containment is the query builder's to keep: it cuts the two corroboration
     queries exactly where the narrative cuts them, at any length.
+
+    A long complaint is searched in sentence windows (ADR 0026), and each
+    window's channels agree as easily as any query's. Five of them let a
+    stray part of the account add a citation. So a provision that only window
+    traces agree on needs any one of:
+    - another search, the remedy or a second window, agreeing on it too;
+    - one of its agreeing chunks being official text rather than an alias.
+    Degraded window traces corroborate like any independent query.
     """
 
     if alias_cap < 0:
         raise ValueError("alias_cap must not be negative")
-    supported: set[str] = set()
+    agreeing: list[tuple[RetrievalTrace, list[str]]] = []
     corroborating_queries: dict[str, set[str]] = {}
     for trace in traces:
         if trace.error is not None:
             continue
         if trace.retrieval_mode == "hybrid" and trace.degraded_mode is None:
-            supported.update(_agreeing_chunk_ids(trace, max_rank, alias_cap))
+            agreeing.append((trace, _agreeing_chunk_ids(trace, max_rank, alias_cap)))
             continue
         for item in trace.results:
             if item.rank <= CORROBORATION_RANK:
@@ -298,12 +311,43 @@ def strongly_supported_chunk_ids(
                     _query_key(trace.query)
                 )
 
+    supported = _agreement_support(agreeing)
     supported.update(
         chunk_id
         for chunk_id, queries in corroborating_queries.items()
         if _has_independent_pair(queries)
     )
     return frozenset(supported)
+
+
+def _agreement_support(agreeing: list[tuple[RetrievalTrace, list[str]]]) -> set[str]:
+    """Every agreeing chunk, except window hits on a provision nothing else vouches for."""
+
+    supported = {
+        chunk_id
+        for trace, chunk_ids in agreeing
+        if trace.agent != LEGAL_WINDOW_AGENT
+        for chunk_id in chunk_ids
+    }
+    if all(trace.agent != LEGAL_WINDOW_AGENT for trace, _ in agreeing):
+        return supported
+    searches: dict[str, set[int]] = {}
+    chunks: dict[str, set[str]] = {}
+    for index, (trace, chunk_ids) in enumerate(agreeing):
+        # A store without provision metadata keys each chunk alone, so two
+        # articles are never merged into one "corroborated" provision.
+        provisions = {
+            item.chunk_id: item.source_provision_id or item.chunk_id for item in trace.results
+        }
+        for chunk_id in chunk_ids:
+            searches.setdefault(provisions[chunk_id], set()).add(index)
+            chunks.setdefault(provisions[chunk_id], set()).add(chunk_id)
+    for provision, provision_chunks in chunks.items():
+        if provision_chunks & supported or len(searches[provision]) >= 2 or not all(
+            map(is_alias_chunk_id, provision_chunks)
+        ):
+            supported |= provision_chunks
+    return supported
 
 
 def _agreeing_chunk_ids(trace: RetrievalTrace, max_rank: int, alias_cap: int) -> list[str]:

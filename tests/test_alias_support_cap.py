@@ -95,7 +95,7 @@ def test_alias_chunk_ids_are_recognised_and_nothing_else() -> None:
 def test_the_gate_depth_cap_and_policy_version() -> None:
     assert AGREEMENT_MAX_RANK == 10
     assert ALIAS_SUPPORT_CAP == 3
-    assert LEGAL_GROUND_POLICY_VERSION == "consumer-notice-scope-eligibility-v7"
+    assert LEGAL_GROUND_POLICY_VERSION == "consumer-notice-scope-eligibility-v8"
 
 
 def test_a_query_contributes_at_most_three_alias_chunks() -> None:
