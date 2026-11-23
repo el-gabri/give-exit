@@ -976,6 +976,21 @@ class LegalCorpus:
             "page": page,
         }
 
+    def citation_chunk(
+        self, provision: LegalProvision, unit: LegalTextUnit | None
+    ) -> Chunk | None:
+        """The indexed official chunk that opens this unit's text, or None.
+
+        Only in-force, citable units are chunked, so a vetoed inciso, a quoted
+        amendment or an article a notice may never cite has no chunk. Without
+        a unit the key is the provision, as for the unit-less constitutional
+        entries.
+        """
+
+        key = unit.unit_id if unit is not None else provision.provision_id
+        chunks = self._canonical_chunks(DEFAULT_LEGAL_CHUNK_TARGET_CHARS)
+        return chunks.get(f"{self.document_id}:legal:{key}:part-01")
+
     def authority_for_chunk(
         self,
         item: Chunk | RetrievedChunk,

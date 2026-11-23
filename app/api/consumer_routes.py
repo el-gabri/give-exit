@@ -35,11 +35,13 @@ from app.consumer.schemas import (
     ConsumerNotice,
     ConsumerPromptNotice,
     EvidenceStatus,
+    NoticeRefusal,
 )
 from app.consumer.service import (
     ConsumerCaseNotReadyError,
     ConsumerCaseService,
     ConsumerEvidenceLimitError,
+    ConsumerNoticeRefusedError,
     ConsumerPromptNoticeError,
     ConsumerRetrievalError,
 )
@@ -324,6 +326,7 @@ async def generate_prompt_notice(
     max_upload_bytes: MaxUploadBytesDep,
     text: Annotated[str, Form(min_length=1, max_length=20_000)],
     file: Annotated[UploadFile | None, File()] = None,
+    desired_resolution: Annotated[str | None, Form(max_length=2_000)] = None,
     response_format: Annotated[PromptNoticeFormat, Query(alias="format")] = "json",
 ) -> ConsumerPromptNotice | Response:
     """Draft a notice from one free-text request and an optional evidence file.
@@ -335,9 +338,13 @@ async def generate_prompt_notice(
     expires or is deleted. ``format=markdown`` returns only the draft text,
     with the case credentials in the ``X-Consumer-Case-Id`` and
     ``X-Consumer-Case-Token`` headers.
+
+    Without ``desired_resolution``, sentences of ``text`` that ask for
+    something ("Quero...", "Solicito...") become the request. With it, that
+    field is the request and ``text`` the account, unchanged.
     """
     try:
-        case_id, token = service.start_prompt_case(text)
+        case_id, token = service.start_prompt_case(text, desired_resolution=desired_resolution)
     except ConsumerPromptNoticeError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except ConsumerCaseCapacityError as exc:
@@ -351,6 +358,10 @@ async def generate_prompt_notice(
             uploads_dir=uploads_dir,
             max_upload_bytes=max_upload_bytes,
         )
+    except ConsumerNoticeRefusedError as exc:
+        # The refusal hands the client this case's credentials, so the
+        # refusal and its retrieval audit stay readable until the case expires.
+        raise _refused(exc.refusal, case_token=token) from exc
     except BaseException:
         # The client never received this case's credentials; keep nothing.
         await service.delete_case(case_id, token)
@@ -414,8 +425,42 @@ async def generate_consumer_notice(
             status_code=409,
             detail={"message": "Consumer case is not ready", "missing": exc.missing},
         ) from exc
+    except ConsumerNoticeRefusedError as exc:
+        raise _refused(exc.refusal) from exc
     except ConsumerRetrievalError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@router.get("/cases/{case_id}/notice/refusal", response_model=NoticeRefusal)
+async def get_consumer_notice_refusal(
+    case_id: str, token: CaseToken, service: ConsumerServiceDep
+) -> NoticeRefusal:
+    """The case's latest refused attempt: its reasons, hints and retrieval audit."""
+    try:
+        return service.get_notice_refusal(case_id, token)
+    except ConsumerCaseNotReadyError as exc:
+        raise HTTPException(status_code=404, detail="Refusal not found") from exc
+
+
+def _refused(refusal: NoticeRefusal, *, case_token: str | None = None) -> HTTPException:
+    """422 when generating again would refuse again, 503 when a retry may help.
+
+    A prompt-route refusal also carries the case credentials, which that
+    client has no other way to learn.
+    """
+    detail: dict[str, object] = {
+        "message": refusal.message,
+        "reasons": [reason.value for reason in refusal.reasons],
+        "hints": refusal.hints,
+        "refusal_url": f"/consumer/cases/{refusal.case_id}/notice/refusal",
+    }
+    headers = None
+    if case_token is not None:
+        detail.update(case_id=refusal.case_id, case_token=case_token)
+        headers = {"X-Consumer-Case-Id": refusal.case_id, "X-Consumer-Case-Token": case_token}
+    return HTTPException(
+        status_code=503 if refusal.retryable else 422, detail=detail, headers=headers
+    )
 
 
 @router.get("/cases/{case_id}/notice", response_model=ConsumerNotice)

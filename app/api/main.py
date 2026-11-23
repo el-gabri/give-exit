@@ -113,18 +113,27 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # process owns the vector-store namespace; see the setting's docstring.
         await app.state.consumer_service.purge_orphaned_documents()
         await app.state.consumer_service.legal_corpus_ready()
-        sweeper = asyncio.create_task(
-            _expire_idle_cases_forever(
-                app.state.consumer_service,
-                interval_seconds=settings.case_sweep_interval_seconds,
+        # In the background, so the API serves (and /health answers) while a
+        # local query model loads; a request meanwhile waits for the model.
+        background = [
+            asyncio.create_task(
+                _expire_idle_cases_forever(
+                    app.state.consumer_service,
+                    interval_seconds=settings.case_sweep_interval_seconds,
+                )
             )
-        )
+        ]
+        if settings.embedding_warm_up_on_startup:
+            background.append(
+                asyncio.create_task(app.state.consumer_service.warm_up_query_embedding())
+            )
         try:
             yield
         finally:
-            sweeper.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await sweeper
+            for task in background:
+                task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await task
             consumer_rag.close()
 
     app = FastAPI(

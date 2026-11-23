@@ -65,6 +65,24 @@ def build_legal_queries_for_case(*, complaint: str, desired_resolution: str) -> 
     return _unique_non_empty(queries)
 
 
+def truncated_narrative_fields(facts: ConsumerCaseFacts) -> dict[str, tuple[int, int]]:
+    """The facts the narrative cuts: each one's length and the characters kept.
+
+    Legal retrieval reads only the start of a long complaint or remedy; a
+    refusal names the cut, so the consumer can move the essential first.
+    """
+
+    bounded = {
+        "complaint_summary": (facts.complaint_summary, _NARRATIVE_COMPLAINT_CHARS),
+        "desired_resolution": (facts.desired_resolution, _NARRATIVE_RESOLUTION_CHARS),
+    }
+    return {
+        name: (len(_clean(value)), limit)
+        for name, (value, limit) in bounded.items()
+        if len(_clean(value)) > limit
+    }
+
+
 def build_corroboration_queries(facts: ConsumerCaseFacts) -> list[str]:
     """The complaint and the requested remedy as separate, independent queries.
 

@@ -591,8 +591,9 @@ async def test_lexical_only_retrieval_abstains_without_independent_corroboration
     """Without the dense channel, one framing of the narrative is not support.
 
     Here no article ranks in the lexical top three for both the complaint and
-    the requested remedy, so the service refuses and asks for a retry rather
-    than citing whatever one keyword search ranked first.
+    the requested remedy, so the service refuses rather than citing whatever
+    one keyword search ranked first. Semantic retrieval may be back on the
+    next try, so the refusal is a retryable 503 (ADR 0025).
     """
     case_id, headers = await _case_with_documents(notice_client, [("fatura.pdf", FATURA)])
     _disable_semantic_retrieval(monkeypatch)
@@ -600,7 +601,13 @@ async def test_lexical_only_retrieval_abstains_without_independent_corroboration
     response = await notice_client.post(f"/consumer/cases/{case_id}/notice", headers=headers)
 
     assert response.status_code == 503
-    assert "fundamentos jurídicos" in response.json()["detail"]
+    detail = response.json()["detail"]
+    assert "fundamentos jurídicos" in detail["message"]
+    assert "tente novamente em alguns minutos" in detail["message"]
+    assert detail["reasons"][0] == "semantic_retrieval_unavailable"
+    refusal = (await notice_client.get(detail["refusal_url"], headers=headers)).json()
+    assert refusal["retryable"] is True
+    assert refusal["retrieval_degraded_modes"] == ["lexical_only"]
 
 
 def _disable_semantic_retrieval(monkeypatch) -> None:  # noqa: ANN001

@@ -32,6 +32,11 @@ only beside a CDC ground; the LGPD may ground a notice alone (ADR 0020).
 
 Eligibility is still not a merits decision, and the result is still marked
 ``requires_legal_review``.
+
+Provisions the consumer cites in their own account (ADR 0025, policy v7) are
+cited without the retrieval-agreement gate below, because that gate decides
+when the system's own search may cite an article. Everything else in this
+module still applies to them.
 """
 
 from __future__ import annotations
@@ -48,7 +53,7 @@ from app.consumer.statutes import division_numeral
 from app.schemas.rag import DENSE_CHANNEL, LEXICAL_CHANNEL
 from app.schemas.trace import RetrievalTrace
 
-LEGAL_GROUND_POLICY_VERSION = "consumer-notice-scope-eligibility-v6"
+LEGAL_GROUND_POLICY_VERSION = "consumer-notice-scope-eligibility-v7"
 LEGAL_GROUND_POLICY_REVIEW_STATUS = "requires_legal_review"
 
 # CDC divisions whose subject matter cannot support an individual consumer's

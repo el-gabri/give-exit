@@ -12,7 +12,10 @@ trilha de auditoria (buscas, citações, hashes das fontes).
 Antes de gerar qualquer notificação, o corpus jurídico precisa estar indexado.
 Com Docker Compose isso acontece no serviço `legal-index`; sem Docker, rode
 `python -m app.consumer.preindex_legal`. Enquanto não houver índice, a geração
-responde `503`. `GET /health` informa `legal_corpus_ready`.
+responde `503`. `GET /health` informa `legal_corpus_ready` e
+`query_embedding_warm`. Este último é `false` enquanto um modelo local de
+consulta ainda carrega na inicialização; uma notificação pedida nesse intervalo
+espera o modelo.
 
 ## Notificação em uma chamada
 
@@ -24,6 +27,7 @@ Content-Type: multipart/form-data
 | Campo | Tipo | Obrigatório | Descrição |
 |---|---|---|---|
 | `text` | texto | sim | Relato do problema e do pedido, até 20.000 caracteres |
+| `desired_resolution` | texto | não | O pedido à empresa, até 2.000 caracteres. Quando enviado, é o pedido literal e `text` fica inteiro como relato |
 | `file` | arquivo | não | Uma evidência em PDF, PNG, JPG ou JPEG |
 
 | Parâmetro | Valores | Padrão |
@@ -85,25 +89,64 @@ Com `?format=markdown`, o corpo é só o texto da notificação
 - O que o texto não informa não é inventado: nome do consumidor, empresa
   notificada e data aparecem como `[PREENCHER ...]` na notificação e são
   listados no aviso "Preencha antes de enviar".
-- Frases com "quero", "desejo" ou "solicito" viram o pedido; o restante é o
-  relato dos fatos.
+- Sem `desired_resolution`, as frases com um verbo de pedido em primeira pessoa
+  ("quero", "queria", "gostaria", "desejo", "solicito", "peço", "exijo",
+  "requeiro") viram o pedido, e o restante é o relato dos fatos. "Meu pedido"
+  não conta, porque também é a compra ("meu pedido não chegou").
 - Sem anexo, ou com um anexo que não sustenta os fatos, a notificação não cita
   evidência e diz isso no texto e nos avisos.
-- A mensagem original fica registrada no caso, e os fundamentos jurídicos
-  passam pela mesma política de seleção e pela mesma exigência de concordância
-  entre as buscas densa e lexical.
+- A mensagem original fica registrada no caso. Os fundamentos jurídicos passam
+  pela mesma política de seleção e pela mesma exigência de concordância entre as
+  buscas densa e lexical.
+- Um dispositivo que o próprio consumidor cita, com a lei nomeada depois do
+  artigo, é citado sem essa exigência de concordância, mas com a mesma política
+  de elegibilidade (ADR 0025). Valem, por exemplo, "art. 35, inciso I, do CDC",
+  "§ 1º do art. 18 da Lei 8.078/90", "art. 18 da LGPD" e "art. 186 do Código
+  Civil". Esse fundamento tem `cited_by_consumer: true`.
 
 ### Erros
 
 | Código | Quando |
 |---|---|
-| `422` | Texto vazio ou longo demais; relato fora de relação de consumo; anexo em formato não suportado, corrompido ou com instruções dirigidas à IA |
+| `422` | Texto vazio ou longo demais; relato fora de relação de consumo; anexo em formato não suportado, corrompido ou com instruções dirigidas à IA; notificação recusada por falta de suporte que se repetiria com o mesmo texto |
 | `413` | Arquivo maior que `LITIGATION_MAX_UPLOAD_BYTES` (20 MB por padrão) |
 | `429` | Limite por minuto de criação de casos, envios ou geração de notificações |
-| `503` | Corpus jurídico não indexado; nenhum fundamento jurídico sustentado pela recuperação; capacidade de casos esgotada |
+| `503` | Corpus jurídico não indexado; notificação recusada enquanto a busca semântica estava indisponível (tentar de novo pode resolver); capacidade de casos esgotada |
 
-Em qualquer erro depois da criação do caso, o caso é apagado: o cliente nunca
-recebeu o token, então nada fica guardado.
+#### Recusa por falta de suporte
+
+Quando a recuperação não encontra fundamento jurídico verificável, a resposta
+explica o motivo em vez de pedir uma nova tentativa às cegas:
+
+```json
+{
+  "detail": {
+    "message": "Não foi possível gerar o rascunho com segurança porque a recuperação não encontrou suporte verificável em fundamentos jurídicos. Gerar de novo com os mesmos dados levará ao mesmo resultado; veja as sugestões para ajustar o relato.",
+    "reasons": ["no_requested_resolution", "narrative_truncated", "no_retrieval_agreement"],
+    "hints": ["Diga o que você quer que a empresa faça em uma frase própria, ...", "..."],
+    "refusal_url": "/consumer/cases/2c04.../notice/refusal",
+    "case_id": "2c04...",
+    "case_token": "B993..."
+  }
+}
+```
+
+| Motivo (`reasons`) | Significado |
+|---|---|
+| `semantic_retrieval_unavailable` | A busca semântica estava indisponível. A resposta é `503`, e tentar de novo pode resolver |
+| `no_requested_resolution` | Nenhuma frase diz o que o consumidor pede |
+| `narrative_truncated` | O relato (mais de 1.050 caracteres) ou o pedido (mais de 500) é maior que o trecho lido pela busca jurídica |
+| `no_retrieval_agreement` | Nenhum dispositivo foi apontado pelas duas buscas ao mesmo tempo |
+| `no_eligible_ground` | O que foi encontrado não pode fundamentar a notificação, como normas penais ou processuais |
+| `grounds_removed_by_verifier` | O verificador opcional removeu todos os fundamentos |
+| `no_evidence_support` | Jornada do caso: nenhum trecho dos documentos sustenta os fatos |
+
+Cada motivo tem uma sugestão em `hints`, na mesma ordem. Na recusa, o caso
+**não** é apagado: as credenciais vêm no corpo e nos cabeçalhos
+`X-Consumer-Case-Id` e `X-Consumer-Case-Token`, e `refusal_url` devolve a
+recusa completa, com a auditoria das buscas. Em qualquer outro erro depois da
+criação do caso, o caso é apagado: o cliente nunca recebeu o token, então nada
+fica guardado.
 
 ## Depois da geração
 
@@ -116,6 +159,7 @@ Todas as rotas abaixo exigem o cabeçalho `X-Consumer-Case-Token`.
 | `GET` | `/consumer/cases/{id}/notice.pdf` | PDF |
 | `GET` | `/consumer/cases/{id}/notice.docx` | DOCX |
 | `GET` | `/consumer/cases/{id}/notice/retrievals` | Auditoria: consultas, rankings por canal, IDs e hashes |
+| `GET` | `/consumer/cases/{id}/notice/refusal` | A última recusa: motivos, sugestões e a auditoria das buscas (`404` se não houve) |
 | `GET` | `/consumer/cases/{id}` | Caso, com mensagens e fatos extraídos |
 | `DELETE` | `/consumer/cases/{id}` | Apaga o caso e os vetores de evidência (`204`) |
 
@@ -138,7 +182,10 @@ notificação.
 4. `PATCH /consumer/cases/{id}/facts` corrige os fatos e, com
    `"facts_confirmed": true`, confirma.
 5. `POST /consumer/cases/{id}/notice` gera a notificação (`generation_mode`
-   `case`). Se faltar algo, responde `409` com a lista `missing`.
+   `case`). Se faltar algo, responde `409` com a lista `missing`. Sem suporte
+   verificável, responde com a mesma recusa estruturada do caminho em uma
+   chamada (`422`, ou `503` com a busca semântica indisponível), sem as
+   credenciais, que o cliente já tem.
 
 A especificação completa, com todos os campos, está em
 `http://localhost:8000/docs`.

@@ -409,3 +409,138 @@ def test_agreement_must_fall_within_the_depth_of_both_channels() -> None:
         chunk.chunk_id
     }
     assert strongly_supported_chunk_ids([with_ranks(1, AGREEMENT_MAX_RANK + 1)]) == frozenset()
+
+
+# Consumer-cited provisions (ADR 0025) -----------------------------------------
+
+
+def _cited_facts(complaint: str, remedy: str = "Quero a solução do problema.") -> ConsumerCaseFacts:
+    return ConsumerCaseFacts(complaint_summary=complaint, desired_resolution=remedy)
+
+
+def _retrieved(*unit_ids: str) -> tuple[list[list[RetrievedChunk]], list[RetrievalTrace]]:
+    """Results whose units both channels ranked first, second, ...: all supported."""
+    results = [
+        [
+            RetrievedChunk(chunk=_chunk_for_unit(unit_id), score=0.03 - index / 1000)
+            for index, unit_id in enumerate(unit_ids)
+        ]
+    ]
+    return results, [_trace(results[0])]
+
+
+def _cited(ground: object) -> tuple[str | None, bool, int | None]:
+    from app.consumer.schemas import LegalGround
+
+    assert isinstance(ground, LegalGround)
+    return (
+        ground.authority.unit_id,
+        ground.cited_by_consumer,
+        ground.authority.retrieval_rank,
+    )
+
+
+def test_a_consumer_cited_article_is_a_ground_without_retrieval_agreement() -> None:
+    facts = _cited_facts(
+        "A loja se recusou a cancelar a compra feita pelo site dentro de sete dias, "
+        "contrariando o art. 49 do CDC."
+    )
+
+    grounds = select_legal_grounds(get_default_legal_corpus(), facts, [[]], [])
+
+    assert [_cited(ground) for ground in grounds] == [("br-cdc-art-49-caput", True, None)]
+    assert grounds[0].application_to_facts.startswith(
+        "O(a) consumidor(a) indicou CDC, art. 49 no próprio relato;"
+    )
+    assert "não foi decidida pelo sistema" in grounds[0].application_to_facts
+
+
+def test_a_matching_retrieved_unit_keeps_its_rank_and_is_marked_cited() -> None:
+    results, traces = _retrieved("br-cdc-art-49-caput")
+    facts = _cited_facts("A loja recusou o arrependimento da compra pelo site (art. 49 do CDC).")
+
+    grounds = select_legal_grounds(get_default_legal_corpus(), facts, results, traces)
+
+    assert [_cited(ground) for ground in grounds] == [("br-cdc-art-49-caput", True, 1)]
+    assert "também o localizou" in grounds[0].application_to_facts
+
+
+def test_the_consumers_unit_replaces_a_different_retrieved_unit_of_the_same_article() -> None:
+    results, traces = _retrieved("br-cdc-art-35-inciso-iii")
+    facts = _cited_facts(
+        "A loja entregou um modelo diferente do anunciado e se recusou a cumprir a oferta.",
+        "Quero o cumprimento forçado da oferta, nos termos do art. 35, inciso I, do CDC.",
+    )
+
+    grounds = select_legal_grounds(get_default_legal_corpus(), facts, results, traces)
+
+    assert [_cited(ground) for ground in grounds] == [("br-cdc-art-35-inciso-i", True, None)]
+
+
+def test_a_whole_article_citation_keeps_the_retrieved_unit() -> None:
+    results, traces = _retrieved("br-cdc-art-35-inciso-iii")
+    facts = _cited_facts(
+        "A loja entregou um modelo diferente do anunciado, contrariando o art. 35 do CDC."
+    )
+
+    grounds = select_legal_grounds(get_default_legal_corpus(), facts, results, traces)
+
+    assert [_cited(ground) for ground in grounds] == [("br-cdc-art-35-inciso-iii", True, 1)]
+
+
+def test_consumer_citations_come_first_and_retrieved_grounds_follow() -> None:
+    results, traces = _retrieved("br-cdc-art-42-paragrafo-unico")
+    facts = _cited_facts(
+        "A loja cobrou duas vezes a mesma compra no cartão e eu paguei; cito o art. 49 do CDC."
+    )
+
+    grounds = select_legal_grounds(get_default_legal_corpus(), facts, results, traces)
+
+    assert [_cited(ground) for ground in grounds] == [
+        ("br-cdc-art-49-caput", True, None),
+        ("br-cdc-art-42-paragrafo-unico", False, 1),
+    ]
+
+
+def test_out_of_scope_complaints_get_no_consumer_cited_grounds() -> None:
+    facts = _cited_facts(
+        "Meu empregador não pagou as horas extras e o vale-transporte, contrariando o "
+        "art. 49 do CDC."
+    )
+
+    assert select_legal_grounds(get_default_legal_corpus(), facts, [[]], []) == []
+
+
+def test_a_civil_code_only_citation_needs_a_cdc_ground() -> None:
+    corpus = get_default_legal_corpus()
+    alone = _cited_facts("A loja cobrou duas vezes a mesma compra, o que viola o art. 186 do CC.")
+    beside = _cited_facts(
+        "A loja cobrou duas vezes a mesma compra, o que viola o art. 186 do CC e o art. "
+        "42 do CDC."
+    )
+
+    assert select_legal_grounds(corpus, alone, [[]], []) == []
+    grounds = select_legal_grounds(corpus, beside, [[]], [])
+    assert [ground.authority.unit_id for ground in grounds] == [
+        "br-cc-art-186-caput",
+        "br-cdc-art-42-caput",
+    ]
+
+
+def test_consumer_cited_grounds_keep_the_complementary_and_the_total_caps() -> None:
+    corpus = get_default_legal_corpus()
+    data = _cited_facts(
+        "O site da loja vazou meus dados pessoais; cito os arts. 6º, 18, 42 e 46 da LGPD."
+    )
+    many = _cited_facts(
+        "A loja cobrou duas vezes a mesma compra; cito os arts. 6º, 14, 18, 20, 30, 35, "
+        "39, 42 e 49 do CDC."
+    )
+
+    grounds = select_legal_grounds(corpus, data, [[]], [])
+    assert [ground.authority.unit_id for ground in grounds] == [
+        "br-lgpd-art-6-caput",
+        "br-lgpd-art-18-caput",
+        "br-lgpd-art-42-caput",
+    ]
+    assert len(select_legal_grounds(corpus, many, [[]], [])) == 8

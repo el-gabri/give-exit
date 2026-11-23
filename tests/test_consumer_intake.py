@@ -122,3 +122,39 @@ def test_a_message_that_only_asks_keeps_it_as_the_account_too() -> None:
 
     assert extraction.complaint_summary == "Quero meu dinheiro de volta."
     assert extraction.desired_resolution == "Quero meu dinheiro de volta."
+
+
+@pytest.mark.parametrize(
+    "request_sentence",
+    [
+        "Gostaria de receber o produto que comprei.",
+        # The first real long prompt complaint stated its remedy this way.
+        "Eu queria simplesmente receber o produto pelo qual eu já havia pago.",
+        "Peço a entrega do modelo anunciado.",
+        "Peco a entrega do modelo anunciado.",
+        "Exijo a troca pelo produto correto.",
+        "Requeiro o cumprimento da oferta.",
+    ],
+)
+def test_first_person_request_verbs_move_the_sentence_to_the_resolution(
+    request_sentence: str,
+) -> None:
+    account = "A loja entregou um modelo diferente do anunciado."
+
+    extraction = extract_explicit_facts(f"{account} {request_sentence}", ConsumerCaseFacts())
+
+    assert extraction.complaint_summary == account
+    assert extraction.desired_resolution == request_sentence
+
+
+def test_order_and_past_requests_stay_in_the_account() -> None:
+    """"Pedido" is also the order, and a past request is part of what happened."""
+    text = (
+        "Meu pedido não chegou até hoje. Minha solicitação de troca foi ignorada. "
+        "A empresa solicitou mais prazo."
+    )
+
+    extraction = extract_explicit_facts(text, ConsumerCaseFacts())
+
+    assert extraction.complaint_summary == text
+    assert extraction.desired_resolution is None

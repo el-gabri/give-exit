@@ -25,6 +25,7 @@ from app.consumer.schemas import (
     ConsumerEvidence,
     ConsumerMessage,
     ConsumerNotice,
+    NoticeRefusal,
     ScopeVerification,
 )
 from app.core.hashing import sha256_hex
@@ -59,6 +60,9 @@ class ConsumerCaseRecord:
     documents: list[StoredEvidence] = field(default_factory=list)
     facts_confirmed: bool = False
     notice: ConsumerNotice | None = None
+    # The latest refused attempt and its retrieval audit (ADR 0025); cleared
+    # when a notice is drafted.
+    last_refusal: NoticeRefusal | None = None
     # The optional scope verifier's verdict for the complaint text it saw
     # (ADR 0024); readiness reads it while that text is unchanged.
     scope_verification: ScopeVerification | None = None

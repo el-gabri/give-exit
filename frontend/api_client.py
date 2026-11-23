@@ -254,7 +254,11 @@ def _response_detail(response: requests.Response | None) -> str | None:
         if isinstance(message, str) and isinstance(missing, list) and missing:
             return f"{message}: {', '.join(str(item) for item in missing)}"
         if isinstance(message, str):
-            return message
+            # A refused notice says what to change, one hint per reason; the
+            # error box renders them as a list under the message.
+            hints = detail.get("hints")
+            items = [f"- {hint}" for hint in hints or [] if isinstance(hint, str)]
+            return "\n".join([message, *items])
     return None
 
 

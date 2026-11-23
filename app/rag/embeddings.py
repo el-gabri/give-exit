@@ -48,7 +48,25 @@ class LegacyEmbeddingClient(Protocol):
     async def embed(self, texts: list[str]) -> list[list[float]]: ...
 
 
+@runtime_checkable
+class WarmableEmbeddingClient(Protocol):
+    """A client that loads its model on first use unless it is warmed up first.
+
+    Loading a local model inside a request spends that request's embedding
+    timeout on disk reads, and a cold start can then fall back to
+    lexical-only retrieval. Warming moves the load to startup.
+    """
+
+    @property
+    def warm(self) -> bool: ...
+
+    async def warm_up(self) -> None: ...
+
+
 EmbeddingBackend = EmbeddingClient | LegacyEmbeddingClient
+
+# Any short query loads the weights and pages them in with one forward pass.
+_WARM_UP_QUERY = "Aquecimento do modelo de consulta."
 
 
 async def embed_document_texts(client: EmbeddingBackend, texts: list[str]) -> list[list[float]]:
@@ -322,10 +340,20 @@ class SentenceTransformerEmbeddingClient:
         self._local_files_only = local_files_only
         self._encode_lock = asyncio.Lock()
         self._model: Any | None = None
+        self._warm = False
 
     @property
     def model_name(self) -> str:
         return self._model_name
+
+    @property
+    def warm(self) -> bool:
+        """Whether the model has loaded and completed one encode."""
+        return self._warm
+
+    async def warm_up(self) -> None:
+        """Load the model and run one query now, so a request does not have to."""
+        await self.embed_queries([_WARM_UP_QUERY])
 
     async def embed(self, texts: list[str]) -> list[list[float]]:
         """Compatibility alias: unqualified text is treated as document text."""
@@ -386,6 +414,9 @@ class SentenceTransformerEmbeddingClient:
             show_progress_bar=self._show_progress_bar,
             batch_size=self._batch_size,
         )
+        # The first forward pass pages the weights in; only after it is the
+        # model as fast as it will be.
+        self._warm = True
         return [[float(value) for value in row] for row in encoded]
 
 

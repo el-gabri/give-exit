@@ -426,7 +426,7 @@ abstain. A degraded draft is labelled as such: the notice carries
 
 | Method | Route | Purpose |
 |---|---|---|
-| `GET` | `/health` | API liveness and legal-corpus readiness |
+| `GET` | `/health` | API liveness, legal-corpus readiness and query-model warmth |
 | `POST` | `/consumer/prompt-notices` | One request: free text and an optional file to a notice, its case and token |
 | `POST` | `/consumer/cases` | Create an ephemeral case and possession token |
 | `GET` | `/consumer/cases/{id}` | Read the authorized case |
@@ -437,6 +437,7 @@ abstain. A degraded draft is labelled as such: the notice carries
 | `GET` | `/consumer/cases/{id}/notice` | Read structured notice output |
 | `GET` | `/consumer/cases/{id}/notice.{md,pdf,docx}` | Export the notice |
 | `GET` | `/consumer/cases/{id}/notice/retrievals` | Inspect retrieval provenance |
+| `GET` | `/consumer/cases/{id}/notice/refusal` | Why the latest attempt was refused, with its retrieval audit |
 | `DELETE` | `/consumer/cases/{id}` | Delete case state and evidence vectors |
 
 Every case operation requires the opaque possession token returned at case

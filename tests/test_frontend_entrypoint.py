@@ -130,6 +130,29 @@ def test_consumer_client_reads_notice_timeout_from_environment(monkeypatch) -> N
     assert captured["timeout"] == (10.0, 456.0)
 
 
+def test_consumer_client_shows_the_hints_of_a_refused_notice(monkeypatch) -> None:
+    def request(method, url, **kwargs):
+        response = requests.Response()
+        response.status_code = 422
+        response.url = url
+        response._content = (
+            '{"detail": {"message": "Não foi possível gerar o rascunho.", '
+            '"reasons": ["no_requested_resolution", "no_retrieval_agreement"], '
+            '"hints": ["Diga o que você quer.", "Cite o dispositivo."]}}'
+        ).encode()
+        return response
+
+    monkeypatch.setattr("frontend.api_client.requests.request", request)
+
+    with pytest.raises(ConsumerApiError) as raised:
+        ConsumerApiClient("https://api.example").generate_notice("case", "token")
+
+    assert str(raised.value) == (
+        "Não foi possível gerar o rascunho.\n- Diga o que você quer.\n- Cite o dispositivo."
+    )
+    assert raised.value.status_code == 422
+
+
 def test_consumer_client_explains_read_timeout_recovery(monkeypatch) -> None:
     def request(*args, **kwargs):
         raise requests.ReadTimeout("deadline exceeded")

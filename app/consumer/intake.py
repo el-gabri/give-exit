@@ -119,8 +119,15 @@ _RECOMMENDED_DOCUMENTS = (
 )
 
 
-# Words that turn a sentence into a statement of the resolution sought.
-_REQUEST_TERMS = ("quero ", "desejo ", "solicito ")
+# First-person request verbs turn a sentence into the resolution sought.
+# "Queria" is the polite present ("Eu queria receber o produto"). Nouns stay
+# out: "meu pedido" is also the order ("meu pedido não chegou") and "minha
+# solicitação" an earlier request, both part of the account, and a sentence
+# moved by mistake is printed in the notice as a request.
+_REQUEST_RE = re.compile(
+    r"\b(?:quero|queria|gostaria|desejo|solicito|pe[çc]o|exijo|requeiro)\b",
+    re.IGNORECASE,
+)
 _SENTENCE_BOUNDARY_RE = re.compile(r"(?<=[.!?])\s+")
 
 
@@ -165,11 +172,7 @@ def _split_request(text: str) -> tuple[str, str | None]:
     complaint is never empty.
     """
     sentences = _SENTENCE_BOUNDARY_RE.split(text)
-    requests = [
-        sentence
-        for sentence in sentences
-        if any(term in sentence.casefold() for term in _REQUEST_TERMS)
-    ]
+    requests = [sentence for sentence in sentences if _REQUEST_RE.search(sentence)]
     if not requests:
         return text, None
     account = " ".join(sentence for sentence in sentences if sentence not in requests)
