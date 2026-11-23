@@ -12,6 +12,7 @@ import re
 import unicodedata
 from collections.abc import Callable
 
+from app.consumer.cited_provisions import ConsumerCitation, consumer_cited_provisions
 from app.consumer.legal_corpus import LegalCorpus
 from app.consumer.legal_policy import (
     enforce_cdc_anchor,
@@ -54,6 +55,11 @@ _UNDUE_PAYMENT_OR_REFUND_RE = re.compile(
 
 SupportGate = Callable[[list[RetrievalTrace]], frozenset[str]]
 
+_UNDECIDED_APPLICABILITY = (
+    "Sua aplicabilidade ao caso não foi decidida pelo sistema e deve ser validada por "
+    "profissional habilitado contra os fatos e documentos citados."
+)
+
 
 def select_legal_grounds(
     corpus: LegalCorpus,
@@ -67,20 +73,39 @@ def select_legal_grounds(
 
     ``support`` is the retrieval-agreement gate. It is a parameter so the
     service can resolve it at call time and experiments can replace it.
+
+    Provisions the consumer cites in the complaint or the remedy come first,
+    without that gate but under the same eligibility policy (ADR 0025).
     """
 
     if not is_consumer_scope(complaint=facts.complaint_summary or ""):
         return []
+    selected = _retrieved_grounds(corpus, facts, result_sets, traces or [], support)
+    citations = consumer_cited_provisions(corpus, facts)
+    if citations:
+        selected = _with_consumer_citations(corpus, citations, selected)
+    return [ground for _, ground in enforce_cdc_anchor(selected)]
+
+
+def _retrieved_grounds(
+    corpus: LegalCorpus,
+    facts: ConsumerCaseFacts,
+    result_sets: list[list[RetrievedChunk]],
+    traces: list[RetrievalTrace],
+    support: SupportGate,
+) -> list[tuple[LegalProvision, LegalGround]]:
+    """The grounds retrieval earns through the agreement gate, before the CDC anchor."""
+
     # Retrieval queries are built from the narrative alone (see
     # build_legal_queries); no intake label routes or gates which articles
     # may be cited.
-    strongly_supported = support(traces or [])
+    strongly_supported = support(traces)
     if not strongly_supported:
         return []
     merged = merge_results(result_sets)
     if not merged:
         return []
-    score_floor = _score_floor(merged, traces or [])
+    score_floor = _score_floor(merged, traces)
     eligible = _disambiguate_cdc_art_42_candidates(
         corpus,
         facts,
@@ -90,11 +115,11 @@ def select_legal_grounds(
     provision_candidates = _provision_candidates(
         corpus,
         eligible,
-        chunk_query_occurrences(traces or []),
+        chunk_query_occurrences(traces),
     )
 
     provision_candidates.sort(key=lambda item: (item[0], item[3].chunk.chunk_id))
-    lexical_only = any(trace.degraded_mode == "lexical_only" for trace in traces or [])
+    lexical_only = any(trace.degraded_mode == "lexical_only" for trace in traces)
     window = precedence_window(
         [(corpus.provision_for_chunk(item[3]), item) for item in provision_candidates],
         window=MAX_GROUND_CANDIDATES,
@@ -113,16 +138,71 @@ def select_legal_grounds(
                     application_to_facts=(
                         f"O texto oficial em {provision.citation_label} foi localizado "
                         "pela política de recuperação a partir do relato do consumidor. "
-                        "Sua aplicabilidade ao caso não foi decidida pelo sistema e deve "
-                        "ser validada por profissional habilitado contra os fatos e "
-                        "documentos citados."
+                        f"{_UNDECIDED_APPLICABILITY}"
                     ),
                 ),
             )
         )
         if len(selected) >= MAX_LEGAL_GROUNDS:
             break
-    return [ground for _, ground in enforce_cdc_anchor(selected)]
+    return selected
+
+
+def _with_consumer_citations(
+    corpus: LegalCorpus,
+    citations: list[ConsumerCitation],
+    retrieved: list[tuple[LegalProvision, LegalGround]],
+) -> list[tuple[LegalProvision, LegalGround]]:
+    """The consumer's citations first, then the retrieved grounds of other articles.
+
+    A retrieved ground stands in for a citation when it quotes the cited unit,
+    or any unit of an article cited whole, so the notice keeps its retrieval
+    rank. Otherwise the consumer's unit replaces it. A consumer who asks for
+    art. 35, I (forced fulfilment of the offer) must not be answered with
+    art. 35, III (a refund). The complementary-source cap and the ground
+    limit apply to the whole list.
+    """
+
+    retrieved_by_provision = {provision.provision_id: ground for provision, ground in retrieved}
+    cited = [
+        (
+            citation.provision,
+            _consumer_cited_ground(
+                corpus, citation, retrieved_by_provision.get(citation.provision.provision_id)
+            ),
+        )
+        for citation in citations
+    ]
+    cited_ids = {citation.provision.provision_id for citation in citations}
+    others = [item for item in retrieved if item[0].provision_id not in cited_ids]
+    return precedence_window([*cited, *others], window=MAX_LEGAL_GROUNDS, lexical_only=False)
+
+
+def _consumer_cited_ground(
+    corpus: LegalCorpus, citation: ConsumerCitation, retrieved: LegalGround | None
+) -> LegalGround:
+    label = citation.provision.citation_label
+    if retrieved is not None and (
+        citation.whole_article or retrieved.authority.unit_id == citation.unit.unit_id
+    ):
+        return retrieved.model_copy(
+            update={
+                "cited_by_consumer": True,
+                "application_to_facts": (
+                    f"O(a) consumidor(a) indicou {label} no próprio relato, e a política "
+                    "de recuperação também o localizou a partir do relato. "
+                    f"{_UNDECIDED_APPLICABILITY}"
+                ),
+            }
+        )
+    return LegalGround(
+        authority=corpus.authority_for_chunk(citation.chunk),
+        application_to_facts=(
+            f"O(a) consumidor(a) indicou {label} no próprio relato; o texto oficial foi "
+            f"localizado no corpus legal. {_UNDECIDED_APPLICABILITY}"
+        ),
+        cited_by_consumer=True,
+    )
 
 
 def _score_floor(merged: list[RetrievedChunk], traces: list[RetrievalTrace]) -> float:

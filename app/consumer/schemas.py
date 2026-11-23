@@ -507,6 +507,10 @@ class LegalGround(BaseModel):
     authority: LegalAuthorityCitation
     application_to_facts: str = Field(min_length=1, max_length=4_000)
     verification: GroundVerification | None = None
+    # The consumer named this provision in their own account (ADR 0025). It is
+    # cited without the retrieval-agreement gate, under the same eligibility
+    # policy; ``authority.retrieval_rank`` stays set when retrieval found it too.
+    cited_by_consumer: bool = False
 
 
 class GroundVerificationSummary(BaseModel):
