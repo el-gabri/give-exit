@@ -165,6 +165,9 @@ class Settings(BaseSettings):
     # silently degrading the notice to lexical-only retrieval.
     embedding_query_queue_timeout_seconds: float = Field(default=30.0, gt=0, le=600)
     embedding_lexical_fallback: bool = True
+    # Load a lazily loaded local query model in the background at startup, so
+    # the first notice does not spend its query timeout on the load.
+    embedding_warm_up_on_startup: bool = True
     gemini_embedding_dimensions: int = Field(default=768, ge=128, le=3072)
     # Hugging Face access for local sentence-transformers models, under the
     # names the Hugging Face libraries use. Those libraries read only the

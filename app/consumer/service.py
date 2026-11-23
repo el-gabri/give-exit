@@ -730,6 +730,33 @@ class ConsumerCaseService:
             logger.info("consumer_orphan_documents_purged", documents=len(orphans))
         return len(orphans)
 
+    @property
+    def query_embedding_warm(self) -> bool:
+        return self._rag.query_embedding_warm
+
+    async def warm_up_query_embedding(self) -> None:
+        """Load the query model before the first notice needs it; never raises.
+
+        A local model otherwise loads inside the first request's embedding
+        timeout. A cold start can then fall back to lexical-only retrieval,
+        which can only refuse a complaint whose remedy was not recognised.
+        """
+        started = perf_counter()
+        try:
+            warmed = await self._rag.warm_up_query_embedding()
+        except Exception as exc:
+            logger.warning(
+                "query_embedding_warm_up_failed",
+                error_type=type(exc).__name__,
+                error=redact_sensitive_text(exc)[:500],
+            )
+            return
+        if warmed:
+            logger.info(
+                "query_embedding_warmed_up",
+                latency_ms=round((perf_counter() - started) * 1000, 1),
+            )
+
     async def legal_corpus_ready(self) -> bool:
         """Refresh readiness without loading or invoking the embedding model."""
 

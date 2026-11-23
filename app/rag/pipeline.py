@@ -20,6 +20,7 @@ from app.core.logging import get_logger
 from app.rag.chunking import SectionAwareChunker
 from app.rag.embeddings import (
     EmbeddingBackend,
+    WarmableEmbeddingClient,
     embed_document_texts,
     validate_embedding_vectors,
 )
@@ -178,6 +179,23 @@ class RagPipeline:
     @property
     def embedding_shard_size(self) -> int:
         return self._embedding_shard_size
+
+    @property
+    def query_embedding_warm(self) -> bool:
+        """False only while a lazily loaded query model has not run yet."""
+        return not isinstance(self._embedder, WarmableEmbeddingClient) or self._embedder.warm
+
+    async def warm_up_query_embedding(self) -> bool:
+        """Load a lazily loaded query model now; False when there is none to load.
+
+        This bypasses the query guard on purpose: the load is not a request,
+        so it neither counts against the circuit breaker nor holds a slot.
+        A request that arrives meanwhile waits for the model's own lock.
+        """
+        if not isinstance(self._embedder, WarmableEmbeddingClient):
+            return False
+        await self._embedder.warm_up()
+        return True
 
     def close(self) -> None:
         """Release the store's pooled connections; the next search reopens them.
