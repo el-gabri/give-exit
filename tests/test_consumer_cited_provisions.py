@@ -120,18 +120,19 @@ def test_repeated_citations_collapse_in_order_of_first_mention() -> None:
 
 
 @pytest.mark.parametrize(
-    "text",
-    [
-        "§ 1º " * 4_000 + "do art. 1",
-        "art. 35 e " * 2_000,
-        "inciso I e " * 2_000 + "do art. 5",
-    ],
+    ("piece", "ending"),
+    [("§ 1º ", "do art. 1"), ("art. 35 e ", ""), ("inciso I e ", "do art. 5")],
+    ids=["paragraphs", "articles", "incisos"],
 )
-def test_a_long_run_of_citation_words_is_scanned_in_bounded_time(text: str) -> None:
-    """Unbounded repetition took about 3 s of event-loop time on such a run."""
+def test_a_long_run_of_citation_words_is_scanned_in_bounded_time(
+    piece: str, ending: str
+) -> None:
+    """Unbounded repetition took seconds of event-loop time on such a run."""
+    limit = ConsumerCaseFacts.model_fields["complaint_summary"].metadata[0].max_length
+    text = (piece * (limit // len(piece)))[: limit - len(ending)] + ending
     started = time.perf_counter()
 
-    assert _unit_ids(text[:20_000]) == []
+    assert _unit_ids(text) == []
     assert time.perf_counter() - started < 1.5
 
 
