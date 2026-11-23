@@ -102,6 +102,9 @@ def test_no_channel_agreement_on_a_long_complaint_without_a_remedy() -> None:
     assert len(refusal.hints) == 3
     assert "Quero" in refusal.hints[0]
     assert f"{searched:,} dos {length:,}".replace(",", ".") in refusal.hints[1]
+    # Windows keep the start and the end of a long account, not only its start.
+    assert "não lê o texto inteiro" in refusal.hints[1]
+    assert "no começo ou no fim" in refusal.hints[1]
     assert "art. 35, inciso I, do CDC" in refusal.hints[2]
     assert refusal.message.startswith(
         "Não foi possível gerar o rascunho com segurança porque a recuperação não "

@@ -185,8 +185,10 @@ def _hint(reason: NoticeRefusalReason, facts: ConsumerCaseFacts) -> str:
         for name, (length, limit) in truncated_narrative_fields(facts).items()
     )
     return (
-        f"A busca jurídica lê só o início de cada texto ({cuts}). Coloque no começo o "
-        "problema principal e o que você pede, ou resuma o texto."
+        # A long account keeps its start and its last window (ADR 0026); a
+        # long request keeps its start.
+        f"A busca jurídica não lê o texto inteiro ({cuts}). Resuma o relato ou deixe o "
+        "problema principal no começo ou no fim dele, e escreva o pedido em poucas frases."
     )
 
 
