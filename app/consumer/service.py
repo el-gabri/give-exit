@@ -355,21 +355,35 @@ class ConsumerCaseService:
         )
         return self._snapshot(record), public
 
-    def start_prompt_case(self, text: str) -> tuple[str, str]:
+    def start_prompt_case(
+        self, text: str, *, desired_resolution: str | None = None
+    ) -> tuple[str, str]:
         """Open a case from one free-text request, through the chat intake.
 
         The text is recorded as the case's first message, so the request stays
         part of the case's audit. Its facts are extracted but not confirmed:
         this path trades the review step for a single call, and every notice it
         produces says so.
+
+        A ``desired_resolution`` sent apart is the request, verbatim, and the
+        text is then the account as written: the client already separated
+        them, so no sentence is moved between the two. It is recorded as the
+        case's second message.
         """
         normalized = " ".join(text.split())
         if not normalized:
             raise ConsumerPromptNoticeError("O texto da solicitação não pode estar vazio.")
         if not is_consumer_scope(complaint=normalized):
             raise ConsumerPromptNoticeError(_OUT_OF_SCOPE_MESSAGE)
+        remedy = " ".join((desired_resolution or "").split())
         snapshot, token, _ = self.create_case()
         self.add_message(snapshot.case_id, token, text.strip())
+        if remedy:
+            self.add_message(snapshot.case_id, token, remedy)
+            record = self._store.get_authorized(snapshot.case_id, token)
+            record.facts = record.facts.model_copy(
+                update={"complaint_summary": normalized, "desired_resolution": remedy}
+            )
         return snapshot.case_id, token
 
     async def generate_prompt_notice(self, case_id: str, token: str) -> ConsumerNotice:

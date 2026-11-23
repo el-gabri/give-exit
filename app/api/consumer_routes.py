@@ -324,6 +324,7 @@ async def generate_prompt_notice(
     max_upload_bytes: MaxUploadBytesDep,
     text: Annotated[str, Form(min_length=1, max_length=20_000)],
     file: Annotated[UploadFile | None, File()] = None,
+    desired_resolution: Annotated[str | None, Form(max_length=2_000)] = None,
     response_format: Annotated[PromptNoticeFormat, Query(alias="format")] = "json",
 ) -> ConsumerPromptNotice | Response:
     """Draft a notice from one free-text request and an optional evidence file.
@@ -335,9 +336,13 @@ async def generate_prompt_notice(
     expires or is deleted. ``format=markdown`` returns only the draft text,
     with the case credentials in the ``X-Consumer-Case-Id`` and
     ``X-Consumer-Case-Token`` headers.
+
+    Without ``desired_resolution``, sentences of ``text`` that ask for
+    something ("Quero...", "Solicito...") become the request. With it, that
+    field is the request and ``text`` the account, unchanged.
     """
     try:
-        case_id, token = service.start_prompt_case(text)
+        case_id, token = service.start_prompt_case(text, desired_resolution=desired_resolution)
     except ConsumerPromptNoticeError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except ConsumerCaseCapacityError as exc:

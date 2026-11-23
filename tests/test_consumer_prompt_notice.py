@@ -133,6 +133,63 @@ async def test_missing_facts_stay_placeholders_and_the_request_is_not_the_accoun
     assert any("Preencha antes de enviar" in warning for warning in notice["warnings"])
 
 
+async def test_an_explicit_resolution_field_is_the_request(
+    api: tuple[httpx.AsyncClient, FastAPI],
+) -> None:
+    client, _ = api
+    account, remedy = NUBANK.split(". ", 1)
+    account += "."
+
+    response = await client.post(
+        "/consumer/prompt-notices", data={"text": account, "desired_resolution": remedy}
+    )
+
+    assert response.status_code == 201, response.text
+    payload = response.json()
+    notice = payload["notice"]
+    assert notice["requests"][0] == remedy
+    assert notice["facts_summary"] == account
+    case = (
+        await client.get(
+            f"/consumer/cases/{payload['case_id']}",
+            headers={"X-Consumer-Case-Token": payload["case_token"]},
+        )
+    ).json()
+    # Both inputs stay part of the case's audit.
+    assert [message["content"] for message in case["messages"] if message["role"] == "user"] == [
+        account,
+        remedy,
+    ]
+
+
+async def test_an_explicit_resolution_keeps_request_sentences_in_the_account(
+    api: tuple[httpx.AsyncClient, FastAPI],
+) -> None:
+    """With the remedy sent apart, nothing is moved out of the consumer's text."""
+    _, app = api
+    service = app.state.consumer_service
+
+    case_id, token = service.start_prompt_case(
+        f"{NUBANK}  ", desired_resolution="  Devolução em dobro de   R$ 200,00. "
+    )
+
+    facts = service.get_case(case_id, token).facts
+    assert facts.complaint_summary == NUBANK
+    assert facts.desired_resolution == "Devolução em dobro de R$ 200,00."
+
+
+async def test_a_blank_resolution_field_is_ignored(
+    api: tuple[httpx.AsyncClient, FastAPI],
+) -> None:
+    _, app = api
+    service = app.state.consumer_service
+
+    case_id, token = service.start_prompt_case(NUBANK, desired_resolution="   ")
+
+    facts = service.get_case(case_id, token).facts
+    assert facts.desired_resolution == "Quero a devolução em dobro do valor pago a mais."
+
+
 async def test_markdown_format_returns_the_draft_with_case_credentials_in_headers(
     api: tuple[httpx.AsyncClient, FastAPI],
 ) -> None:
